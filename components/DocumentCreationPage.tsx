@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { PageType, DocumentData } from '../App';
 import StepSelector from './StepSelector';
-import ContractEditor from './editor/ContractEditor';
+import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
 import OthersDocumentViewer from './OthersDocumentViewer';
 
@@ -46,6 +46,7 @@ export default function DocumentCreationPage({
   setDocumentData,
   onNavigate
 }: DocumentCreationPageProps) {
+  const editorRef = useRef<ContractEditorRef>(null);
   const [editorPhase, setEditorPhase] = useState<'select' | 'analyzing' | 'review' | 'editing'>('editing');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(documentData.title || '');
@@ -184,6 +185,7 @@ export default function DocumentCreationPage({
             />
           ) : (
             <ContractEditor
+              ref={editorRef}
               onChange={(content) => {
                 setDocumentData({ ...documentData, content });
               }}
@@ -224,7 +226,7 @@ export default function DocumentCreationPage({
               document.addEventListener('mouseup', handleMouseUp);
             }}
           />
-          <ChatAssistant currentStep={currentStep} onClose={toggleChat} />
+          <ChatAssistant currentStep={currentStep} onClose={toggleChat} editorRef={editorRef} />
         </div>
 
         {/* Floating Chat Button */}

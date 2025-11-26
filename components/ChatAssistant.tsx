@@ -1,29 +1,98 @@
-import { useState, useRef, useEffect } from 'react';
-import { Sparkles, Send, X } from 'lucide-react';
+import { useState, useRef, useEffect, RefObject } from 'react';
+import { Sparkles, Send, X, Wand2 } from 'lucide-react';
+import { ContractEditorRef } from './editor/ContractEditor';
 
 interface Message {
   id: string;
   type: 'user' | 'ai';
   content: string;
+  hasApply?: boolean;
+  applyContent?: string;
 }
 
 interface ChatAssistantProps {
   currentStep: number;
   onClose?: () => void;
+  editorRef: RefObject<ContractEditorRef>;
 }
 
-export default function ChatAssistant({ currentStep, onClose }: ChatAssistantProps) {
+export default function ChatAssistant({ currentStep, onClose, editorRef }: ChatAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       type: 'ai',
-      content: '안녕하세요! 문서 작성을 도와드리겠습니다. 궁금한 점이 있으시면 언제든 물어보세요.'
+      content: '안녕하세요! 문서 작성을 도와드리겠습니다. 문서 수정을 원하시면 "~로 수정해줘"라고 말씀해주세요.'
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'help' | 'format'>('help');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+
+  // OpenAI API 호출
+  const callOpenAI = async (userMessage: string, documentContent: string): Promise<{ message: string; updatedHTML?: string }> => {
+    if (!OPENAI_API_KEY) {
+      return { message: 'API 키가 설정되지 않았습니다. .env 파일에 VITE_OPENAI_API_KEY를 설정해주세요.' };
+    }
+
+    const systemPrompt = `당신은 무역 문서 작성을 돕는 AI 어시스턴트입니다.
+사용자가 문서 수정을 요청하면, 수정된 HTML을 JSON 형식으로 반환해주세요.
+
+현재 문서 내용:
+${documentContent}
+
+응답 형식:
+- 일반 질문: { "type": "chat", "message": "답변 내용" }
+- 문서 수정 요청: { "type": "edit", "message": "수정 설명", "html": "수정된 전체 HTML" }
+
+중요: 문서 수정 시 기존 HTML 구조와 스타일을 유지하면서 요청된 부분만 수정하세요.`;
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content || '';
+
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.type === 'edit' && parsed.html) {
+          return { message: parsed.message, updatedHTML: parsed.html };
+        }
+        return { message: parsed.message || content };
+      } catch {
+        return { message: content };
+      }
+    } catch (error) {
+      console.error('OpenAI API 오류:', error);
+      return { message: `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}` };
+    }
+  };
+
+  // 에디터에 내용 적용
+  const applyToEditor = (html: string) => {
+    if (editorRef.current) {
+      editorRef.current.setContent(html);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -53,19 +122,26 @@ export default function ChatAssistant({ currentStep, onClose }: ChatAssistantPro
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'ai',
-        content: `"${input}"에 대한 답변입니다. 무역 문서 작성 시 이 부분을 참고하세요.`
-      };
-      setMessages(prev => [...prev, aiMessage]);
-      setIsLoading(false);
-    }, 1000);
+    // 현재 에디터 내용 가져오기
+    const documentContent = editorRef.current?.getContent() || '';
+
+    // OpenAI API 호출
+    const response = await callOpenAI(currentInput, documentContent);
+
+    const aiMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      type: 'ai',
+      content: response.message,
+      hasApply: !!response.updatedHTML,
+      applyContent: response.updatedHTML
+    };
+
+    setMessages(prev => [...prev, aiMessage]);
+    setIsLoading(false);
   };
 
   return (
@@ -121,6 +197,15 @@ export default function ChatAssistant({ currentStep, onClose }: ChatAssistantPro
                 }`}
             >
               <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              {message.hasApply && message.applyContent && (
+                <button
+                  onClick={() => applyToEditor(message.applyContent!)}
+                  className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  문서에 적용하기
+                </button>
+              )}
             </div>
           </div>
         ))}
