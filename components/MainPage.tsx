@@ -1,4 +1,4 @@
-import { FileText, MessageSquare, Plus, ChevronDown, LogOut, CheckCircle, Clock, Search, Filter, User } from 'lucide-react';
+import { FileText, MessageSquare, Plus, ChevronDown, LogOut, CheckCircle, Clock, Search, Filter, User, Sparkles } from 'lucide-react';
 import { PageType, SavedDocument } from '../App';
 import { useState } from 'react';
 
@@ -149,12 +149,11 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
         <div className="px-8 py-4 flex items-center justify-between">
           {/* Left: Logo and Title */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <FileText className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-gray-900">TradeDoc</h1>
-              <p className="text-gray-500 text-xs">무역서류작성</p>
+              <h1 className="text-gray-1000">Trade Copilot</h1>
             </div>
           </div>
 
@@ -184,6 +183,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
+                      
                     </button>
                   </div>
 
@@ -232,26 +232,25 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
 
       {/* Main Content */}
       <main className="px-8 py-8 max-w-7xl mx-auto">
-        {/* Title Section with New Task Button */}
-        <div className="mb-8 flex items-start justify-between">
-          <div>
-            <h2 className="text-gray-900 mb-2">내 작업</h2>
-            <p className="text-gray-600">AI 기반 무역 서류 작성을 시작해보세요</p>
-          </div>
-          
-          {/* New Task Button */}
+        {/* Title Section */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">내 작업</h1>
+          {/*<p className="text-gray-600">AI 기반 무역 서류 작성을 시작해보세요</p>*/}
+        </div>
+
+        {/* Floating Action Button - 우측 하단 고정 */}
+        <div className="fixed bottom-6 right-6 z-50">
           <div className="relative">
             <button
               onClick={() => setShowNewTaskMenu(!showNewTaskMenu)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors shadow-sm whitespace-nowrap"
+              className="bg-blue-600 hover:bg-blue-700 text-white w-14 h-14 rounded-full flex items-center justify-center transition-colors shadow-lg"
             >
-              <Plus className="w-5 h-5" />
-              <span>새로운 작업</span>
+              <Plus className="w-6 h-6" />
             </button>
 
             {/* Dropdown Menu */}
             {showNewTaskMenu && (
-              <div className="absolute top-14 right-0 w-80 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden z-10">
+              <div className="absolute bottom-16 right-0 w-80 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden">
                 {/* AI Chat Option */}
                 <button
                   onClick={() => {
@@ -297,49 +296,6 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
         {/* Filter and Search Section */}
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            {/* Status Filter */}
-            <div className="relative">
-              <button
-                onClick={() => setShowStatusFilter(!showStatusFilter)}
-                className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
-              >
-                <Filter className="w-5 h-5" />
-                <span>상태 필터</span>
-                <ChevronDown className="w-5 h-5" />
-              </button>
-              {showStatusFilter && (
-                <div className="absolute top-14 left-0 w-40 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden z-10">
-                  <button
-                    onClick={() => {
-                      setStatusFilter('all');
-                      setShowStatusFilter(false);
-                    }}
-                    className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    모든 작업
-                  </button>
-                  <button
-                    onClick={() => {
-                      setStatusFilter('completed');
-                      setShowStatusFilter(false);
-                    }}
-                    className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    완료된 작업
-                  </button>
-                  <button
-                    onClick={() => {
-                      setStatusFilter('in-progress');
-                      setShowStatusFilter(false);
-                    }}
-                    className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    진행중인 작업
-                  </button>
-                </div>
-              )}
-            </div>
-
             {/* Type Filter */}
             <div className="relative">
               <button
@@ -355,11 +311,12 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                   <button
                     onClick={() => {
                       setTypeFilter('all');
+                      setStatusFilter('all');
                       setShowTypeFilter(false);
                     }}
                     className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
                   >
-                    모든 작업
+                    All
                   </button>
                   <button
                     onClick={() => {
@@ -368,20 +325,57 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                     }}
                     className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
                   >
-                    문서 작업
+                    문서
                   </button>
                   <button
                     onClick={() => {
                       setTypeFilter('chat');
+                      setStatusFilter('all');
                       setShowTypeFilter(false);
                     }}
                     className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
                   >
-                    챗봇 작업
+                    채팅
                   </button>
                 </div>
               )}
             </div>
+
+            {/* Status Filter - 문서 작업 선택 시에만 표시 */}
+            {typeFilter === 'document' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowStatusFilter(!showStatusFilter)}
+                  className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                >
+                  <Filter className="w-5 h-5" />
+                  <span>상태 필터</span>
+                  <ChevronDown className="w-5 h-5" />
+                </button>
+                {showStatusFilter && (
+                  <div className="absolute top-14 left-0 w-40 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden z-10">
+                    <button
+                      onClick={() => {
+                        setStatusFilter('completed');
+                        setShowStatusFilter(false);
+                      }}
+                      className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
+                    >
+                      완료된 작업
+                    </button>
+                    <button
+                      onClick={() => {
+                        setStatusFilter('in-progress');
+                        setShowStatusFilter(false);
+                      }}
+                      className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
+                    >
+                      진행중인 작업
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Search Input */}
