@@ -1,4 +1,5 @@
 # TRADE-AI-ASSISTANT
+[로그인페이지데모](./img/login_page%20copy.mov)
 
 AI 기반 무역 문서 관리 및 생성 시스템
 

@@ -75,7 +75,10 @@ function TypingEffect() {
   }, [currentLineIndex, currentCharIndex, isDeleting, isPaused, lines]);
 
   return (
-    <div className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-800 leading-tight">
+    <div
+      className="text-5xl md:text-6xl lg:text-7xl font-bold text-slate-700 leading-tight"
+      style={{ textShadow: '0 2px 4px rgba(30, 58, 138, 0.1)' }}
+    >
       {displayedLines.map((line, index) => (
         <div key={index} className="min-h-[1.2em]">
           {line}
@@ -123,7 +126,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex">
+    <div className="min-h-screen animate-wave-gradient flex">
       {/* 왼쪽: 타이핑 효과 영역 */}
       <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
         <TypingEffect />
@@ -134,9 +137,12 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         <div className="w-full max-w-md">
 
           {/* Login Card */}
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+          <div
+            className="bg-white/95 backdrop-blur-sm rounded-2xl p-8 border border-white/50"
+            style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15), 0 10px 25px -5px rgba(0, 0, 0, 0.1)' }}
+          >
           <div className="mb-6">
-            <h2 className="text-gray-900 mb-1">로그인</h2> 
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">로그인</h2> 
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

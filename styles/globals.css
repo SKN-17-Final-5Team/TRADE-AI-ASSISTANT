@@ -107,6 +107,37 @@ body {
   animation: slideInFromRight 0.5s ease-in-out;
 }
 
+/* 파도처럼 흐르는 그라데이션 배경 */
+@keyframes waveFlow {
+  0% {
+    background-position: 0% 0%, 100% 100%, 0% 50%, 100% 0%, 50% 100%;
+  }
+  25% {
+    background-position: 50% 100%, 0% 50%, 100% 0%, 50% 100%, 0% 0%;
+  }
+  50% {
+    background-position: 100% 50%, 50% 0%, 0% 100%, 0% 50%, 100% 50%;
+  }
+  75% {
+    background-position: 50% 0%, 100% 50%, 50% 50%, 100% 100%, 0% 50%;
+  }
+  100% {
+    background-position: 0% 0%, 100% 100%, 0% 50%, 100% 0%, 50% 100%;
+  }
+}
+
+.animate-wave-gradient {
+  background:
+    radial-gradient(ellipse 90% 60% at 10% 30%, rgba(147, 197, 253, 0.5) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 50% at 80% 20%, rgba(96, 165, 250, 0.35) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 55% at 30% 70%, rgba(191, 219, 254, 0.45) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 45% at 70% 80%, rgba(59, 130, 246, 0.25) 0%, transparent 50%),
+    radial-gradient(ellipse 75% 50% at 50% 50%, rgba(147, 197, 253, 0.3) 0%, transparent 55%),
+    linear-gradient(180deg, #dbeafe 0%, #eff6ff 40%, #f0f9ff 100%);
+  background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
+  animation: waveFlow 6s ease-in-out infinite;
+}
+
 
 /**
  * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
