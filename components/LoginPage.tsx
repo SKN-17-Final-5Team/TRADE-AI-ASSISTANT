@@ -1,8 +1,91 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Lock, User, IdCard } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: (employeeId: string) => void;
+}
+
+// 타이핑 효과 컴포넌트
+function TypingEffect() {
+  const lines = ['당신의 서류 작업,', '오늘도 똑똑하게'];
+  const [displayedLines, setDisplayedLines] = useState<string[]>(['', '']);
+  const [currentLineIndex, setCurrentLineIndex] = useState(0);
+  const [currentCharIndex, setCurrentCharIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+
+  useEffect(() => {
+    if (isPaused) {
+      const pauseTimer = setTimeout(() => {
+        setIsPaused(false);
+        if (!isDeleting && currentLineIndex === lines.length - 1 && currentCharIndex === lines[currentLineIndex].length) {
+          setIsDeleting(true);
+          setCurrentLineIndex(lines.length - 1);
+          setCurrentCharIndex(lines[lines.length - 1].length);
+        }
+      }, 1500);
+      return () => clearTimeout(pauseTimer);
+    }
+
+    const typingSpeed = isDeleting ? 50 : 80;
+
+    const timer = setTimeout(() => {
+      if (!isDeleting) {
+        // 타이핑 중
+        const currentLine = lines[currentLineIndex];
+        if (currentCharIndex < currentLine.length) {
+          setDisplayedLines(prev => {
+            const newLines = [...prev];
+            newLines[currentLineIndex] = currentLine.slice(0, currentCharIndex + 1);
+            return newLines;
+          });
+          setCurrentCharIndex(prev => prev + 1);
+        } else if (currentLineIndex < lines.length - 1) {
+          // 다음 줄로 이동
+          setCurrentLineIndex(prev => prev + 1);
+          setCurrentCharIndex(0);
+        } else {
+          // 모든 타이핑 완료, 잠시 멈춤
+          setIsPaused(true);
+        }
+      } else {
+        // 삭제 중
+        if (currentCharIndex > 0) {
+          setDisplayedLines(prev => {
+            const newLines = [...prev];
+            newLines[currentLineIndex] = lines[currentLineIndex].slice(0, currentCharIndex - 1);
+            return newLines;
+          });
+          setCurrentCharIndex(prev => prev - 1);
+        } else if (currentLineIndex > 0) {
+          // 이전 줄로 이동
+          setCurrentLineIndex(prev => prev - 1);
+          setCurrentCharIndex(lines[currentLineIndex - 1].length);
+        } else {
+          // 모든 삭제 완료, 다시 시작
+          setIsDeleting(false);
+          setCurrentLineIndex(0);
+          setCurrentCharIndex(0);
+          setIsPaused(true);
+        }
+      }
+    }, typingSpeed);
+
+    return () => clearTimeout(timer);
+  }, [currentLineIndex, currentCharIndex, isDeleting, isPaused, lines]);
+
+  return (
+    <div className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-800 leading-tight">
+      {displayedLines.map((line, index) => (
+        <div key={index} className="min-h-[1.2em]">
+          {line}
+          {currentLineIndex === index && !isPaused && (
+            <span className="inline-block w-1 h-12 md:h-14 lg:h-16 bg-blue-600 ml-1 animate-pulse" />
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
@@ -40,22 +123,20 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo & Title */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg">
-            <User className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-gray-900 mb-2">무역 서류 작성 시스템</h1>
-          <p className="text-gray-600">Trade Document Management System</p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex">
+      {/* 왼쪽: 타이핑 효과 영역 */}
+      <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
+        <TypingEffect />
+      </div>
 
-        {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+      {/* 오른쪽: 로그인 폼 영역 */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+
+          {/* Login Card */}
+          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
           <div className="mb-6">
-            <h2 className="text-gray-900 mb-1">로그인</h2>
-            <p className="text-gray-600">회사 계정으로 로그인하세요</p>
+            <h2 className="text-gray-900 mb-1">로그인</h2> 
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -133,6 +214,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         {/* Footer */}
         <div className="text-center mt-6 text-gray-600 text-sm">
           © 2025 Trade Document Management System. All rights reserved.
+        </div>
         </div>
       </div>
     </div>
