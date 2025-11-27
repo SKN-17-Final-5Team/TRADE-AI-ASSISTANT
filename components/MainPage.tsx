@@ -125,7 +125,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
             </button>
             <div>
               <h1 className="text-gray-900 font-bold">Trade Copilot</h1>
-              <p className="text-gray-500 text-sm">무역서류 작성 시스템</p>
+              <p className="text-gray-500 text-sm">일반 채팅을 하려면 로고를 클릭하세요</p>
             </div>
           </div>
 
@@ -207,7 +207,6 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
         {/* Title Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">내 작업</h1>
-          {/*<p className="text-gray-600">AI 기반 무역 서류 작성을 시작해보세요</p>*/}
         </div>
 
         {/* Floating Action Button - 우측 하단 고정 */}

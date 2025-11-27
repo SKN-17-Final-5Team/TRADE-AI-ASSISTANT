@@ -121,7 +121,7 @@ export default function ChatPage({ onNavigate, onLogoClick }: ChatPageProps) {
             </button>
             <div>
               <h1 className="text-gray-900 font-bold">일반 채팅</h1>
-              <p className="text-gray-500 text-sm">휘발성 대화</p>
+              <p className="text-gray-500 text-sm">메인 페이지로 돌아가려면 다시 로고를 클릭하세요</p>
             </div>
           </div>
         </div>
