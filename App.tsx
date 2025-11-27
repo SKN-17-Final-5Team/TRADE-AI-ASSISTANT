@@ -172,12 +172,14 @@ function App() {
             <ChatPage
               onNavigate={setCurrentPage}
               onLogoClick={handleCloseChat}
+              userEmployeeId={userEmail}
+              onLogout={handleLogout}
             />
           </div>
         </>
       )}
 
-      {/* 채팅 페이지 (축소 시 원형으로 사라짐) */}
+      {/* 축소 시 메인 페이지와 글로우 효과 */}
       {transition === 'shrinking' && (
         <>
           <MainPage
@@ -200,27 +202,24 @@ function App() {
               boxShadow: '0 0 30px 15px rgba(37, 99, 235, 0.5), 0 0 60px 30px rgba(37, 99, 235, 0.3)'
             }}
           />
-          {/* 채팅 페이지 */}
-          <div
-            className="fixed inset-0 z-50 animate-clip-shrink"
-            style={{
-              clipPath: `circle(150% at ${clipOriginX}% ${clipOriginY}%)`
-            }}
-          >
-            <ChatPage
-              onNavigate={setCurrentPage}
-              onLogoClick={handleCloseChat}
-            />
-          </div>
         </>
       )}
 
-      {/* 일반 채팅 페이지 (전환 없이 표시) */}
-      {currentPage === 'chat' && transition === 'none' && (
-        <ChatPage
-          onNavigate={setCurrentPage}
-          onLogoClick={handleCloseChat}
-        />
+      {/* 일반 채팅 페이지 (축소 애니메이션 포함) */}
+      {(currentPage === 'chat' || transition === 'shrinking') && transition !== 'expanding' && (
+        <div
+          className={transition === 'shrinking' ? 'fixed inset-0 z-50 animate-clip-shrink' : ''}
+          style={transition === 'shrinking' ? {
+            clipPath: `circle(150% at ${clipOriginX}% ${clipOriginY}%)`
+          } : undefined}
+        >
+          <ChatPage
+            onNavigate={setCurrentPage}
+            onLogoClick={handleCloseChat}
+            userEmployeeId={userEmail}
+            onLogout={handleLogout}
+          />
+        </div>
       )}
 
       {/* 문서 페이지 */}
@@ -231,6 +230,8 @@ function App() {
           documentData={documentData}
           setDocumentData={setDocumentData}
           onNavigate={setCurrentPage}
+          userEmployeeId={userEmail}
+          onLogout={handleLogout}
         />
       )}
 

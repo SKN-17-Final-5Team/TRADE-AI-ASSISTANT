@@ -1,10 +1,8 @@
-import { useEffect, useState, useRef } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { ArrowLeft, Sparkles, User, LogOut } from 'lucide-react';
 import { PageType, DocumentData } from '../App';
-import StepSelector from './StepSelector';
 import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
-import OthersDocumentViewer from './OthersDocumentViewer';
 import { offerSheetTemplateHTML } from '../templates/offerSheet';
 import { purchaseOrderTemplateHTML } from '../templates/purchaseOrder';
 import { proformaInvoiceTemplateHTML } from '../templates/proformaInvoice';
@@ -19,19 +17,9 @@ interface DocumentCreationPageProps {
   documentData: DocumentData;
   setDocumentData: (data: DocumentData) => void;
   onNavigate: (page: PageType) => void;
+  userEmployeeId: string;
+  onLogout: () => void;
 }
-
-const stepNames = [
-  'Offer Sheet',
-  'Purchase Order',
-  'Proforma Invoice',
-  'Sales Contract',
-  'Commercial Invoice',
-  'Packing List',
-  'Bill of Lading',
-  'Letter of Credit',
-  'Others'
-];
 
 const stepShortNames = [
   'Offer (HFD)',
@@ -39,10 +27,7 @@ const stepShortNames = [
   'Proforma Invoice (PI)',
   'Sales Contract',
   'Commercial Invoice (CI)',
-  'Packing List',
-  'Bill of Lading (BL)',
-  'Letter of Credit (LC)',
-  'Others'
+  'Packing List'
 ];
 
 export default function DocumentCreationPage({
@@ -50,33 +35,42 @@ export default function DocumentCreationPage({
   setCurrentStep,
   documentData,
   setDocumentData,
-  onNavigate
+  onNavigate,
+  userEmployeeId,
+  onLogout
 }: DocumentCreationPageProps) {
   const editorRef = useRef<ContractEditorRef>(null);
-  const [editorPhase, setEditorPhase] = useState<'select' | 'analyzing' | 'review' | 'editing'>('editing');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(documentData.title || '');
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [selectedPDF, setSelectedPDF] = useState<string | null>(null);
+  const [chatWidth, setChatWidth] = useState(400);
+  const [showMyPageModal, setShowMyPageModal] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // Open chat with animation on initial load
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsChatOpen(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
+  const handlePasswordChange = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setPasswordError('새 비밀번호가 일치하지 않습니다.');
+      return;
     }
-  };
-
-  const handleNext = () => {
-    if (currentStep < 7) {
-      setCurrentStep(currentStep + 1);
+    if (newPassword.length < 8) {
+      setPasswordError('비밀번호는 8자 이상이어야 합니다.');
+      return;
     }
+    setPasswordSuccess(true);
+    setPasswordError('');
+    setTimeout(() => {
+      setShowPasswordChange(false);
+      setPasswordSuccess(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    }, 1500);
   };
 
   const handleTitleSave = () => {
@@ -103,95 +97,107 @@ export default function DocumentCreationPage({
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b">
-        <div className="px-8 py-4 flex items-center gap-4">
-          <button
-            onClick={() => onNavigate('main')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
-          </button>
-          <div className="flex-1">
-            {isEditingTitle ? (
-              <input
-                type="text"
-                value={tempTitle}
-                onChange={(e) => setTempTitle(e.target.value)}
-                onBlur={handleTitleSave}
-                onKeyDown={handleTitleKeyDown}
-                placeholder="제목을 입력하세요. (예: USA-Fashion-20251126)"
-                className="text-gray-800 text-lg font-semibold border-b-2 border-blue-500 outline-none focus:border-blue-600 bg-transparent w-full py-1"
-                autoFocus
-              />
-            ) : (
-              <button
-                onClick={() => {
-                  setIsEditingTitle(true);
-                  setTempTitle(documentData.title || '');
-                }}
-                className="text-gray-800 text-lg font-semibold hover:text-blue-600 transition-colors text-left w-full"
-              >
-                {documentData.title || '제목을 입력하세요. (클릭)'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="px-8 py-2 bg-gray-50 border-b">
-          <div className="flex items-center justify-between max-w-6xl mx-auto">
-            {stepShortNames.map((name, index) => {
-              const stepNumber = index + 1;
-              const isActive = currentStep === stepNumber;
-
-              return (
+      <header className="bg-white/80 backdrop-blur-md shadow-sm flex-shrink-0">
+        <div className="px-8 py-4 flex items-center justify-between">
+          {/* Left: Back button and Title */}
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => onNavigate('main')}
+              className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-700" />
+            </button>
+            <div>
+              {isEditingTitle ? (
+                <input
+                  type="text"
+                  value={tempTitle}
+                  onChange={(e) => setTempTitle(e.target.value)}
+                  onBlur={handleTitleSave}
+                  onKeyDown={handleTitleKeyDown}
+                  placeholder="제목을 입력하세요. (예: USA-Fashion-20251126)"
+                  className="text-gray-900 font-bold border-b-2 border-blue-500 outline-none focus:border-blue-600 bg-transparent w-80 py-1"
+                  autoFocus
+                />
+              ) : (
                 <button
-                  key={index}
-                  onClick={() => setCurrentStep(stepNumber)}
-                  className="flex flex-col items-center gap-1.5 relative group flex-shrink-0"
+                  onClick={() => {
+                    setIsEditingTitle(true);
+                    setTempTitle(documentData.title || '');
+                  }}
+                  className="text-gray-900 font-bold hover:text-blue-600 transition-colors text-left"
                 >
-                  {/* Circle */}
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${isActive
-                      ? 'bg-blue-600 shadow-lg shadow-blue-200 scale-110'
-                      : 'bg-white border-2 border-gray-300 group-hover:border-blue-400 group-hover:scale-105'
-                      }`}
-                  >
-                    {/* Empty circle - no number */}
-                  </div>
-
-                  {/* Label */}
-                  <span
-                    className={`text-xs whitespace-nowrap transition-colors font-medium ${isActive
-                      ? 'text-blue-600 font-semibold'
-                      : 'text-gray-600 group-hover:text-blue-500'
-                      }`}
-                  >
-                    {name}
-                  </span>
+                  {documentData.title || '제목을 입력하세요. (클릭)'}
                 </button>
-              );
-            })}
+              )}
+              <p className="text-gray-500 text-sm">문서 작성</p>
+            </div>
+          </div>
+          {/* Right: User Info */}
+          <div className="flex items-center gap-4">
+            <span className="text-gray-600 text-sm">{userEmployeeId}</span>
+            <button
+              onClick={() => setShowMyPageModal(!showMyPageModal)}
+              className="text-gray-600 hover:text-gray-900 text-sm transition-colors"
+            >
+              마이페이지
+            </button>
+            <button
+              onClick={onLogout}
+              className="text-gray-600 hover:text-gray-900 text-sm transition-colors"
+            >
+              로그아웃
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content - Split Layout */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Document Editor - Adjusts width when chat is open */}
-        <div
-          className="flex flex-col overflow-hidden p-4 transition-all duration-500 ease-in-out w-full"
-          style={{ marginRight: isChatOpen ? '400px' : '0' }}
-        >
-          {currentStep === 9 ? (
-            <OthersDocumentViewer
-              onFileSelect={setSelectedPDF}
-              selectedFile={selectedPDF}
-              onBackToList={() => setSelectedPDF(null)}
-            />
-          ) : (
+      {/* Main Content - Split Layout (includes tabs and editor) */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left side: Tabs + Editor */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Tab Navigation */}
+          <div className="px-8 py-2 bg-gray-50 border-b flex-shrink-0">
+            <div className="flex items-center justify-between max-w-6xl mx-auto">
+              {stepShortNames.map((name, index) => {
+                const stepNumber = index + 1;
+                const isActive = currentStep === stepNumber;
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentStep(stepNumber)}
+                    className="flex flex-col items-center gap-1.5 relative group flex-shrink-0"
+                  >
+                    {/* Circle */}
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${isActive
+                        ? 'bg-blue-600 shadow-lg shadow-blue-200 scale-110'
+                        : 'bg-white border-2 border-gray-300 group-hover:border-blue-400 group-hover:scale-105'
+                        }`}
+                    >
+                      {/* Empty circle - no number */}
+                    </div>
+
+                    {/* Label */}
+                    <span
+                      className={`text-xs whitespace-nowrap transition-colors font-medium ${isActive
+                        ? 'text-blue-600 font-semibold'
+                        : 'text-gray-600 group-hover:text-blue-500'
+                        }`}
+                    >
+                      {name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Document Editor */}
+          <div className="flex-1 flex flex-col overflow-hidden p-4">
             <ContractEditor
-              key={currentStep} // Force re-mount when step changes
+              key={currentStep}
               ref={editorRef}
               initialContent={
                 currentStep === 1 ? offerSheetTemplateHTML :
@@ -206,31 +212,26 @@ export default function DocumentCreationPage({
                 setDocumentData({ ...documentData, content });
               }}
             />
-          )}
+          </div>
         </div>
 
         {/* Chat Assistant - Slide in from right with resize handle */}
-        <div className={`absolute right-0 top-0 h-full w-[400px] border-l flex flex-col overflow-hidden bg-white transition-transform duration-500 ease-in-out ${isChatOpen ? 'translate-x-0' : 'translate-x-full'
-          }`}>
+        <div
+          className={`flex-shrink-0 border-l flex flex-col overflow-hidden bg-white relative transition-all duration-300 ease-in-out ${isChatOpen ? 'opacity-100' : 'w-0 opacity-0 border-0'}`}
+          style={{ width: isChatOpen ? `${chatWidth}px` : '0', minWidth: isChatOpen ? '300px' : '0' }}
+        >
           {/* Resize Handle */}
           <div
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 bg-gray-300 transition-colors"
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 bg-gray-300 transition-colors z-10"
             onMouseDown={(e) => {
               e.preventDefault();
               const startX = e.clientX;
-              const startWidth = 400;
+              const startWidth = chatWidth;
 
               const handleMouseMove = (moveEvent: MouseEvent) => {
                 const diff = startX - moveEvent.clientX;
                 const newWidth = Math.min(Math.max(300, startWidth + diff), 800);
-                const chatPanel = (e.target as HTMLElement).parentElement;
-                if (chatPanel) {
-                  chatPanel.style.width = `${newWidth}px`;
-                  const editor = chatPanel.previousElementSibling as HTMLElement;
-                  if (editor) {
-                    editor.style.marginRight = `${newWidth}px`;
-                  }
-                }
+                setChatWidth(newWidth);
               };
 
               const handleMouseUp = () => {
@@ -249,13 +250,158 @@ export default function DocumentCreationPage({
         {!isChatOpen && (
           <button
             onClick={toggleChat}
-            className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110 z-50"
+            className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110 z-40"
             title="AI 챗봇 열기"
           >
             <Sparkles className="w-6 h-6" />
           </button>
         )}
       </div>
+
+      {/* My Page Modal */}
+      {showMyPageModal && !showPasswordChange && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-[200]"
+          onClick={() => setShowMyPageModal(false)}
+        >
+          <div
+            className="bg-gradient-to-b from-gray-100 to-white rounded-3xl shadow-2xl w-80 overflow-hidden border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gray-100 px-6 py-4 flex items-center justify-between border-b border-gray-200">
+              <span className="text-gray-700 text-sm">{userEmployeeId}</span>
+              <button
+                onClick={() => setShowMyPageModal(false)}
+                className="text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-6 py-8 text-center">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-600 rounded-full mb-4 border-4 border-blue-100">
+                <User className="w-10 h-10 text-white" />
+              </div>
+              <h3 className="text-gray-900 mb-2">안녕하세요, {userEmployeeId}님</h3>
+              <p className="text-gray-500 text-sm mb-6">Trade Copilot <br />무역서류작성 시스템에 오신 걸 환영합니다 :)</p>
+              <button
+                onClick={() => setShowPasswordChange(true)}
+                className="w-full max-w-xs mx-auto bg-white hover:bg-gray-50 text-gray-700 px-6 py-3 rounded-full border border-gray-300 transition-colors text-sm"
+              >
+                비밀번호 변경
+              </button>
+            </div>
+
+            <div className="border-t border-gray-200">
+              <button
+                onClick={onLogout}
+                className="w-full px-6 py-4 text-gray-700 hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                로그아웃
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Change Modal */}
+      {showPasswordChange && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-[200]"
+          onClick={() => {
+            setShowPasswordChange(false);
+            setPasswordError('');
+            setPasswordSuccess(false);
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+          }}
+        >
+          <div
+            className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-gray-900">비밀번호 변경</h2>
+              <button
+                onClick={() => {
+                  setShowPasswordChange(false);
+                  setPasswordError('');
+                  setPasswordSuccess(false);
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div>
+                <label className="block text-gray-700 mb-2" htmlFor="docCurrentPassword">
+                  현재 비밀번호
+                </label>
+                <input
+                  type="password"
+                  id="docCurrentPassword"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-3"
+                  placeholder="현재 비밀번호를 입력하세요"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 mb-2" htmlFor="docNewPassword">
+                  새 비밀번호
+                </label>
+                <input
+                  type="password"
+                  id="docNewPassword"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-3"
+                  placeholder="새 비밀번호를 입력하세요 (8자 이상)"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 mb-2" htmlFor="docConfirmPassword">
+                  새 비밀번호 확인
+                </label>
+                <input
+                  type="password"
+                  id="docConfirmPassword"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-3"
+                  placeholder="새 비밀번호를 다시 입력하세요"
+                />
+              </div>
+
+              {passwordError && (
+                <div className="text-red-500 text-sm">{passwordError}</div>
+              )}
+
+              {passwordSuccess && (
+                <div className="text-green-500 text-sm">비밀번호가 성공적으로 변경되었습니다!</div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors"
+              >
+                비밀번호 변경
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
