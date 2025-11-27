@@ -5,6 +5,12 @@ import StepSelector from './StepSelector';
 import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
 import OthersDocumentViewer from './OthersDocumentViewer';
+import { offerSheetTemplateHTML } from '../templates/offerSheet';
+import { purchaseOrderTemplateHTML } from '../templates/purchaseOrder';
+import { proformaInvoiceTemplateHTML } from '../templates/proformaInvoice';
+import { packingListTemplateHTML } from '../templates/packingList';
+import { saleContractTemplateHTML } from '../templates/saleContract';
+import { commercialInvoiceTemplateHTML } from '../templates/commercialInvoice';
 
 
 interface DocumentCreationPageProps {
@@ -185,7 +191,17 @@ export default function DocumentCreationPage({
             />
           ) : (
             <ContractEditor
+              key={currentStep} // Force re-mount when step changes
               ref={editorRef}
+              initialContent={
+                currentStep === 1 ? offerSheetTemplateHTML :
+                  currentStep === 2 ? purchaseOrderTemplateHTML :
+                    currentStep === 3 ? proformaInvoiceTemplateHTML :
+                      currentStep === 4 ? saleContractTemplateHTML :
+                        currentStep === 5 ? commercialInvoiceTemplateHTML :
+                          currentStep === 6 ? packingListTemplateHTML :
+                            undefined
+              }
               onChange={(content) => {
                 setDocumentData({ ...documentData, content });
               }}

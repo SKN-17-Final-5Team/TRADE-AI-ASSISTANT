@@ -196,7 +196,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
 
                     {/* Greeting */}
                     <h3 className="text-gray-900 mb-2">안녕하세요, {userEmployeeId}님</h3>
-                    <p className="text-gray-500 text-sm mb-6">TradeDoc 무역서류작성 시스템</p>
+                    <p className="text-gray-500 text-sm mb-6">Trade Copilot <br></br>무역서류작성 시스템에 오신 걸 환영합니다 :)</p>
 
                     {/* Password Change Button */}
                     <button
