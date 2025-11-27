@@ -39,7 +39,6 @@ const sampleTasks = [
 ];
 
 export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, onLogout, onLogoClick }: MainPageProps) {
-  const [showNewTaskMenu, setShowNewTaskMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all');
   const [showStatusFilter, setShowStatusFilter] = useState(false);
@@ -213,38 +212,12 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
 
         {/* Floating Action Button - 우측 하단 고정 */}
         <div className="fixed bottom-6 right-6 z-50">
-          <div className="relative">
-            <button
-              onClick={() => setShowNewTaskMenu(!showNewTaskMenu)}
-              className="bg-blue-600 hover:bg-blue-700 text-white w-14 h-14 rounded-full flex items-center justify-center transition-colors shadow-lg"
-            >
-              <Plus className="w-6 h-6" />
-            </button>
-
-            {/* Dropdown Menu */}
-            {showNewTaskMenu && (
-              <div className="absolute bottom-16 right-0 w-80 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden">
-                {/* Document Creation Option */}
-                <button
-                  onClick={() => {
-                    setShowNewTaskMenu(false);
-                    onNavigate('documents');
-                  }}
-                  className="w-full p-4 text-left hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <FileText className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                      <h4 className="text-gray-900 mb-1">서류 작성 및 협업</h4>
-                      <p className="text-gray-500 text-sm">7가지 단계별로 순차 작성</p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => onNavigate('documents')}
+            className="bg-blue-600 hover:bg-blue-700 text-white w-14 h-14 rounded-full flex items-center justify-center transition-colors shadow-lg"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
         </div>
 
         {/* Filter and Search Section */}
