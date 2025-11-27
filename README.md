@@ -150,6 +150,89 @@ App (Root)
 - **데이터 비영속성**: 페이지 새로고침 시 데이터 초기화
 - **AI 응답**: 템플릿 기반 시뮬레이션 (실제 AI 미연동)
 
+## AI 문서 수정 기능 (기술 구현)
+
+ChatAssistant에서 "문서에 적용하기" 버튼을 누르면 AI가 제안한 내용이 에디터에 반영됩니다.
+
+### 작동 원리
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  DocumentCreationPage                    │
+│                                                         │
+│   const editorRef = useRef<ContractEditorRef>(null)     │
+│                                                         │
+│   ┌─────────────────┐      ┌─────────────────┐         │
+│   │ ContractEditor  │      │  ChatAssistant  │         │
+│   │   ref={editorRef}│      │ editorRef={...} │         │
+│   └────────┬────────┘      └────────┬────────┘         │
+│            │                        │                   │
+└────────────│────────────────────────│───────────────────┘
+             │                        │
+             ▼                        ▼
+        에디터 인스턴스 ◄─────── AI가 조작
+```
+
+### 핵심 코드
+
+**1. 에디터 인스턴스 공유 (ref)**
+
+```typescript
+// DocumentCreationPage.tsx
+const editorRef = useRef<ContractEditorRef>(null);
+
+<ContractEditor ref={editorRef} />
+<ChatAssistant editorRef={editorRef} />
+```
+
+**2. Tiptap Programmatic API**
+
+```typescript
+// ContractEditor.tsx - useImperativeHandle로 외부에 API 노출
+useImperativeHandle(ref, () => ({
+  getContent: () => editor?.getHTML(),        // 현재 내용 가져오기
+  setContent: (html) => editor?.commands.setContent(html),  // 내용 교체
+  insertContent: (html) => editor?.commands.insertContent(html),  // 삽입
+}));
+```
+
+**3. AI 응답 → 에디터 적용**
+
+```typescript
+// ChatAssistant.tsx
+const applyToEditor = (html: string) => {
+  editorRef.current?.setContent(html);  // AI가 생성한 HTML을 에디터에 적용
+};
+```
+
+### 데이터 흐름
+
+```
+1. 사용자: "Buyer를 삼성전자로 바꿔줘"
+           │
+           ▼
+2. ChatAssistant: editorRef.current.getContent()로 현재 문서 가져옴
+           │
+           ▼
+3. OpenAI API: 현재 문서 + 사용자 요청 → 수정된 HTML 반환
+           │
+           ▼
+4. "문서에 적용하기" 버튼 클릭
+           │
+           ▼
+5. applyToEditor(html) → editorRef.current.setContent(html)
+           │
+           ▼
+6. ContractEditor: 화면에 수정된 내용 반영
+```
+
+### 환경 설정
+
+```bash
+# .env 파일 생성
+VITE_OPENAI_API_KEY=sk-your-api-key
+```
+
 ## 라이선스
 
 - UI 컴포넌트: [shadcn/ui](https://ui.shadcn.com/)
