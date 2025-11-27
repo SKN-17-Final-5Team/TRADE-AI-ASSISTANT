@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, Sparkles, Search } from 'lucide-react';
+import { Send, Sparkles, Search } from 'lucide-react';
 import { PageType } from '../App';
 
 interface ChatPageProps {
   onNavigate: (page: PageType) => void;
+  onLogoClick: (logoRect: DOMRect) => void;
 }
 
 interface Message {
@@ -13,7 +14,7 @@ interface Message {
   timestamp: Date;
 }
 
-export default function ChatPage({ onNavigate }: ChatPageProps) {
+export default function ChatPage({ onNavigate, onLogoClick }: ChatPageProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -104,19 +105,24 @@ export default function ChatPage({ onNavigate }: ChatPageProps) {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b px-8 py-5">
-        <div className="max-w-5xl mx-auto flex items-center gap-4">
-          <button
-            onClick={() => onNavigate('main')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-6 h-6 text-gray-700" />
-          </button>
-          <Sparkles className="w-12 h-12 text-blue-600" />
-          <div>
-            <h1 className="text-gray-900 font-bold">일반 채팅</h1>
-            <p className="text-gray-600 text-sm">무역 AI 어시스턴트</p>
+      {/* Header - MainPage와 동일한 구조 */}
+      <header className="bg-white border-b">
+        <div className="px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                onLogoClick(rect);
+              }}
+              className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center hover:bg-blue-700 transition-all hover:scale-110 cursor-pointer"
+              title="메인으로 돌아가기"
+            >
+              <Sparkles className="w-5 h-5 text-white" />
+            </button>
+            <div>
+              <h1 className="text-gray-900 font-bold">일반 채팅</h1>
+              <p className="text-gray-500 text-sm">휘발성 대화</p>
+            </div>
           </div>
         </div>
       </header>

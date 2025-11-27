@@ -1,4 +1,4 @@
-import { FileText, MessageSquare, Plus, ChevronDown, LogOut, CheckCircle, Clock, Search, Filter, User, Sparkles } from 'lucide-react';
+import { FileText, Plus, ChevronDown, LogOut, CheckCircle, Clock, Search, Filter, User, Sparkles } from 'lucide-react';
 import { PageType, SavedDocument } from '../App';
 import { useState } from 'react';
 
@@ -7,22 +7,11 @@ interface MainPageProps {
   savedDocuments: SavedDocument[];
   userEmployeeId: string;
   onLogout: () => void;
+  onLogoClick: (logoRect: DOMRect) => void;
 }
 
 // 샘플 작업 데이터 (진행중 작업 최우선, 그 다음 최신순 정렬)
 const sampleTasks = [
-  {
-    id: '2',
-    title: '일반 AI 챗봇',
-    date: '2025. 11. 18.',
-    timestamp: new Date('2025-11-25T14:30:00'), // 현재 시간 기준으로 계산
-    description: '무역 관련 질문 및 상담',
-    type: 'chat' as const,
-    status: 'in-progress' as const,
-    icon: MessageSquare,
-    iconBg: 'bg-purple-50',
-    iconColor: 'text-purple-600'
-  },
   {
     id: '1',
     title: '수출 계약서 작성',
@@ -49,32 +38,11 @@ const sampleTasks = [
   }
 ];
 
-// 상대적 시간 계산 함수
-const getRelativeTime = (timestamp: Date): string => {
-  const now = new Date();
-  const diffInMs = now.getTime() - timestamp.getTime();
-  const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-  const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-  if (diffInMinutes < 1) {
-    return '방금 전';
-  } else if (diffInMinutes < 60) {
-    return `${diffInMinutes}분 전`;
-  } else if (diffInHours < 24) {
-    return `${diffInHours}시간 전`;
-  } else {
-    return `${diffInDays}일 전`;
-  }
-};
-
-export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, onLogout }: MainPageProps) {
+export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, onLogout, onLogoClick }: MainPageProps) {
   const [showNewTaskMenu, setShowNewTaskMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'document' | 'chat'>('all');
   const [showStatusFilter, setShowStatusFilter] = useState(false);
-  const [showTypeFilter, setShowTypeFilter] = useState(false);
   const [showMyPageModal, setShowMyPageModal] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -136,10 +104,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
     // 상태 필터
     const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
 
-    // 타입 필터
-    const matchesType = typeFilter === 'all' || task.type === typeFilter;
-
-    return matchesSearch && matchesStatus && matchesType;
+    return matchesSearch && matchesStatus;
   });
 
   return (
@@ -149,11 +114,19 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
         <div className="px-8 py-4 flex items-center justify-between">
           {/* Left: Logo and Title */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+            <button
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                onLogoClick(rect);
+              }}
+              className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center hover:bg-blue-700 transition-all hover:scale-110 cursor-pointer"
+              title="일반 채팅 열기"
+            >
               <Sparkles className="w-5 h-5 text-white" />
-            </div>
+            </button>
             <div>
-              <h1 className="text-gray-1000">Trade Copilot</h1>
+              <h1 className="text-gray-900 font-bold">Trade Copilot</h1>
+              <p className="text-gray-500 text-sm">무역서류 작성 시스템</p>
             </div>
           </div>
 
@@ -251,25 +224,6 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
             {/* Dropdown Menu */}
             {showNewTaskMenu && (
               <div className="absolute bottom-16 right-0 w-80 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden">
-                {/* AI Chat Option */}
-                <button
-                  onClick={() => {
-                    setShowNewTaskMenu(false);
-                    onNavigate('chat');
-                  }}
-                  className="w-full p-4 text-left hover:bg-gray-50 transition-colors border-b border-gray-100"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <MessageSquare className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h4 className="text-gray-900 mb-1">AI 챗봇</h4>
-                      <p className="text-gray-500 text-sm">자유롭게 질문 입력</p>
-                    </div>
-                  </div>
-                </button>
-
                 {/* Document Creation Option */}
                 <button
                   onClick={() => {
@@ -294,92 +248,52 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
         </div>
 
         {/* Filter and Search Section */}
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {/* Type Filter */}
-            <div className="relative">
-              <button
-                onClick={() => setShowTypeFilter(!showTypeFilter)}
-                className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
-              >
-                <Filter className="w-5 h-5" />
-                <span>타입 필터</span>
-                <ChevronDown className="w-5 h-5" />
-              </button>
-              {showTypeFilter && (
-                <div className="absolute top-14 left-0 w-40 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden z-10">
-                  <button
-                    onClick={() => {
-                      setTypeFilter('all');
-                      setStatusFilter('all');
-                      setShowTypeFilter(false);
-                    }}
-                    className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTypeFilter('document');
-                      setShowTypeFilter(false);
-                    }}
-                    className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    문서
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTypeFilter('chat');
-                      setStatusFilter('all');
-                      setShowTypeFilter(false);
-                    }}
-                    className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    채팅
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Status Filter - 문서 작업 선택 시에만 표시 */}
-            {typeFilter === 'document' && (
-              <div className="relative">
+        <div className="mb-4 flex items-center gap-4">
+          {/* Status Filter */}
+          <div className="relative">
+            <button
+              onClick={() => setShowStatusFilter(!showStatusFilter)}
+              className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+            >
+              <Filter className="w-5 h-5" />
+              <span>상태 필터</span>
+              <ChevronDown className="w-5 h-5" />
+            </button>
+            {showStatusFilter && (
+              <div className="absolute top-14 left-0 w-40 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden z-10">
                 <button
-                  onClick={() => setShowStatusFilter(!showStatusFilter)}
-                  className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                  onClick={() => {
+                    setStatusFilter('all');
+                    setShowStatusFilter(false);
+                  }}
+                  className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
                 >
-                  <Filter className="w-5 h-5" />
-                  <span>상태 필터</span>
-                  <ChevronDown className="w-5 h-5" />
+                  전체
                 </button>
-                {showStatusFilter && (
-                  <div className="absolute top-14 left-0 w-40 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden z-10">
-                    <button
-                      onClick={() => {
-                        setStatusFilter('completed');
-                        setShowStatusFilter(false);
-                      }}
-                      className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
-                    >
-                      완료된 작업
-                    </button>
-                    <button
-                      onClick={() => {
-                        setStatusFilter('in-progress');
-                        setShowStatusFilter(false);
-                      }}
-                      className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
-                    >
-                      진행중인 작업
-                    </button>
-                  </div>
-                )}
+                <button
+                  onClick={() => {
+                    setStatusFilter('completed');
+                    setShowStatusFilter(false);
+                  }}
+                  className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
+                >
+                  완료된 작업
+                </button>
+                <button
+                  onClick={() => {
+                    setStatusFilter('in-progress');
+                    setShowStatusFilter(false);
+                  }}
+                  className="w-full p-2 text-left hover:bg-gray-50 transition-colors"
+                >
+                  진행중인 작업
+                </button>
               </div>
             )}
           </div>
 
           {/* Search Input */}
-          <div className="relative w-80">
+          <div className="relative w-64">
             <input
               type="text"
               value={searchQuery}
@@ -407,35 +321,23 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                 <div className="flex-1 flex flex-col">
                   <div className="flex items-center gap-2 mb-3">
                     <h3 className="text-gray-900">{task.title}</h3>
-                    {task.type === 'chat' ? (
-                      <span className="text-orange-600 text-sm flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {getRelativeTime(task.timestamp)}
+                    {task.status === 'completed' ? (
+                      <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs">
+                        <CheckCircle className="w-3 h-3" />
+                        완료
                       </span>
                     ) : (
-                      task.status === 'completed' ? (
-                        <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs">
-                          <CheckCircle className="w-3 h-3" />
-                          완료
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-1 rounded-md text-xs">
-                          <Clock className="w-3 h-3" />
-                          진행중
-                        </span>
-                      )
+                      <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-1 rounded-md text-xs">
+                        <Clock className="w-3 h-3" />
+                        진행중
+                      </span>
                     )}
                   </div>
-                  {task.type === 'document' && (
-                    <p className="text-gray-500 text-sm mb-3">{task.date}</p>
-                  )}
-                  {task.type === 'chat' && (
-                    <p className="text-gray-500 text-sm mb-3">{task.date}</p>
-                  )}
+                  <p className="text-gray-500 text-sm mb-3">{task.date}</p>
                   <p className="text-gray-600 text-sm mb-4">{task.description}</p>
                   <div className="flex justify-end mt-auto">
                     <button
-                      onClick={() => onNavigate(task.type === 'document' ? 'documents' : 'chat')}
+                      onClick={() => onNavigate('documents')}
                       className="text-blue-600 hover:text-blue-700 text-sm transition-colors"
                     >
                       열기
