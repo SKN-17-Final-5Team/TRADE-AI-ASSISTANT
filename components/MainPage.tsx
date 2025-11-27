@@ -114,7 +114,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
-    
+
     setTimeout(() => {
       setShowPasswordChange(false);
       setShowMyPageModal(false);
@@ -131,14 +131,14 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
   const filteredTasks = sampleTasks.filter(task => {
     // 검색 필터
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         task.description.toLowerCase().includes(searchQuery.toLowerCase());
-    
+      task.description.toLowerCase().includes(searchQuery.toLowerCase());
+
     // 상태 필터
     const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
-    
+
     // 타입 필터
     const matchesType = typeFilter === 'all' || task.type === typeFilter;
-    
+
     return matchesSearch && matchesStatus && matchesType;
   });
 
@@ -161,16 +161,16 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
           <div className="flex items-center gap-4">
             <span className="text-gray-600 text-sm">{userEmployeeId}</span>
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setShowMyPageModal(!showMyPageModal)}
                 className="text-gray-600 hover:text-gray-900 text-sm flex items-center gap-1 transition-colors"
               >
                 마이페이지
               </button>
-              
+
               {/* My Page Dropdown Modal */}
               {showMyPageModal && !showPasswordChange && (
-                <div 
+                <div
                   className="absolute top-full right-0 mt-2 bg-gradient-to-b from-gray-100 to-white rounded-3xl shadow-2xl w-80 overflow-hidden z-50 border border-gray-200"
                 >
                   {/* Header with Employee ID */}
@@ -183,7 +183,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
-                      
+
                     </button>
                   </div>
 
@@ -220,7 +220,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                 </div>
               )}
             </div>
-            <button 
+            <button
               onClick={handleLogout}
               className="text-gray-600 hover:text-gray-900 text-sm flex items-center gap-1 transition-colors"
             >
@@ -392,19 +392,19 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
         </div>
 
         {/* Task Cards */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-4 items-start">
           {filteredTasks.map(task => (
             <div
               key={task.id}
-              className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow"
+              className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow h-full"
             >
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-4 h-full">
                 <div
                   className={`w-12 h-12 ${task.iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}
                 >
                   <task.icon className={`w-6 h-6 ${task.iconColor}`} />
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 flex flex-col">
                   <div className="flex items-center gap-2 mb-3">
                     <h3 className="text-gray-900">{task.title}</h3>
                     {task.type === 'chat' ? (
@@ -429,8 +429,11 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                   {task.type === 'document' && (
                     <p className="text-gray-500 text-sm mb-3">{task.date}</p>
                   )}
+                  {task.type === 'chat' && (
+                    <p className="text-gray-500 text-sm mb-3">{task.date}</p>
+                  )}
                   <p className="text-gray-600 text-sm mb-4">{task.description}</p>
-                  <div className="flex justify-end">
+                  <div className="flex justify-end mt-auto">
                     <button
                       onClick={() => onNavigate(task.type === 'document' ? 'documents' : 'chat')}
                       className="text-blue-600 hover:text-blue-700 text-sm transition-colors"
@@ -447,7 +450,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
 
       {/* Password Change Modal */}
       {showPasswordChange && (
-        <div 
+        <div
           className="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-30 flex items-center justify-center z-50"
           onClick={() => {
             setShowPasswordChange(false);
@@ -458,7 +461,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
             setConfirmPassword('');
           }}
         >
-          <div 
+          <div
             className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
@@ -480,7 +483,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                 </svg>
               </button>
             </div>
-            
+
             <form onSubmit={handlePasswordChange} className="space-y-4">
               <div>
                 <label className="block text-gray-700 mb-2" htmlFor="currentPassword">
@@ -521,19 +524,19 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                   placeholder="새 비밀번호를 다시 입력하세요"
                 />
               </div>
-              
+
               {passwordError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
                   {passwordError}
                 </div>
               )}
-              
+
               {passwordSuccess && (
                 <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
                   비밀번호가 성공적으로 변경되었습니다!
                 </div>
               )}
-              
+
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"

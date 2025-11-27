@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import MainPage from './components/MainPage';
 import ChatPage from './components/ChatPage';
 import DocumentCreationPage from './components/DocumentCreationPage';
@@ -57,10 +57,25 @@ function App() {
     }
   ]);
 
+  // 컴포넌트 마운트 시 localStorage에서 인증 상태 복원
+  useEffect(() => {
+    const savedAuth = localStorage.getItem('isAuthenticated');
+    const savedEmail = localStorage.getItem('userEmail');
+    
+    if (savedAuth === 'true' && savedEmail) {
+      setIsAuthenticated(true);
+      setUserEmail(savedEmail);
+    }
+  }, []);
+
   const handleLogin = (employeeId: string) => {
     // Mock 로그인 처리
     setUserEmail(employeeId);
     setIsAuthenticated(true);
+    
+    // localStorage에 인증 상태 저장
+    localStorage.setItem('isAuthenticated', 'true');
+    localStorage.setItem('userEmail', employeeId);
   };
 
   const handleLogout = () => {
@@ -68,6 +83,10 @@ function App() {
     setIsAuthenticated(false);
     setUserEmail('');
     setCurrentPage('main');
+    
+    // localStorage에서 인증 상태 제거
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('userEmail');
   };
 
   // 로그인하지 않은 경우 로그인 페이지 표시
