@@ -451,10 +451,10 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
         }
 
         return (
-            <div className={`contract-editor ${className || ''}`}>
+            <div className={`contract-editor flex flex-col h-full ${className || ''}`}>
                 <EditorToolbar editor={editor} />
-                <div className="border border-gray-200 rounded-b-lg bg-white overflow-auto max-h-[calc(100vh-200px)]">
-                    <EditorContent editor={editor} />
+                <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0">
+                    <EditorContent editor={editor} className="h-full" />
                 </div>
             </div>
         )

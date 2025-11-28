@@ -453,7 +453,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">로그아웃 하시겠습니까?</h2>
             <p className="text-gray-500 mb-8">
-              로그아웃하면 현재 작업 중인 내용이<br />저장되지 않을 수 있습니다.
+              언제든지 다시 로그인하여<br />작업을 이어서 할 수 있습니다.
             </p>
             <div className="flex gap-3">
               <button

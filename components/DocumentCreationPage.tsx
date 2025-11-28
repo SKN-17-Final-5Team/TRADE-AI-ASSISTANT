@@ -805,6 +805,7 @@ export default function DocumentCreationPage({
         <ContractEditor
           key={`${currentStep}-${activeShippingDoc || 'default'}`}
           ref={editorRef}
+          className="flex-1 min-h-0"
           initialContent={
             updateContentWithSharedData(
               (() => {
@@ -1530,9 +1531,9 @@ export default function DocumentCreationPage({
                 <LogOut className="w-8 h-8 text-red-500" />
               </div>
 
-              <h3 className="text-xl font-bold text-gray-900 mb-2">로그아웃 하시겠습니까?</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">작성 중인 문서가 있습니다</h3>
               <p className="text-gray-500 text-sm mb-8 leading-relaxed">
-                작성 중인 내용은 저장되지 않을 수 있습니다.<br />
+                로그아웃하면 작성 중인 내용이 저장되지 않을 수 있습니다.<br />
                 정말 로그아웃 하시겠습니까?
               </p>
 
