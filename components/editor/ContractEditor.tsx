@@ -8,6 +8,7 @@ import Highlight from '@tiptap/extension-highlight'
 import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { saleContractTemplateHTML } from '../../templates/saleContract'
 import EditorToolbar from './EditorToolbar'
+import './editor.css'
 
 const Div = Node.create({
     name: 'div',

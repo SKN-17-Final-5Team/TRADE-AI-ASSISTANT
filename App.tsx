@@ -20,16 +20,36 @@ export interface SavedDocument {
   totalSteps: number;
   progress: number;
   status: 'completed' | 'in-progress';
+  content?: DocumentData;
+  lastStep?: number;
 }
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [currentPage, setCurrentPage] = useState<PageType>('main');
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(0);
   const [documentData, setDocumentData] = useState<DocumentData>({});
   const [transition, setTransition] = useState<TransitionType>('none');
   const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
+
+  const handleNavigate = (page: PageType) => {
+    if (page === 'documents') {
+      // New Document: Reset state
+      setCurrentStep(0);
+      setDocumentData({});
+    }
+    setCurrentPage(page);
+  };
+
+  const handleOpenDocument = (doc: SavedDocument) => {
+    // Resume Document: Load content and go to Step 1
+    if (doc.content) {
+      setDocumentData(doc.content);
+    }
+    setCurrentStep(doc.lastStep || 1); // Resume from last step or default to 1
+    setCurrentPage('documents');
+  };
 
   // 로고 클릭으로 채팅 열기 (확장 애니메이션)
   const handleOpenChat = (logoRect: DOMRect) => {
@@ -60,41 +80,61 @@ function App() {
       setCurrentPage('main');
     }, 500);
   };
-  const [savedDocuments] = useState<SavedDocument[]>([
+  const [savedDocuments, setSavedDocuments] = useState<SavedDocument[]>([
     {
       id: '1',
       name: 'Samsung Electronics - Offer Sheet',
       date: '2025.11.20',
       completedSteps: 4,
-      totalSteps: 7,
+      totalSteps: 5,
       progress: 57,
-      status: 'in-progress'
+      status: 'in-progress',
+      content: {}
     },
     {
       id: '2',
       name: 'LG Display - Complete Set',
       date: '2025.11.18',
-      completedSteps: 7,
-      totalSteps: 7,
+      completedSteps: 5,
+      totalSteps: 5,
       progress: 100,
-      status: 'completed'
+      status: 'completed',
+      content: {}
     },
     {
       id: '3',
       name: 'Hyundai Motors - PI & SC',
       date: '2025.11.15',
       completedSteps: 2,
-      totalSteps: 7,
+      totalSteps: 5,
       progress: 28,
-      status: 'in-progress'
+      status: 'in-progress',
+      content: {}
     }
   ]);
+
+  const handleSaveDocument = (data: DocumentData, step: number) => {
+    const newDoc: SavedDocument = {
+      id: Date.now().toString(),
+      name: data.title || 'Untitled Document',
+      date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
+      completedSteps: Object.keys(data).filter(k => k !== 'title').length, // Count steps with data
+      totalSteps: 5,
+      progress: Math.round((Object.keys(data).filter(k => k !== 'title').length / 5) * 100),
+      status: 'in-progress',
+      content: data,
+      lastStep: step
+    };
+
+    setSavedDocuments([newDoc, ...savedDocuments]);
+    setCurrentPage('main');
+  };
 
   // 컴포넌트 마운트 시 localStorage에서 인증 상태 복원
   useEffect(() => {
     const savedAuth = localStorage.getItem('isAuthenticated');
     const savedEmail = localStorage.getItem('userEmail');
-    
+
     if (savedAuth === 'true' && savedEmail) {
       setIsAuthenticated(true);
       setUserEmail(savedEmail);
@@ -105,7 +145,7 @@ function App() {
     // Mock 로그인 처리
     setUserEmail(employeeId);
     setIsAuthenticated(true);
-    
+
     // localStorage에 인증 상태 저장
     localStorage.setItem('isAuthenticated', 'true');
     localStorage.setItem('userEmail', employeeId);
@@ -116,7 +156,7 @@ function App() {
     setIsAuthenticated(false);
     setUserEmail('');
     setCurrentPage('main');
-    
+
     // localStorage에서 인증 상태 제거
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userEmail');
@@ -137,10 +177,11 @@ function App() {
       {(currentPage === 'main' || transition === 'expanding') && (
         <div className={transition === 'expanding' ? 'pointer-events-none' : ''}>
           <MainPage
-            onNavigate={setCurrentPage}
+            onNavigate={handleNavigate}
             savedDocuments={savedDocuments}
             userEmployeeId={userEmail}
             onLogout={handleLogout}
+            onOpenDocument={handleOpenDocument}
             onLogoClick={handleOpenChat}
           />
         </div>
@@ -170,7 +211,7 @@ function App() {
             }}
           >
             <ChatPage
-              onNavigate={setCurrentPage}
+              onNavigate={handleNavigate}
               onLogoClick={handleCloseChat}
               userEmployeeId={userEmail}
               onLogout={handleLogout}
@@ -183,10 +224,11 @@ function App() {
       {transition === 'shrinking' && (
         <>
           <MainPage
-            onNavigate={setCurrentPage}
+            onNavigate={handleNavigate}
             savedDocuments={savedDocuments}
             userEmployeeId={userEmail}
             onLogout={handleLogout}
+            onOpenDocument={handleOpenDocument}
             onLogoClick={handleOpenChat}
           />
           {/* 글로우 효과 원 */}
@@ -214,7 +256,7 @@ function App() {
           } : undefined}
         >
           <ChatPage
-            onNavigate={setCurrentPage}
+            onNavigate={handleNavigate}
             onLogoClick={handleCloseChat}
             userEmployeeId={userEmail}
             onLogout={handleLogout}
@@ -229,9 +271,10 @@ function App() {
           setCurrentStep={setCurrentStep}
           documentData={documentData}
           setDocumentData={setDocumentData}
-          onNavigate={setCurrentPage}
+          onNavigate={handleNavigate}
           userEmployeeId={userEmail}
           onLogout={handleLogout}
+          onSave={handleSaveDocument}
         />
       )}
 

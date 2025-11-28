@@ -1,4 +1,3 @@
-// Offer Sheet Template as HTML string
 export const offerSheetTemplateHTML = `
 <div class="offer-sheet-wrapper">
     <h1 style="text-align: center;">OFFER SHEET</h1>
@@ -21,35 +20,43 @@ export const offerSheetTemplateHTML = `
 
     <!-- 아이템 테이블 -->
     <div class="items-wrapper">
-        <table class="offer-table">
+        <table class="offer-table" style="width: 100%; border-collapse: collapse;">
+            <colgroup>
+                <col style="width: 12%;">
+                <col style="width: 18%;">
+                <col style="width: 30%;">
+                <col style="width: 10%;">
+                <col style="width: 15%;">
+                <col style="width: 15%;">
+            </colgroup>
             <thead>
                 <tr>
-                    <th style="width: 12%;">Item No.</th>
-                    <th style="width: 18%;">HS-CODE</th>
-                    <th style="width: 30%;">Product</th>
-                    <th style="width: 10%;">Q'ty</th>
-                    <th style="width: 15%;">Unit Price</th>
-                    <th style="width: 15%;">Amount</th>
+                    <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Item No.</th>
+                    <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">HS-CODE</th>
+                    <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Product</th>
+                    <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Q'ty</th>
+                    <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Unit Price</th>
+                    <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Amount</th>
                 </tr>
             </thead>
             <tbody>
                 <tr style="height: 400px;">
-                    <td style="vertical-align: top;"><mark>[item_no]</mark></td>
-                    <td style="vertical-align: top;"><mark>[hscode]</mark></td>
-                    <td style="vertical-align: top;"><mark>[description]</mark></td>
-                    <td style="vertical-align: top;"><mark>[quantity]</mark></td>
-                    <td style="vertical-align: top;"><mark>[unit_price]</mark></td>
-                    <td style="vertical-align: top;"><mark>[sub_total_price]</mark></td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[item_no]</mark></td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[hscode]</mark></td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[description]</mark></td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[quantity]</mark></td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;"><mark>[unit_price]</mark></td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;"><mark>[sub_total_price]</mark></td>
                 </tr>
             </tbody>
             <tfoot>
                 <tr>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td class="total-label" style="text-align: center;">TOTAL :</td>
-                    <td><mark>[total_price]</mark></td>
+                    <td style="border: 1px solid #d1d5db;"></td>
+                    <td style="border: 1px solid #d1d5db;"></td>
+                    <td style="border: 1px solid #d1d5db;"></td>
+                    <td style="border: 1px solid #d1d5db;"></td>
+                    <td class="total-label" style="text-align: center; padding: 8px; border: 1px solid #d1d5db; background-color: #f0f0f0; font-weight: bold;">TOTAL :</td>
+                    <td style="padding: 8px; border: 1px solid #d1d5db; text-align: right; background-color: #f0f0f0; font-weight: bold;"><mark>[total_price]</mark></td>
                 </tr>
             </tfoot>
         </table>

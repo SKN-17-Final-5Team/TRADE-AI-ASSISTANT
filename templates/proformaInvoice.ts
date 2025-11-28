@@ -1,102 +1,126 @@
-// Proforma Invoice Template as HTML string
 export const proformaInvoiceTemplateHTML = `
 <div class="pi-wrapper">
     <h1>PROFORMA INVOICE</h1>
-    <div class="header-line"></div>
 
-    <table>
-        <!-- Proforma Invoice Header -->
-        <tr>
-            <td colspan="6" class="section-header" style="background-color: #D3D3D3;">Proforma Invoice</td>
-        </tr>
-        <tr>
-            <td colspan="6">
-                Date: <mark>[pi_date]</mark><br>
-                Proforma invoice : <mark>[pi_no]</mark>
-            </td>
-        </tr>
+    <table class="pi-table" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+        <colgroup>
+            <col style="width: 25%;">
+            <col style="width: 15%;">
+            <col style="width: 15%;">
+            <col style="width: 10%;">
+            <col style="width: 15%;">
+            <col style="width: 20%;">
+        </colgroup>
+        <tbody>
+            <!-- Header Section -->
+            <tr>
+                <td colspan="6" style="background-color: #f3f4f6; font-weight: bold; padding: 8px 8px 8px 15px; border: 1px solid #d1d5db; text-align: left; vertical-align: middle;">Proforma Invoice</td>
+            </tr>
+            <tr>
+                <td colspan="6" style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">
+                    Date: <mark>[pi_date]</mark><br>
+                    Proforma invoice : <mark>[pi_no]</mark>
+                </td>
+            </tr>
 
-        <!-- SENT BY -->
-        <tr>
-            <td colspan="6" class="section-header" style="background-color: #D3D3D3;">SENT BY</td>
-        </tr>
-        <tr>
-            <td colspan="6" class="content-cell">
-                Company Name: <mark>[seller_name]</mark><br>
-                Name/Department: <mark>[seller_human_name]</mark><mark>[seller_department]</mark><br>
-                Address: <mark>[seller_address]</mark><br>
-                City/Postal Code: <mark>[seller_city]</mark><mark>[seller_postal_code]</mark><br>
-                Country: <mark>[seller_country]</mark><br>
-                Tel./Fax No.: <mark>[seller_fax]</mark>/<mark>[seller_fax]</mark>
-            </td>
-        </tr>
+            <!-- SENT BY -->
+            <tr>
+                <td colspan="6" style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; vertical-align: middle;">SENT BY</td>
+            </tr>
+            <tr>
+                <td colspan="6" style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">
+                    Company Name: <mark>[seller_name]</mark><br>
+                    Name/Department: <mark>[seller_human_name]</mark><mark>[seller_department]</mark><br>
+                    Address: <mark>[seller_address]</mark><br>
+                    City/Postal Code: <mark>[seller_city]</mark><mark>[seller_postal_code]</mark><br>
+                    Country: <mark>[seller_country]</mark><br>
+                    Tel./Fax No.: <mark>[seller_fax]</mark>/<mark>[seller_fax]</mark>
+                </td>
+            </tr>
 
-        <!-- SENT TO & Bill of Lading No -->
-        <tr>
-            <td colspan="3" class="section-header" style="width: 50%; background-color: #D3D3D3;">SENT TO</td>
-            <td colspan="3" class="section-header" style="width: 50%; background-color: #D3D3D3;">Bill of Lading No</td>
-        </tr>
-        <tr>
-            <td colspan="3" class="content-cell">
-                Company Name: <mark>[buyer_name]</mark><br>
-                Name/Department: <mark>[buyer_human_name]</mark>/<mark>[buyer_human_department]</mark><br>
-                Address: <mark>[buyer_address]</mark><br>
-                City/Postal Code: <mark>[buyer_city]</mark><br>
-                Country: <mark>[buyer_country]</mark><br>
-                Tel: <mark>[buyer_number]</mark>
-            </td>
-            <td colspan="3" class="content-cell">
-                Number of pieces: <mark>[quantity]</mark><br>
-                Total Gross Weight: <mark>[total_gross_weight]</mark><br>
-                Total Net Weight: <mark>[total_net_weight]</mark><br>
-                Carrier: <mark>[carrier]</mark>
-            </td>
-        </tr>
+            <!-- SENT TO & Bill of Lading No -->
+            <tr>
+                <td colspan="3" style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; vertical-align: middle;">SENT TO</td>
+                <td colspan="3" style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; vertical-align: middle;">Bill of Lading No</td>
+            </tr>
+            <tr>
+                <td colspan="3" style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; height: 150px;">
+                    Company Name: <mark>[buyer_name]</mark><br>
+                    Name/Department: <mark>[buyer_human_name]</mark>/<mark>[buyer_human_department]</mark><br>
+                    Address: <mark>[buyer_address]</mark><br>
+                    City/Postal Code: <mark>[buyer_city]</mark><br>
+                    Country: <mark>[buyer_country]</mark><br>
+                    Tel: <mark>[buyer_number]</mark>
+                </td>
+                <td colspan="3" style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">
+                    Number of pieces: <mark>[quantity]</mark><br>
+                    Total Gross Weight: <mark>[total_gross_weight]</mark><br>
+                    Total Net Weight: <mark>[total_net_weight]</mark><br>
+                    Carrier: <mark>[carrier]</mark>
+                </td>
+            </tr>
 
-        <!-- Items Header -->
-        <tr class="items-header">
-            <td style="width: 25%;">Description of goods</td>
-            <td style="width: 15%;">Commodity Code</td>
-            <td style="width: 15%;">Country of origin</td>
-            <td style="width: 10%;">Quantity</td>
-            <td style="width: 15%;">Unit Value, Currency</td>
-            <td style="width: 20%;">Subtotal value, Currency</td>
-        </tr>
+            <!-- Goods Header -->
+            <tr>
+                <td style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center; vertical-align: middle;">Description of goods</td>
+                <td style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center; vertical-align: middle;">Commodity Code</td>
+                <td style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center; vertical-align: middle;">Country of origin</td>
+                <td style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center; vertical-align: middle;">Quantity</td>
+                <td style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center; vertical-align: middle;">Unit Value, Currency</td>
+                <td style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center; vertical-align: middle;">Subtotal value, Currency</td>
+            </tr>
 
-        <!-- Items Body -->
-        <tr class="items-body">
-            <td style="vertical-align: top;"><mark>[description]</mark></td>
-            <td style="vertical-align: top;"><mark>[hscode]</mark></td>
-            <td style="vertical-align: top;"><mark>[coo]</mark></td>
-            <td style="vertical-align: top;"><mark>[quantity]</mark></td>
-            <td style="vertical-align: top;"><mark>[unit_price]</mark>/<mark>[unit]</mark> <mark>[currency]</mark></td>
-            <td style="vertical-align: top;"><mark>[sub_total_price]</mark><mark>[currency]</mark></td>
-        </tr>
+            <!-- Goods Content -->
+            <tr style="height: 300px;">
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">
+                    <mark>[description]</mark>
+                </td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;">
+                    <mark>[hscode]</mark>
+                </td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;">
+                    <mark>[coo]</mark>
+                </td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;">
+                    <mark>[quantity]</mark>
+                </td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
+                    <mark>[unit_price]</mark>/<mark>[unit]</mark> <mark>[currency]</mark>
+                </td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
+                    <mark>[sub_total_price]</mark><mark>[currency]</mark>
+                </td>
+            </tr>
 
-        <!-- Total Footer -->
-        <tr>
-            <td colspan="5" style="text-align: right; vertical-align: middle;">Total value, currency</td>
-            <td style="vertical-align: middle;"><mark>[total_price]</mark><mark>[currency]</mark></td>
-        </tr>
+            <!-- Total Footer -->
+            <tr style="background-color: #f0f0f0; font-weight: bold;">
+                <td colspan="5" style="text-align: right; padding: 8px; border: 1px solid #d1d5db; vertical-align: middle;">Total value, currency</td>
+                <td style="padding: 8px; border: 1px solid #d1d5db; text-align: right; vertical-align: middle;">
+                    <mark>[total_price]</mark><mark>[currency]</mark>
+                </td>
+            </tr>
+        </tbody>
     </table>
 
-    <div class="footer-section">
-        <div class="footer-row">
-            <div class="footer-item">Term of transportation: <mark>[transportation_term]</mark></div>
-            <div class="footer-item" style="text-align: right;">Reason for export: <mark>[export_reason]</mark></div>
+    <!-- Footer Section (Outside Table) -->
+    <div class="pi-footer" style="margin-top: 20px; padding: 10px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+            <div style="flex: 1;">Term of transportation: <mark>[transportation_term]</mark></div>
+            <div style="flex: 1; text-align: center;">Reason for export: <mark>[export_reason]</mark></div>
+            <div style="flex: 1;"></div>
         </div>
 
-        <div class="declaration">
+        <div style="margin-bottom: 40px;">
             I declare that the information mentioned above is true and correct to the best of my knowledge.
         </div>
 
-        <div class="signature-row">
-            <div class="footer-item">Signature: </div>
-            <div class="footer-item stamp-item">Stamp:</div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 40px;">
+            <div style="width: 45%;">Signature: </div>
+            <div style="width: 45%; text-align: center;">Stamp:</div>
         </div>
 
-        <div style="margin-top: 40px;">
-        Name: <mark>[seller_name]</mark>
+        <div>
+            Name: <mark>[seller_name]</mark>
         </div>
     </div>
 </div>

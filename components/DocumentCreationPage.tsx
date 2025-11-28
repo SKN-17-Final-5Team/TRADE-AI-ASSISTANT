@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
-import { ArrowLeft, Sparkles, User, LogOut } from 'lucide-react';
+import { ArrowLeft, Sparkles, User, LogOut, Plus, FileText, MousePointerClick, Save, Download } from 'lucide-react';
 import { PageType, DocumentData } from '../App';
 import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
 import { offerSheetTemplateHTML } from '../templates/offerSheet';
-import { purchaseOrderTemplateHTML } from '../templates/purchaseOrder';
+
 import { proformaInvoiceTemplateHTML } from '../templates/proformaInvoice';
 import { packingListTemplateHTML } from '../templates/packingList';
 import { saleContractTemplateHTML } from '../templates/saleContract';
@@ -19,11 +19,11 @@ interface DocumentCreationPageProps {
   onNavigate: (page: PageType) => void;
   userEmployeeId: string;
   onLogout: () => void;
+  onSave: (data: DocumentData, step: number) => void;
 }
 
 const stepShortNames = [
   'Offer (HFD)',
-  'Purchase Order (PO)',
   'Proforma Invoice (PI)',
   'Sales Contract',
   'Commercial Invoice (CI)',
@@ -37,7 +37,8 @@ export default function DocumentCreationPage({
   setDocumentData,
   onNavigate,
   userEmployeeId,
-  onLogout
+  onLogout,
+  onSave
 }: DocumentCreationPageProps) {
   const editorRef = useRef<ContractEditorRef>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -51,6 +52,8 @@ export default function DocumentCreationPage({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,6 +97,59 @@ export default function DocumentCreationPage({
     setIsChatOpen(!isChatOpen);
   };
 
+  const handleSave = () => {
+    onSave(documentData, currentStep);
+    setIsDirty(false); // Reset dirty state after save
+  };
+
+  const handleDownload = () => {
+    if (!editorRef.current) return;
+
+    const content = editorRef.current.getContent();
+
+    // Create a temporary DOM element to manipulate the content
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+
+    // Remove all <mark> tags and their content (highlighted placeholders)
+    const marks = tempDiv.querySelectorAll('mark');
+    marks.forEach(mark => {
+      mark.remove(); // Removes the element AND its content
+    });
+
+    // Get the cleaned HTML
+    const cleanContent = tempDiv.innerHTML;
+
+    // Create a Blob and trigger download
+    const blob = new Blob([`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${documentData.title || 'Document'}</title>
+        <style>
+          body { font-family: sans-serif; padding: 20px; }
+          table { border-collapse: collapse; width: 100%; }
+          th, td { border: 1px solid black; padding: 8px; }
+          .contract-table { width: 100%; }
+        </style>
+      </head>
+      <body>
+        ${cleanContent}
+      </body>
+      </html>
+    `], { type: 'text/html' });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${documentData.title || 'document'}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -102,7 +158,13 @@ export default function DocumentCreationPage({
           {/* Left: Back button and Title */}
           <div className="flex items-center gap-3 flex-1">
             <button
-              onClick={() => onNavigate('main')}
+              onClick={() => {
+                if (isDirty) {
+                  setShowExitConfirm(true);
+                } else {
+                  onNavigate('main');
+                }
+              }}
               className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-gray-700" />
@@ -135,6 +197,23 @@ export default function DocumentCreationPage({
           </div>
           {/* Right: User Info */}
           <div className="flex items-center gap-4">
+            <button
+              onClick={handleSave}
+              className="text-gray-600 hover:text-blue-600 text-sm flex items-center gap-1 transition-colors"
+              title="전체 저장"
+            >
+              <Save className="w-4 h-4" />
+              저장
+            </button>
+            <button
+              onClick={handleDownload}
+              className="text-gray-600 hover:text-blue-600 text-sm flex items-center gap-1 transition-colors"
+              title="현재 문서 다운로드"
+            >
+              <Download className="w-4 h-4" />
+              다운로드
+            </button>
+            <div className="w-px h-4 bg-gray-300 mx-2"></div>
             <span className="text-gray-600 text-sm">{userEmployeeId}</span>
             <button
               onClick={() => setShowMyPageModal(!showMyPageModal)}
@@ -176,7 +255,11 @@ export default function DocumentCreationPage({
                         : 'bg-white border-2 border-gray-300 group-hover:border-blue-400 group-hover:scale-105'
                         }`}
                     >
-                      {/* Empty circle - no number */}
+                      {isActive ? (
+                        <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                      ) : (
+                        <Plus className="w-4 h-4 text-gray-400 group-hover:text-blue-400 transition-colors" />
+                      )}
                     </div>
 
                     {/* Label */}
@@ -194,24 +277,62 @@ export default function DocumentCreationPage({
             </div>
           </div>
 
-          {/* Document Editor */}
+          {/* Document Editor or Empty State */}
           <div className="flex-1 flex flex-col overflow-hidden p-4">
-            <ContractEditor
-              key={currentStep}
-              ref={editorRef}
-              initialContent={
-                currentStep === 1 ? offerSheetTemplateHTML :
-                  currentStep === 2 ? purchaseOrderTemplateHTML :
-                    currentStep === 3 ? proformaInvoiceTemplateHTML :
-                      currentStep === 4 ? saleContractTemplateHTML :
-                        currentStep === 5 ? commercialInvoiceTemplateHTML :
-                          currentStep === 6 ? packingListTemplateHTML :
-                            undefined
-              }
-              onChange={(content) => {
-                setDocumentData({ ...documentData, content });
-              }}
-            />
+            {currentStep === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden">
+                {/* Background Decor */}
+                <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+                  <div className="absolute top-10 left-10 w-64 h-64 bg-blue-50 rounded-full blur-3xl opacity-60 animate-pulse" />
+                  <div className="absolute bottom-10 right-10 w-80 h-80 bg-purple-50 rounded-full blur-3xl opacity-60 animate-pulse delay-1000" />
+                </div>
+
+                <div className="relative z-10 text-center p-8 max-w-lg mx-auto">
+                  <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner transform rotate-3 hover:rotate-6 transition-transform duration-500">
+                    <FileText className="w-12 h-12 text-blue-600" />
+                  </div>
+
+                  <h2 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">
+                    무역 서류 작성을<br />
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+                      시작해보세요
+                    </span>
+                  </h2>
+
+                  <p className="text-gray-500 text-lg mb-10 leading-relaxed">
+                    상단의 <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full mx-1"><Plus className="w-3 h-3 text-gray-600" /></span> 버튼을 클릭하여<br />
+                    원하는 서류 템플릿을 선택해주세요.
+                  </p>
+
+                  <div className="flex items-center justify-center gap-2 text-sm text-blue-600 font-medium bg-blue-50 py-2 px-4 rounded-full inline-flex animate-bounce">
+                    <MousePointerClick className="w-4 h-4" />
+                    <span>위쪽의 동그라미를 클릭하세요!</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <ContractEditor
+                key={currentStep}
+                ref={editorRef}
+                initialContent={
+                  documentData[currentStep] || (
+                    currentStep === 1 ? offerSheetTemplateHTML :
+                      currentStep === 2 ? proformaInvoiceTemplateHTML :
+                        currentStep === 3 ? saleContractTemplateHTML :
+                          currentStep === 4 ? commercialInvoiceTemplateHTML :
+                            currentStep === 5 ? packingListTemplateHTML :
+                              undefined
+                  )
+                }
+                onChange={(content) => {
+                  setDocumentData({
+                    ...documentData,
+                    [currentStep]: content
+                  });
+                  setIsDirty(true);
+                }}
+              />
+            )}
           </div>
         </div>
 
@@ -399,6 +520,36 @@ export default function DocumentCreationPage({
                 비밀번호 변경
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Exit Confirmation Modal */}
+      {showExitConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
+          <div className="bg-white rounded-xl p-6 w-96 shadow-2xl transform transition-all scale-100">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">저장하지 않고 나가시겠습니까?</h3>
+            <p className="text-gray-500 text-sm mb-6">
+              작성 중인 내용이 저장되지 않았습니다.<br />
+              정말 나가시겠습니까?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowExitConfirm(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  setShowExitConfirm(false);
+                  onNavigate('main');
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
+              >
+                나가기
+              </button>
+            </div>
           </div>
         </div>
       )}

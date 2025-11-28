@@ -8,37 +8,12 @@ interface MainPageProps {
   userEmployeeId: string;
   onLogout: () => void;
   onLogoClick: (logoRect: DOMRect) => void;
+  onOpenDocument: (doc: SavedDocument) => void;
 }
 
-// 샘플 작업 데이터 (진행중 작업 최우선, 그 다음 최신순 정렬)
-const sampleTasks = [
-  {
-    id: '1',
-    title: '수출 계약서 작성',
-    date: '2025. 11. 23.',
-    timestamp: new Date('2025-11-23T10:00:00'),
-    description: '7가 무역 서류 작성 (전략적 포럼)',
-    type: 'document' as const,
-    status: 'completed' as const,
-    icon: FileText,
-    iconBg: 'bg-blue-50',
-    iconColor: 'text-blue-600'
-  },
-  {
-    id: '3',
-    title: 'PI 작성 프로젝트',
-    date: '2025. 11. 15.',
-    timestamp: new Date('2025-11-15T15:00:00'),
-    description: 'Proforma Invoice 문서 작업',
-    type: 'document' as const,
-    status: 'completed' as const,
-    icon: FileText,
-    iconBg: 'bg-green-50',
-    iconColor: 'text-green-600'
-  }
-];
 
-export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, onLogout, onLogoClick }: MainPageProps) {
+
+export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, onLogout, onLogoClick, onOpenDocument }: MainPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all');
   const [showStatusFilter, setShowStatusFilter] = useState(false);
@@ -100,13 +75,13 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
   };
 
   // 필터링 및 검색 로직
-  const filteredTasks = sampleTasks.filter(task => {
+  // 필터링 및 검색 로직
+  const filteredTasks = savedDocuments.filter(doc => {
     // 검색 필터
-    const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase());
 
     // 상태 필터
-    const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
+    const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
@@ -230,46 +205,66 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
 
         {/* Task Cards */}
         <div className="grid grid-cols-3 gap-4 items-start">
-          {filteredTasks.map(task => (
-            <div
-              key={task.id}
-              className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow h-full"
-            >
-              <div className="flex items-start gap-4 h-full">
-                <div
-                  className={`w-12 h-12 ${task.iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}
-                >
-                  <task.icon className={`w-6 h-6 ${task.iconColor}`} />
-                </div>
-                <div className="flex-1 flex flex-col">
-                  <div className="flex items-center gap-2 mb-3">
-                    <h3 className="text-gray-900">{task.title}</h3>
-                    {task.status === 'completed' ? (
-                      <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs">
-                        <CheckCircle className="w-3 h-3" />
-                        완료
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-1 rounded-md text-xs">
-                        <Clock className="w-3 h-3" />
-                        진행중
-                      </span>
-                    )}
+          {filteredTasks.map(doc => {
+            const isCompleted = doc.status === 'completed';
+            const iconBg = isCompleted ? 'bg-green-50' : 'bg-blue-50';
+            const iconColor = isCompleted ? 'text-green-600' : 'text-blue-600';
+
+            return (
+              <div
+                key={doc.id}
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow h-full"
+              >
+                <div className="flex items-start gap-4 h-full">
+                  <div
+                    className={`w-12 h-12 ${iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}
+                  >
+                    <FileText className={`w-6 h-6 ${iconColor}`} />
                   </div>
-                  <p className="text-gray-500 text-sm mb-3">{task.date}</p>
-                  <p className="text-gray-600 text-sm mb-4">{task.description}</p>
-                  <div className="flex justify-end mt-auto">
-                    <button
-                      onClick={() => onNavigate('documents')}
-                      className="text-blue-600 hover:text-blue-700 text-sm transition-colors"
-                    >
-                      열기
-                    </button>
+                  <div className="flex-1 flex flex-col">
+                    <div className="flex items-center gap-2 mb-3">
+                      <h3 className="text-gray-900 font-medium line-clamp-1" title={doc.name}>{doc.name}</h3>
+                      {isCompleted ? (
+                        <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs flex-shrink-0">
+                          <CheckCircle className="w-3 h-3" />
+                          완료
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-1 rounded-md text-xs flex-shrink-0">
+                          <Clock className="w-3 h-3" />
+                          진행중
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-gray-500 text-sm mb-3">{doc.date}</p>
+
+                    {/* Progress Bar */}
+                    <div className="mb-4">
+                      <div className="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>진행률</span>
+                        <span>{doc.progress}% ({doc.completedSteps}/{doc.totalSteps})</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${isCompleted ? 'bg-green-500' : 'bg-blue-500'}`}
+                          style={{ width: `${doc.progress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end mt-auto">
+                      <button
+                        onClick={() => onOpenDocument(doc)}
+                        className="text-blue-600 hover:text-blue-700 text-sm transition-colors font-medium"
+                      >
+                        열기
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </main>
 
