@@ -18,7 +18,8 @@ import {
   X,
   File,
   MinusCircle,
-  Ban
+  Ban,
+  Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageType, DocumentData } from '../App';
@@ -67,6 +68,7 @@ export default function DocumentCreationPage({
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
   // Track which steps have been actually modified or already existed
   const [modifiedSteps, setModifiedSteps] = useState<Set<number>>(() => {
@@ -78,6 +80,7 @@ export default function DocumentCreationPage({
 
   const [sharedData, setSharedData] = useState<Record<string, string>>({});
   const [shippingOrder, setShippingOrder] = useState<('CI' | 'PL')[] | null>(null);
+  const [activeShippingDoc, setActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
 
   // New state for Upload vs Manual
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
@@ -92,23 +95,22 @@ export default function DocumentCreationPage({
     'Offer Sheet',
     'Proforma Invoice (PI)',
     'Sales Contract',
-    ...(shippingOrder ? [
-      shippingOrder[0] === 'CI' ? 'Commercial Invoice (CI)' : 'Packing List',
-      shippingOrder[1] === 'CI' ? 'Commercial Invoice (CI)' : 'Packing List'
-    ] : ['Shipping Documents'])
+    'Shipping Documents'
   ];
 
   // Helper to map visual step number to document data key
   // Step 1 -> 1 (Offer)
   // Step 2 -> 2 (PI)
   // Step 3 -> 3 (Contract)
-  // Step 4 -> shippingOrder[0] (4 for CI, 5 for PL)
-  // Step 5 -> shippingOrder[1] (4 for CI, 5 for PL)
+  // Step 4 -> 4 (CI) or 5 (PL) based on activeShippingDoc
   const getDocKeyForStep = (step: number): number => {
     if (step <= 3) return step;
-    if (!shippingOrder) return -1; // Should not happen if accessing editor
-    const type = shippingOrder[step - 4];
-    return type === 'CI' ? 4 : 5;
+    if (step === 4) {
+      if (activeShippingDoc === 'CI') return 4;
+      if (activeShippingDoc === 'PL') return 5;
+      return -1; // Dashboard mode
+    }
+    return -1;
   };
 
   const hydrateTemplate = (template: string) => {
@@ -449,12 +451,17 @@ export default function DocumentCreationPage({
       );
       return checkStepCompletion(stepContent);
     } else {
-      // Dynamic steps (4 and 5)
-      if (!shippingOrder) return false;
-      const docKey = getDocKeyForStep(stepNumber);
-      const template = docKey === 4 ? commercialInvoiceTemplateHTML : packingListTemplateHTML;
-      const stepContent = documentData[docKey] || hydrateTemplate(template);
-      return checkStepCompletion(stepContent);
+      // Shipping Documents Hub (Step 4)
+      if (stepNumber === 4) {
+        const ciContent = documentData[4] || hydrateTemplate(commercialInvoiceTemplateHTML);
+        const plContent = documentData[5] || hydrateTemplate(packingListTemplateHTML);
+
+        const isCiComplete = checkStepCompletion(ciContent);
+        const isPlComplete = checkStepCompletion(plContent);
+
+        return isCiComplete && isPlComplete;
+      }
+      return false;
     }
   };
 
@@ -676,68 +683,75 @@ export default function DocumentCreationPage({
       );
     }
 
-    // 3. Skipped State UI
-    if ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'skip') {
-      return (
-        <div className="h-full flex flex-col p-4">
-          <div className="mb-4 flex-shrink-0">
-            <button
-              onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: null }))}
-              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="font-medium">다시 선택하기</span>
-            </button>
-          </div>
-
-          <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex flex-col items-center"
-            >
-              <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6 relative">
-                <Ban className="w-16 h-16 text-gray-400" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">이 단계는 건너뛰었습니다</h3>
-              <p className="text-gray-500 mb-8">필요한 경우 다시 선택하기를 눌러 작성할 수 있습니다.</p>
-            </motion.div>
-          </div>
-        </div>
-      );
-    }
-
-    // 4. Choice Screen for Shipping Documents (Step 4) - Existing Logic
-    if (currentStep === 4 && !shippingOrder) {
+    // 4. Shipping Documents Hub (Step 4) Dashboard
+    if (currentStep === 4 && !activeShippingDoc) {
       return (
         <div className="h-full flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">작성할 선적 서류를 선택하세요</h2>
-          <p className="text-gray-500 mb-8">선택한 서류를 먼저 작성하고, 나머지 서류는 그 후에 작성합니다.</p>
-          <div className="flex gap-8">
+          {/* Background Decor */}
+          <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+            <div className="absolute top-20 left-20 w-72 h-72 bg-blue-50 rounded-full blur-3xl opacity-50 animate-pulse" />
+            <div className="absolute bottom-20 right-20 w-80 h-80 bg-indigo-50 rounded-full blur-3xl opacity-50 animate-pulse delay-700" />
+          </div>
+
+          <div className="relative z-10 text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">선적 서류 작성</h2>
+            <p className="text-gray-500 text-lg">
+              Commercial Invoice와 Packing List를<br />
+              자유롭게 오가며 작성할 수 있습니다.
+            </p>
+          </div>
+
+          <div className="relative z-10 flex gap-8">
+            {/* Commercial Invoice Card */}
             <motion.button
               whileHover={{ scale: 1.05, y: -5 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setShippingOrder(['CI', 'PL'])}
-              className="w-64 h-80 bg-gradient-to-br from-blue-50 to-blue-100 rounded-3xl border-2 border-blue-200 flex flex-col items-center justify-center p-6 shadow-lg hover:shadow-xl transition-all group"
+              onClick={() => setActiveShippingDoc('CI')}
+              className="w-72 h-80 bg-white/80 backdrop-blur-xl rounded-3xl border border-blue-100 flex flex-col items-center justify-center p-6 shadow-xl hover:shadow-2xl hover:border-blue-300 transition-all group relative overflow-hidden"
             >
-              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-md group-hover:scale-110 transition-transform">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-6 shadow-inner group-hover:scale-110 transition-transform relative z-10">
                 <FileText className="w-10 h-10 text-blue-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Commercial Invoice</h3>
-              <p className="text-sm text-gray-500 text-center">상업 송장 먼저 작성하기</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-2 relative z-10">Commercial Invoice</h3>
+              <p className="text-sm text-gray-500 text-center leading-relaxed relative z-10">
+                상업 송장을<br />작성합니다.
+              </p>
+
+              {/* Status Indicator */}
+              {documentData[4] && (
+                <div className="absolute top-4 right-4 bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  작성됨
+                </div>
+              )}
             </motion.button>
 
+            {/* Packing List Card */}
             <motion.button
               whileHover={{ scale: 1.05, y: -5 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setShippingOrder(['PL', 'CI'])}
-              className="w-64 h-80 bg-gradient-to-br from-purple-50 to-purple-100 rounded-3xl border-2 border-purple-200 flex flex-col items-center justify-center p-6 shadow-lg hover:shadow-xl transition-all group"
+              onClick={() => setActiveShippingDoc('PL')}
+              className="w-72 h-80 bg-white/80 backdrop-blur-xl rounded-3xl border border-indigo-100 flex flex-col items-center justify-center p-6 shadow-xl hover:shadow-2xl hover:border-indigo-300 transition-all group relative overflow-hidden"
             >
-              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-md group-hover:scale-110 transition-transform">
-                <FileText className="w-10 h-10 text-purple-600" />
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <div className="w-24 h-24 bg-indigo-100 rounded-full flex items-center justify-center mb-6 shadow-inner group-hover:scale-110 transition-transform relative z-10">
+                <Package className="w-10 h-10 text-indigo-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Packing List</h3>
-              <p className="text-sm text-gray-500 text-center">포장 명세서 먼저 작성하기</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-2 relative z-10">Packing List</h3>
+              <p className="text-sm text-gray-500 text-center leading-relaxed relative z-10">
+                포장 명세서를<br />작성합니다.
+              </p>
+
+              {/* Status Indicator */}
+              {documentData[5] && (
+                <div className="absolute top-4 right-4 bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  작성됨
+                </div>
+              )}
             </motion.button>
           </div>
         </div>
@@ -760,43 +774,69 @@ export default function DocumentCreationPage({
           </div>
         )}
 
+        {/* Quick Switcher for Shipping Documents (Step 4) */}
+        {currentStep === 4 && activeShippingDoc && (
+          <div className="flex justify-center mb-6">
+            <div className="bg-gray-100 p-1.5 rounded-full flex items-center shadow-inner gap-1">
+              <button
+                onClick={() => setActiveShippingDoc('CI')}
+                className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'CI'
+                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                  }`}
+              >
+                <FileText className="w-4 h-4" />
+                Commercial Invoice
+              </button>
+              <button
+                onClick={() => setActiveShippingDoc('PL')}
+                className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'PL'
+                  ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                  }`}
+              >
+                <Package className="w-4 h-4" />
+                Packing List
+              </button>
+            </div>
+          </div>
+        )}
+
         <ContractEditor
-          key={`${currentStep}-${shippingOrder ? shippingOrder[currentStep - 4] : 'choice'}`}
+          key={`${currentStep}-${activeShippingDoc || 'default'}`}
           ref={editorRef}
           initialContent={
             updateContentWithSharedData(
               (() => {
-                if (currentStep <= 3) {
-                  return documentData[currentStep] || hydrateTemplate(
-                    currentStep === 1 ? offerSheetTemplateHTML :
-                      currentStep === 2 ? proformaInvoiceTemplateHTML :
-                        currentStep === 3 ? saleContractTemplateHTML : ''
-                  );
-                }
-                // Dynamic steps
                 const docKey = getDocKeyForStep(currentStep);
-                const template = docKey === 4 ? commercialInvoiceTemplateHTML : packingListTemplateHTML;
+                if (docKey === -1) return '';
+
+                const template =
+                  docKey === 1 ? offerSheetTemplateHTML :
+                    docKey === 2 ? proformaInvoiceTemplateHTML :
+                      docKey === 3 ? saleContractTemplateHTML :
+                        docKey === 4 ? commercialInvoiceTemplateHTML :
+                          docKey === 5 ? packingListTemplateHTML : '';
+
                 return documentData[docKey] || hydrateTemplate(template);
               })()
             )
           }
           onChange={(content) => {
-            let saveKey = -1;
-            if (currentStep <= 3) saveKey = currentStep;
-            else if (shippingOrder) {
-              saveKey = getDocKeyForStep(currentStep);
-            }
+            const saveKey = getDocKeyForStep(currentStep);
+            if (saveKey !== -1) {
+              setDocumentData({
+                ...documentData,
+                [saveKey]: content
+              });
 
-            setDocumentData({
-              ...documentData,
-              [saveKey]: content
-            });
-            setIsDirty(true);
-            setModifiedSteps(prev => {
-              const newSet = new Set(prev);
-              newSet.add(saveKey);
-              return newSet;
-            });
+              // Mark as modified
+              if (!modifiedSteps.has(saveKey)) {
+                setModifiedSteps(prev => new Set(prev).add(saveKey));
+              }
+
+              setIsDirty(true);
+            }
           }}
         />
       </div>
@@ -875,7 +915,7 @@ export default function DocumentCreationPage({
               마이페이지
             </button>
             <button
-              onClick={onLogout}
+              onClick={() => setShowLogoutConfirm(true)}
               className="text-gray-600 hover:text-gray-900 text-sm transition-colors"
             >
               로그아웃
@@ -1116,7 +1156,7 @@ export default function DocumentCreationPage({
 
               <div className="border-t border-gray-200">
                 <button
-                  onClick={onLogout}
+                  onClick={() => setShowLogoutConfirm(true)}
                   className="w-full px-6 py-4 text-gray-700 hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
                 >
                   <LogOut className="w-4 h-4" />
@@ -1466,6 +1506,50 @@ export default function DocumentCreationPage({
                 <Download className="w-4 h-4" />
                 {selectedDownloadSteps.size}개 문서 다운로드
               </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200]">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white/90 backdrop-blur-xl rounded-3xl w-[400px] overflow-hidden shadow-2xl border border-white/20 relative"
+          >
+            {/* Background Decor */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+              <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-to-br from-red-100 to-orange-100 rounded-full blur-3xl opacity-50" />
+              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-gradient-to-tr from-orange-100 to-yellow-100 rounded-full blur-3xl opacity-50" />
+            </div>
+
+            <div className="p-8 text-center relative z-10">
+              <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner transform rotate-3">
+                <LogOut className="w-8 h-8 text-red-500" />
+              </div>
+
+              <h3 className="text-xl font-bold text-gray-900 mb-2">로그아웃 하시겠습니까?</h3>
+              <p className="text-gray-500 text-sm mb-8 leading-relaxed">
+                작성 중인 내용은 저장되지 않을 수 있습니다.<br />
+                정말 로그아웃 하시겠습니까?
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 px-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all font-medium text-sm shadow-sm"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl hover:shadow-lg hover:shadow-red-200 hover:-translate-y-0.5 transition-all font-bold text-sm shadow-md"
+                >
+                  로그아웃
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
