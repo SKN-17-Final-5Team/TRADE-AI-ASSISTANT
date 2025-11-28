@@ -1261,28 +1261,36 @@ export default function DocumentCreationPage({
       {/* Save Success Modal */}
       {
         showSaveSuccessModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
-            <div className="bg-white rounded-2xl p-8 w-[400px] shadow-2xl transform transition-all scale-100 animate-bounce-in relative overflow-hidden">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200]">
+            <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-8 w-[420px] shadow-2xl transform transition-all scale-100 animate-bounce-in relative overflow-hidden border border-white/20">
               {/* Background Decor */}
               <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-                <div className="absolute -top-10 -right-10 w-32 h-32 bg-green-50 rounded-full blur-2xl opacity-60" />
-                <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-50 rounded-full blur-2xl opacity-60" />
+                <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full blur-3xl opacity-50" />
+                <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-gradient-to-tr from-purple-100 to-pink-100 rounded-full blur-3xl opacity-50" />
               </div>
 
               <div className="relative z-10 flex flex-col items-center text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6 animate-pulse">
-                  <CheckCircle className="w-8 h-8 text-green-600" />
+                <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-green-200 animate-pulse">
+                  <CheckCircle className="w-10 h-10 text-white" />
                 </div>
 
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">저장 완료!</h3>
-                <p className="text-gray-500 mb-6">
+                <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-gray-700 mb-2">저장 완료!</h3>
+                <p className="text-gray-500 mb-8 leading-relaxed">
                   문서가 성공적으로 저장되었습니다.<br />
-                  작성 중인 내용은 언제든 다시 불러올 수 있습니다.
+                  <span className="text-sm text-gray-400">작성 중인 내용은 언제든 다시 불러올 수 있습니다.</span>
                 </p>
 
-                <div className="w-full bg-gray-50 rounded-xl p-4 mb-6 text-left">
-                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">저장된 문서</p>
-                  <div className="space-y-2">
+                <div className="w-full bg-white/60 backdrop-blur-sm rounded-2xl border border-white/50 shadow-inner p-5 mb-8 text-left relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-b from-white/50 to-transparent pointer-events-none"></div>
+                  <div className="flex items-center justify-between mb-3 relative z-10">
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5" />
+                      저장된 문서
+                    </p>
+                    <span className="text-[10px] px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">Saved</span>
+                  </div>
+
+                  <div className="space-y-2 relative z-10">
                     {Object.keys(documentData)
                       .filter(k => k !== 'title')
                       .map(Number)
@@ -1290,21 +1298,21 @@ export default function DocumentCreationPage({
                       .sort((a, b) => a - b) // Sort by step number
                       .map((stepIndex) => {
                         return (
-                          <div key={stepIndex} className="flex items-center gap-2 text-sm text-gray-700">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                            {stepShortNames[stepIndex - 1]}
+                          <div key={stepIndex} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/50 transition-colors">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                            <span className="text-sm text-gray-700 font-medium">{stepShortNames[stepIndex - 1]}</span>
                           </div>
                         );
                       })}
                     {Object.keys(documentData).filter(k => k !== 'title').map(Number).filter(s => modifiedSteps.has(s)).length === 0 && (
-                      <p className="text-sm text-gray-400 italic">저장된 내용이 없습니다.</p>
+                      <p className="text-sm text-gray-400 italic text-center py-2">저장된 내용이 없습니다.</p>
                     )}
                   </div>
                 </div>
 
                 <button
                   onClick={() => setShowSaveSuccessModal(false)}
-                  className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl transition-colors font-medium shadow-lg shadow-gray-200"
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3.5 rounded-xl transition-all duration-200 font-semibold shadow-lg shadow-blue-200 hover:shadow-blue-300 hover:-translate-y-0.5 active:translate-y-0"
                 >
                   확인
                 </button>
@@ -1321,32 +1329,39 @@ export default function DocumentCreationPage({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-2xl w-[500px] overflow-hidden shadow-2xl"
+            className="bg-white/90 backdrop-blur-xl rounded-3xl w-[500px] overflow-hidden shadow-2xl border border-white/20 relative"
           >
+            {/* Background Decor */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+              <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full blur-3xl opacity-50" />
+              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-gradient-to-tr from-purple-100 to-pink-100 rounded-full blur-3xl opacity-50" />
+            </div>
+
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md">
-                  <Download className="w-5 h-5 text-white" />
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 flex items-center justify-between relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md border border-white/30 shadow-inner">
+                  <Download className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">문서 다운로드</h3>
-                  <p className="text-blue-100 text-xs">다운로드할 문서를 선택해주세요</p>
+                  <h3 className="text-xl font-bold text-white tracking-tight">문서 다운로드</h3>
+                  <p className="text-blue-100 text-xs font-medium mt-0.5">다운로드할 문서를 선택해주세요</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowDownloadModal(false)}
-                className="text-white/80 hover:text-white transition-colors"
+                className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="p-6 bg-gray-50">
-              <div className="flex items-center justify-between mb-4 px-2">
-                <span className="text-sm font-semibold text-gray-700">
-                  선택된 문서: {selectedDownloadSteps.size}개
+            <div className="p-6 relative z-10">
+              <div className="flex items-center justify-between mb-4 px-1">
+                <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                  선택된 문서: <span className="text-blue-600">{selectedDownloadSteps.size}개</span>
                 </span>
                 <button
                   onClick={() => {
@@ -1361,13 +1376,13 @@ export default function DocumentCreationPage({
                       setSelectedDownloadSteps(new Set(allSteps));
                     }
                   }}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-xs text-gray-500 hover:text-blue-600 font-medium px-3 py-1.5 bg-white rounded-full border border-gray-200 hover:border-blue-200 hover:shadow-sm transition-all"
                 >
                   {selectedDownloadSteps.size === Object.keys(documentData).filter(k => k !== 'title' && documentData[k]).length ? '전체 해제' : '전체 선택'}
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
                 {Object.keys(documentData)
                   .filter(k => k !== 'title')
                   .map(Number)
@@ -1383,44 +1398,58 @@ export default function DocumentCreationPage({
                         setSelectedDownloadSteps(newSet);
                       }}
                       className={`
-                        flex items-center p-3 rounded-xl border cursor-pointer transition-all duration-200
+                        flex items-center p-3.5 rounded-xl border cursor-pointer transition-all duration-200 group relative overflow-hidden
                         ${selectedDownloadSteps.has(stepIndex)
-                          ? 'bg-blue-50 border-blue-200 shadow-sm'
-                          : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-gray-50'}
+                          ? 'bg-blue-50/50 border-blue-200 shadow-sm'
+                          : 'bg-white/60 border-gray-200 hover:border-blue-300 hover:bg-white/80 hover:shadow-md'}
                       `}
                     >
                       <div className={`
-                        w-5 h-5 rounded-md border flex items-center justify-center mr-3 transition-colors
+                        w-5 h-5 rounded-md border flex items-center justify-center mr-3.5 transition-all duration-200 relative z-10
                         ${selectedDownloadSteps.has(stepIndex)
-                          ? 'bg-blue-600 border-blue-600'
-                          : 'border-gray-300 bg-white'}
+                          ? 'bg-blue-600 border-blue-600 shadow-sm scale-110'
+                          : 'border-gray-300 bg-white group-hover:border-blue-400'}
                       `}>
                         {selectedDownloadSteps.has(stepIndex) && <Check className="w-3.5 h-3.5 text-white" />}
                       </div>
-                      <div className="flex-1">
-                        <p className={`text-sm font-medium ${selectedDownloadSteps.has(stepIndex) ? 'text-blue-900' : 'text-gray-700'}`}>
+                      <div className="flex-1 relative z-10">
+                        <p className={`text-sm font-semibold transition-colors ${selectedDownloadSteps.has(stepIndex) ? 'text-blue-900' : 'text-gray-700 group-hover:text-gray-900'}`}>
                           {stepShortNames[stepIndex - 1] || `Step ${stepIndex}`}
                         </p>
                       </div>
-                      <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center border border-gray-100">
-                        <FileText className={`w-4 h-4 ${selectedDownloadSteps.has(stepIndex) ? 'text-blue-500' : 'text-gray-400'}`} />
+                      <div className={`
+                        w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-200 relative z-10
+                        ${selectedDownloadSteps.has(stepIndex)
+                          ? 'bg-white border-blue-100 text-blue-600 shadow-sm'
+                          : 'bg-gray-50 border-gray-100 text-gray-400 group-hover:bg-white group-hover:border-blue-100 group-hover:text-blue-500'}
+                      `}>
+                        <FileText className="w-4 h-4" />
                       </div>
+
+                      {/* Selection Highlight */}
+                      {selectedDownloadSteps.has(stepIndex) && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 pointer-events-none" />
+                      )}
                     </div>
                   ))}
 
                 {Object.keys(documentData).filter(k => k !== 'title' && documentData[k]).length === 0 && (
-                  <div className="text-center py-8 text-gray-500 text-sm">
-                    저장된 문서가 없습니다.
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <FileText className="w-8 h-8 text-gray-300" />
+                    </div>
+                    <p className="text-gray-500 text-sm font-medium">저장된 문서가 없습니다.</p>
+                    <p className="text-gray-400 text-xs mt-1">문서를 먼저 작성해주세요.</p>
                   </div>
                 )}
               </div>
             </div>
 
             {/* Footer */}
-            <div className="p-4 bg-white border-t border-gray-100 flex justify-end gap-3">
+            <div className="p-5 bg-white/60 backdrop-blur-md border-t border-white/50 flex justify-end gap-3 relative z-10">
               <button
                 onClick={() => setShowDownloadModal(false)}
-                className="px-5 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
+                className="px-5 py-2.5 text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-xl transition-colors text-sm font-medium"
               >
                 취소
               </button>
@@ -1428,10 +1457,10 @@ export default function DocumentCreationPage({
                 onClick={handleBatchDownload}
                 disabled={selectedDownloadSteps.size === 0}
                 className={`
-                  px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-blue-200
+                  px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg transition-all duration-200
                   ${selectedDownloadSteps.size === 0
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-xl hover:-translate-y-0.5 transition-all'}
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-200 hover:shadow-blue-300 hover:-translate-y-0.5 active:translate-y-0'}
                 `}
               >
                 <Download className="w-4 h-4" />
