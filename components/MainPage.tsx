@@ -49,6 +49,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,8 +91,12 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
   };
 
   const handleLogout = () => {
-    // 로그아웃 로직
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = () => {
     onLogout();
+    setShowLogoutConfirm(false);
   };
 
   // 필터링 및 검색 로직
@@ -429,6 +434,40 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-[200]"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <LogOut className="w-8 h-8 text-red-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">로그아웃 하시겠습니까?</h2>
+            <p className="text-gray-500 mb-8">
+              로그아웃하면 현재 작업 중인 내용이<br />저장되지 않을 수 있습니다.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-lg transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmLogout}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg transition-colors font-medium"
+              >
+                로그아웃
+              </button>
+            </div>
           </div>
         </div>
       )}
