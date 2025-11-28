@@ -16,8 +16,13 @@
     "@tiptap/pm": "^3.11.0",
     "@tiptap/react": "^3.11.0",
     "@tiptap/starter-kit": "^3.11.0",
+    "framer-motion": "^12.23.24",
     "lucide-react": "^0.554.0",
     "pdfjs-dist": "^5.4.394",
+    "prosemirror-model": "^1.25.4",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-transform": "^1.10.5",
+    "prosemirror-view": "^1.41.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-pdf": "^10.2.0"

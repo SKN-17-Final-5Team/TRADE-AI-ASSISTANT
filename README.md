@@ -67,6 +67,12 @@ npm run build
 
 # 빌드 미리보기
 npm run preview
+
+# node_modules 삭제
+rm -rf node_modules package-lock.json && npm install
+
+# npm install 후 다시 실행
+npm run dev
 ```
 
 ## 주요 기능

@@ -9,6 +9,7 @@ import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { saleContractTemplateHTML } from '../../templates/saleContract'
 import EditorToolbar from './EditorToolbar'
 import './editor.css'
+import { NodeSelection } from '@tiptap/pm/state'
 
 const DataField = Node.create({
     name: 'dataField',
@@ -366,16 +367,22 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 let activeFieldId: string | null = null;
                 let activeContent: string | null = null;
 
-                // Resolve position to find parent nodes
-                const $pos = doc.resolve(from);
+                // Check for NodeSelection (when user clicks the field wrapper)
+                if (selection instanceof NodeSelection && selection.node.type.name === 'dataField') {
+                    activeFieldId = selection.node.attrs.fieldId;
+                    activeContent = selection.node.textContent;
+                } else {
+                    // Resolve position to find parent nodes (TextSelection)
+                    const $pos = doc.resolve(from);
 
-                // Walk up the depth to find 'dataField'
-                for (let d = $pos.depth; d > 0; d--) {
-                    const node = $pos.node(d);
-                    if (node.type.name === 'dataField') {
-                        activeFieldId = node.attrs.fieldId;
-                        activeContent = node.textContent;
-                        break;
+                    // Walk up the depth to find 'dataField'
+                    for (let d = $pos.depth; d > 0; d--) {
+                        const node = $pos.node(d);
+                        if (node.type.name === 'dataField') {
+                            activeFieldId = node.attrs.fieldId;
+                            activeContent = node.textContent;
+                            break;
+                        }
                     }
                 }
 

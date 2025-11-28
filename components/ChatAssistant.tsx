@@ -15,6 +15,7 @@ interface Message {
   hasApply?: boolean;
   applyContent?: string;
   changes?: Change[];
+  step?: number;
 }
 
 interface PreviewState {
@@ -22,15 +23,17 @@ interface PreviewState {
   changes: Change[];
   newHTML: string;
   beforeHTML: string;
+  step?: number;
 }
 
 interface ChatAssistantProps {
   currentStep: number;
   onClose?: () => void;
   editorRef: RefObject<ContractEditorRef>;
+  onApply: (content: string, step: number) => void;
 }
 
-export default function ChatAssistant({ currentStep, onClose, editorRef }: ChatAssistantProps) {
+export default function ChatAssistant({ currentStep, onClose, editorRef, onApply }: ChatAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -128,22 +131,23 @@ ${documentContent}
   };
 
   // 미리보기 열기
-  const openPreview = (newHTML: string, changes: Change[]) => {
+  const openPreview = (newHTML: string, changes: Change[], step: number) => {
     const beforeHTML = editorRef.current?.getContent() || '';
     setPreview({
       isOpen: true,
       changes,
       newHTML,
-      beforeHTML
+      beforeHTML,
+      step
     });
   };
 
   // 미리보기에서 적용
   const applyFromPreview = () => {
-    if (editorRef.current && preview.newHTML) {
+    if (preview.newHTML && preview.step !== undefined) {
       // 현재 상태를 히스토리에 저장 (Undo용)
       setHistory(prev => [...prev, preview.beforeHTML]);
-      editorRef.current.setContent(preview.newHTML);
+      onApply(preview.newHTML, preview.step);
     }
     setPreview({ isOpen: false, changes: [], newHTML: '', beforeHTML: '' });
   };
@@ -183,10 +187,14 @@ ${documentContent}
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    // Capture the step when the request is made
+    const requestStep = currentStep;
+
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
-      content: input
+      content: input,
+      step: requestStep
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -203,7 +211,8 @@ ${documentContent}
       content: response.message,
       hasApply: !!response.updatedHTML,
       applyContent: response.updatedHTML,
-      changes: response.changes
+      changes: response.changes,
+      step: requestStep // Propagate the step to the AI message
     };
 
     setMessages(prev => [...prev, aiMessage]);
@@ -339,7 +348,7 @@ ${documentContent}
               {message.hasApply && message.applyContent && (
                 <div className="mt-2 flex gap-2">
                   <button
-                    onClick={() => openPreview(message.applyContent!, message.changes || [])}
+                    onClick={() => openPreview(message.applyContent!, message.changes || [], message.step!)}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors"
                   >
                     <Eye className="w-3.5 h-3.5" />
@@ -349,9 +358,7 @@ ${documentContent}
                     onClick={() => {
                       const beforeHTML = editorRef.current?.getContent() || '';
                       setHistory(prev => [...prev, beforeHTML]);
-                      if (editorRef.current) {
-                        editorRef.current.setContent(message.applyContent!);
-                      }
+                      onApply(message.applyContent!, message.step!);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors"
                   >
