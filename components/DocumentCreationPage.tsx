@@ -1309,7 +1309,7 @@ export default function DocumentCreationPage({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-2xl w-[500px] overflow-hidden shadow-2xl border border-white/20"
+            className="bg-white rounded-2xl w-[500px] overflow-hidden shadow-2xl"
           >
             {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
