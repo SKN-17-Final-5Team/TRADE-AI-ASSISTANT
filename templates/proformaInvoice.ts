@@ -30,11 +30,11 @@ export const proformaInvoiceTemplateHTML = `
             <tr>
                 <td colspan="6" style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">
                     Company Name: <mark>[seller_name]</mark><br>
-                    Name/Department: <mark>[seller_human_name]</mark><mark>[seller_department]</mark><br>
+                    Name/Department: <mark>[seller_human_name]</mark> / <mark>[seller_department]</mark><br>
                     Address: <mark>[seller_address]</mark><br>
-                    City/Postal Code: <mark>[seller_city]</mark><mark>[seller_postal_code]</mark><br>
+                    City/Postal Code: <mark>[seller_city]</mark> / <mark>[seller_postal_code]</mark><br>
                     Country: <mark>[seller_country]</mark><br>
-                    Tel./Fax No.: <mark>[seller_fax]</mark>/<mark>[seller_fax]</mark>
+                    Tel./Fax No.: <mark>[seller_fax]</mark> / <mark>[seller_fax]</mark>
                 </td>
             </tr>
 
@@ -46,9 +46,9 @@ export const proformaInvoiceTemplateHTML = `
             <tr>
                 <td colspan="3" style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; height: 150px;">
                     Company Name: <mark>[buyer_name]</mark><br>
-                    Name/Department: <mark>[buyer_human_name]</mark>/<mark>[buyer_human_department]</mark><br>
+                    Name/Department: <mark>[buyer_human_name]</mark> / <mark>[buyer_human_department]</mark><br>
                     Address: <mark>[buyer_address]</mark><br>
-                    City/Postal Code: <mark>[buyer_city]</mark><br>
+                    City/Postal Code: <mark>[buyer_city]</mark> / <mark>[buyer_postal_code]</mark><br>
                     Country: <mark>[buyer_country]</mark><br>
                     Tel: <mark>[buyer_number]</mark>
                 </td>
@@ -85,10 +85,10 @@ export const proformaInvoiceTemplateHTML = `
                     <mark>[quantity]</mark>
                 </td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
-                    <mark>[unit_price]</mark>/<mark>[unit]</mark> <mark>[currency]</mark>
+                    <mark>[unit_price]</mark> / <mark>[unit]</mark> <mark>[currency]</mark>
                 </td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
-                    <mark>[sub_total_price]</mark><mark>[currency]</mark>
+                    <mark>[sub_total_price]</mark> / <mark>[currency]</mark>
                 </td>
             </tr>
 
@@ -96,7 +96,7 @@ export const proformaInvoiceTemplateHTML = `
             <tr style="background-color: #f0f0f0; font-weight: bold;">
                 <td colspan="5" style="text-align: right; padding: 8px; border: 1px solid #d1d5db; vertical-align: middle;">Total value, currency</td>
                 <td style="padding: 8px; border: 1px solid #d1d5db; text-align: right; vertical-align: middle;">
-                    <mark>[total_price]</mark><mark>[currency]</mark>
+                    <mark>[total_price]</mark> / <mark>[currency]</mark>
                 </td>
             </tr>
         </tbody>

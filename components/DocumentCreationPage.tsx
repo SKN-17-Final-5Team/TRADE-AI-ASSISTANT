@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { ArrowLeft, Sparkles, User, LogOut, Plus, FileText, MousePointerClick, Save, Download } from 'lucide-react';
+import { ArrowLeft, Sparkles, User, LogOut, Plus, FileText, MousePointerClick, Save, Download, CheckCircle } from 'lucide-react';
 import { PageType, DocumentData } from '../App';
 import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
@@ -54,6 +54,100 @@ export default function DocumentCreationPage({
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
+  // Track which steps have been actually modified or already existed
+  const [modifiedSteps, setModifiedSteps] = useState<Set<number>>(() => {
+    const initialSteps = Object.keys(documentData)
+      .filter(k => k !== 'title')
+      .map(Number);
+    return new Set(initialSteps);
+  });
+
+  const [sharedData, setSharedData] = useState<Record<string, string>>({});
+
+
+
+
+
+
+
+
+  const hydrateTemplate = (template: string) => {
+    if (!template) return '';
+
+    // Replace <mark>[key]</mark> with <span data-field-id="key">...</span>
+    return template.replace(/<mark>\[(.*?)\]<\/mark>/g, (match, key) => {
+      const value = sharedData[key];
+      // If we have a value, use it. Otherwise keep the placeholder [key]
+      const content = value || `[${key}]`;
+      return `<span data-field-id="${key}">${content}</span>`;
+    });
+  };
+
+  // Helper to extract data from current content
+  const extractData = (content: string) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+    const fields = doc.querySelectorAll('span[data-field-id]');
+
+    const newData: Record<string, string> = {};
+    fields.forEach(field => {
+      const key = field.getAttribute('data-field-id');
+      const value = field.textContent;
+
+      // Only save if it's not the placeholder itself
+      if (key && value && value !== `[${key}]`) {
+        newData[key] = value;
+      }
+    });
+
+    if (Object.keys(newData).length > 0) {
+      setSharedData(prev => ({ ...prev, ...newData }));
+    }
+  };
+
+  // Helper to update existing content with latest shared data
+  const updateContentWithSharedData = (content: string) => {
+    if (!content) return '';
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+    const fields = doc.querySelectorAll('span[data-field-id]');
+
+    let modified = false;
+    fields.forEach(field => {
+      const key = field.getAttribute('data-field-id');
+      if (key && sharedData[key]) {
+        // If the field content is different from sharedData (and sharedData is not empty), update it
+        // Also update if the field is currently a placeholder
+        if (field.textContent !== sharedData[key]) {
+          field.textContent = sharedData[key];
+          modified = true;
+        }
+      }
+    });
+
+    return modified ? doc.body.innerHTML : content;
+  };
+
+  const handleStepChange = (newStep: number) => {
+    // Save current step's data before moving
+    if (editorRef.current) {
+      const content = editorRef.current.getContent();
+
+      // Update document data
+      const newDocData = {
+        ...documentData,
+        [currentStep]: content
+      };
+      setDocumentData(newDocData);
+
+      // Extract and update shared data
+      extractData(content);
+    }
+
+    setCurrentStep(newStep);
+  };
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,8 +192,25 @@ export default function DocumentCreationPage({
   };
 
   const handleSave = () => {
-    onSave(documentData, currentStep);
-    setIsDirty(false); // Reset dirty state after save
+    // Extract data before saving
+    if (editorRef.current) {
+      const content = editorRef.current.getContent();
+      extractData(content);
+
+      // Update local state first
+      const newDocData = {
+        ...documentData,
+        [currentStep]: content
+      };
+      setDocumentData(newDocData);
+
+      // Then call parent save
+      onSave(newDocData, currentStep);
+    } else {
+      onSave(documentData, currentStep);
+    }
+    setIsDirty(false);
+    setShowSaveSuccessModal(true);
   };
 
   const handleDownload = () => {
@@ -132,6 +243,7 @@ export default function DocumentCreationPage({
           table { border-collapse: collapse; width: 100%; }
           th, td { border: 1px solid black; padding: 8px; }
           .contract-table { width: 100%; }
+          .data-field { background-color: transparent; } /* Ensure fields look normal in print */
         </style>
       </head>
       <body>
@@ -245,7 +357,7 @@ export default function DocumentCreationPage({
                 return (
                   <button
                     key={index}
-                    onClick={() => setCurrentStep(stepNumber)}
+                    onClick={() => handleStepChange(stepNumber)}
                     className="flex flex-col items-center gap-1.5 relative group flex-shrink-0"
                   >
                     {/* Circle */}
@@ -315,13 +427,15 @@ export default function DocumentCreationPage({
                 key={currentStep}
                 ref={editorRef}
                 initialContent={
-                  documentData[currentStep] || (
-                    currentStep === 1 ? offerSheetTemplateHTML :
-                      currentStep === 2 ? proformaInvoiceTemplateHTML :
-                        currentStep === 3 ? saleContractTemplateHTML :
-                          currentStep === 4 ? commercialInvoiceTemplateHTML :
-                            currentStep === 5 ? packingListTemplateHTML :
-                              undefined
+                  updateContentWithSharedData(
+                    documentData[currentStep] || hydrateTemplate(
+                      currentStep === 1 ? offerSheetTemplateHTML :
+                        currentStep === 2 ? proformaInvoiceTemplateHTML :
+                          currentStep === 3 ? saleContractTemplateHTML :
+                            currentStep === 4 ? commercialInvoiceTemplateHTML :
+                              currentStep === 5 ? packingListTemplateHTML :
+                                ''
+                    )
                   )
                 }
                 onChange={(content) => {
@@ -330,6 +444,11 @@ export default function DocumentCreationPage({
                     [currentStep]: content
                   });
                   setIsDirty(true);
+                  setModifiedSteps(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(currentStep);
+                    return newSet;
+                  });
                 }}
               />
             )}
@@ -548,6 +667,60 @@ export default function DocumentCreationPage({
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
               >
                 나가기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Success Modal */}
+      {showSaveSuccessModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
+          <div className="bg-white rounded-2xl p-8 w-[400px] shadow-2xl transform transition-all scale-100 animate-bounce-in relative overflow-hidden">
+            {/* Background Decor */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-green-50 rounded-full blur-2xl opacity-60" />
+              <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-50 rounded-full blur-2xl opacity-60" />
+            </div>
+
+            <div className="relative z-10 flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                <CheckCircle className="w-8 h-8 text-green-600" />
+              </div>
+
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">저장 완료!</h3>
+              <p className="text-gray-500 mb-6">
+                문서가 성공적으로 저장되었습니다.<br />
+                작성 중인 내용은 언제든 다시 불러올 수 있습니다.
+              </p>
+
+              <div className="w-full bg-gray-50 rounded-xl p-4 mb-6 text-left">
+                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">저장된 문서</p>
+                <div className="space-y-2">
+                  {Object.keys(documentData)
+                    .filter(k => k !== 'title')
+                    .map(Number)
+                    .filter(stepIndex => modifiedSteps.has(stepIndex)) // Only show modified steps
+                    .sort((a, b) => a - b) // Sort by step number
+                    .map((stepIndex) => {
+                      return (
+                        <div key={stepIndex} className="flex items-center gap-2 text-sm text-gray-700">
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                          {stepShortNames[stepIndex - 1]}
+                        </div>
+                      );
+                    })}
+                  {Object.keys(documentData).filter(k => k !== 'title').map(Number).filter(s => modifiedSteps.has(s)).length === 0 && (
+                    <p className="text-sm text-gray-400 italic">저장된 내용이 없습니다.</p>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowSaveSuccessModal(false)}
+                className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl transition-colors font-medium shadow-lg shadow-gray-200"
+              >
+                확인
               </button>
             </div>
           </div>

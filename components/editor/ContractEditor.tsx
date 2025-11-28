@@ -1,4 +1,4 @@
-import { useEditor, EditorContent, Node, mergeAttributes, ReactNodeViewRenderer } from '@tiptap/react'
+import { useEditor, EditorContent, Node, mergeAttributes, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -9,6 +9,68 @@ import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { saleContractTemplateHTML } from '../../templates/saleContract'
 import EditorToolbar from './EditorToolbar'
 import './editor.css'
+
+const DataField = Node.create({
+    name: 'dataField',
+    group: 'inline',
+    inline: true,
+    content: 'text*',
+
+    addAttributes() {
+        return {
+            fieldId: {
+                default: null,
+                parseHTML: element => element.getAttribute('data-field-id'),
+                renderHTML: attributes => {
+                    return {
+                        'data-field-id': attributes.fieldId,
+                    }
+                },
+            },
+        }
+    },
+
+    parseHTML() {
+        return [
+            { tag: 'span[data-field-id]' },
+        ]
+    },
+
+    renderHTML({ HTMLAttributes }) {
+        return ['span', mergeAttributes(HTMLAttributes, { class: 'data-field' }), 0]
+    },
+
+    addNodeView() {
+        return ReactNodeViewRenderer(({ node, getPos, editor }) => {
+            const isPlaceholder = node.textContent === `[${node.attrs.fieldId}]`;
+
+            const handleClick = (e: React.MouseEvent) => {
+                if (isPlaceholder && typeof getPos === 'function') {
+                    // Select the entire text content of the node
+                    const pos = getPos();
+                    if (typeof pos === 'number') {
+                        editor.commands.setTextSelection({
+                            from: pos + 1,
+                            to: pos + node.nodeSize - 1
+                        });
+                    }
+                }
+            };
+
+            return (
+                <NodeViewWrapper
+                    as="span"
+                    className={`data-field-node ${isPlaceholder ? 'bg-yellow-200' : ''} transition-colors duration-200`}
+                    onClick={handleClick}
+                    style={{ fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit' }}
+                >
+                    {/* @ts-ignore */}
+                    <NodeViewContent as="span" />
+                </NodeViewWrapper>
+            )
+        })
+    },
+})
 
 const Div = Node.create({
     name: 'div',
@@ -98,7 +160,7 @@ const Checkbox = Node.create({
                         const isChecked = !node.attrs.checked;
                         if (isChecked && node.attrs.group) {
                             // Uncheck other checkboxes in the same group
-                            editor.state.doc.descendants((descendant, pos) => {
+                            editor.state.doc.descendants((descendant: any, pos: number) => {
                                 if (descendant.type.name === 'checkbox' &&
                                     descendant.attrs.group === node.attrs.group &&
                                     descendant.attrs.checked &&
@@ -168,7 +230,7 @@ const Radio = Node.create({
                         const isChecked = !node.attrs.checked;
                         if (isChecked && node.attrs.group) {
                             // Uncheck other radios in the same group
-                            editor.state.doc.descendants((descendant, pos) => {
+                            editor.state.doc.descendants((descendant: any, pos: number) => {
                                 if (descendant.type.name === 'radio' &&
                                     descendant.attrs.group === node.attrs.group &&
                                     descendant.attrs.checked &&
@@ -223,8 +285,8 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                             ...this.parent?.(),
                             class: {
                                 default: null,
-                                parseHTML: element => element.getAttribute('class'),
-                                renderHTML: attributes => {
+                                parseHTML: (element: HTMLElement) => element.getAttribute('class'),
+                                renderHTML: (attributes: Record<string, any>) => {
                                     if (!attributes.class) {
                                         return {}
                                     }
@@ -233,8 +295,8 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                             },
                             style: {
                                 default: null,
-                                parseHTML: element => element.getAttribute('style'),
-                                renderHTML: attributes => {
+                                parseHTML: (element: HTMLElement) => element.getAttribute('style'),
+                                renderHTML: (attributes: Record<string, any>) => {
                                     if (!attributes.style) {
                                         return {}
                                     }
@@ -250,8 +312,8 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                             ...this.parent?.(),
                             class: {
                                 default: null,
-                                parseHTML: element => element.getAttribute('class'),
-                                renderHTML: attributes => {
+                                parseHTML: (element: HTMLElement) => element.getAttribute('class'),
+                                renderHTML: (attributes: Record<string, any>) => {
                                     if (!attributes.class) {
                                         return {}
                                     }
@@ -260,8 +322,8 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                             },
                             style: {
                                 default: null,
-                                parseHTML: element => element.getAttribute('style'),
-                                renderHTML: attributes => {
+                                parseHTML: (element: HTMLElement) => element.getAttribute('style'),
+                                renderHTML: (attributes: Record<string, any>) => {
                                     if (!attributes.style) {
                                         return {}
                                     }
@@ -284,6 +346,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 Div,
                 Checkbox,
                 Radio,
+                DataField,
             ],
             content: initialContent || saleContractTemplateHTML,
             editorProps: {
@@ -293,6 +356,49 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             },
             onUpdate: ({ editor }) => {
                 onChange?.(editor.getHTML())
+
+                // Same-Doc Sync Logic
+                const { state, view } = editor;
+                const { selection, doc } = state;
+                const { from } = selection;
+
+                // 1. Identify the "active" field (the one being edited)
+                let activeFieldId: string | null = null;
+                let activeContent: string | null = null;
+
+                // Resolve position to find parent nodes
+                const $pos = doc.resolve(from);
+
+                // Walk up the depth to find 'dataField'
+                for (let d = $pos.depth; d > 0; d--) {
+                    const node = $pos.node(d);
+                    if (node.type.name === 'dataField') {
+                        activeFieldId = node.attrs.fieldId;
+                        activeContent = node.textContent;
+                        break;
+                    }
+                }
+
+                // 2. If we are editing a field, sync others to it
+                if (activeFieldId && activeContent !== null) {
+                    const tr = state.tr;
+                    let modified = false;
+
+                    doc.descendants((node: any, pos: number) => {
+                        if (node.type.name === 'dataField' && node.attrs.fieldId === activeFieldId) {
+                            // Update if content is different
+                            if (node.textContent !== activeContent) {
+                                // Replace content of this node
+                                tr.insertText(activeContent!, pos + 1, pos + node.nodeSize - 1);
+                                modified = true;
+                            }
+                        }
+                    });
+
+                    if (modified) {
+                        view.dispatch(tr);
+                    }
+                }
             },
             immediatelyRender: false,
         })

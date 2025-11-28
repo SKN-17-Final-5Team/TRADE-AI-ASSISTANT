@@ -1,7 +1,7 @@
 export const offerSheetTemplateHTML = `
 <div class="offer-sheet-wrapper">
     <h1 style="text-align: center;">OFFER SHEET</h1>
-    <h2 style="text-align: center; margin-bottom: 40px;"><mark>[seller_name]</mark></h2>
+    <div style="text-align: center; margin-bottom: 40px; font-size: 1.5em; font-weight: normal;"><mark>[seller_name]</mark></div>
 
     <!-- 상단 정보 -->
     <div class="meta">

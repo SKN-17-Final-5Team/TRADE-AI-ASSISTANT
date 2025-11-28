@@ -127,7 +127,7 @@ function App() {
     };
 
     setSavedDocuments([newDoc, ...savedDocuments]);
-    setCurrentPage('main');
+    // setCurrentPage('main'); // Prevent navigation on save
   };
 
   // 컴포넌트 마운트 시 localStorage에서 인증 상태 복원
