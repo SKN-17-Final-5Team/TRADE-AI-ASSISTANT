@@ -1,4 +1,4 @@
-import { FileText, Plus, ChevronDown, LogOut, CheckCircle, Clock, Search, Filter, User, Sparkles } from 'lucide-react';
+import { FileText, Plus, ChevronDown, LogOut, CheckCircle, Clock, Search, Filter, User, Sparkles, Trash2 } from 'lucide-react';
 import { PageType, SavedDocument } from '../App';
 import { useState } from 'react';
 
@@ -9,11 +9,12 @@ interface MainPageProps {
   onLogout: () => void;
   onLogoClick: (logoRect: DOMRect) => void;
   onOpenDocument: (doc: SavedDocument) => void;
+  onDeleteDocument: (docId: string) => void;
 }
 
 
 
-export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, onLogout, onLogoClick, onOpenDocument }: MainPageProps) {
+export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, onLogout, onLogoClick, onOpenDocument, onDeleteDocument }: MainPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all');
   const [showStatusFilter, setShowStatusFilter] = useState(false);
@@ -213,7 +214,8 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
             return (
               <div
                 key={doc.id}
-                className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow h-full"
+                onClick={() => onOpenDocument(doc)}
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow h-full cursor-pointer group"
               >
                 <div className="flex items-start gap-4 h-full">
                   <div
@@ -254,10 +256,14 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
 
                     <div className="flex justify-end mt-auto">
                       <button
-                        onClick={() => onOpenDocument(doc)}
-                        className="text-blue-600 hover:text-blue-700 text-sm transition-colors font-medium"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteDocument(doc.id);
+                        }}
+                        className="text-gray-400 hover:text-red-600 text-sm transition-colors font-medium p-2 rounded-full hover:bg-red-50"
+                        title="삭제"
                       >
-                        열기
+                        <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
                   </div>

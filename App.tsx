@@ -114,14 +114,17 @@ function App() {
   ]);
 
   const handleSaveDocument = (data: DocumentData, step: number) => {
+    const completedStepsCount = Object.keys(data).filter(k => k !== 'title').length;
+    const progress = Math.round((completedStepsCount / 5) * 100);
+
     const newDoc: SavedDocument = {
       id: Date.now().toString(),
       name: data.title || 'Untitled Document',
       date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
-      completedSteps: Object.keys(data).filter(k => k !== 'title').length, // Count steps with data
+      completedSteps: completedStepsCount, // Count steps with data
       totalSteps: 5,
-      progress: Math.round((Object.keys(data).filter(k => k !== 'title').length / 5) * 100),
-      status: 'in-progress',
+      progress: progress,
+      status: progress === 100 ? 'completed' : 'in-progress',
       content: data,
       lastStep: step
     };
@@ -171,6 +174,10 @@ function App() {
   const clipOriginX = logoPosition.x ? (logoPosition.x / window.innerWidth) * 100 : 50;
   const clipOriginY = logoPosition.y ? (logoPosition.y / window.innerHeight) * 100 : 50;
 
+  const handleDeleteDocument = (docId: string) => {
+    setSavedDocuments(prev => prev.filter(doc => doc.id !== docId));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 relative overflow-hidden">
       {/* 메인 페이지 (항상 뒤에) */}
@@ -183,6 +190,7 @@ function App() {
             onLogout={handleLogout}
             onOpenDocument={handleOpenDocument}
             onLogoClick={handleOpenChat}
+            onDeleteDocument={handleDeleteDocument}
           />
         </div>
       )}

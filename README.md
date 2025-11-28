@@ -97,7 +97,7 @@ npm run dev
 
 | 단계 | 문서 유형 |
 |------|----------|
-| 1 | Offer Sheet (Offer/HFD) |
+| 1 | Offer Sheet (Offer) |
 | 2 | Purchase Order (PO) |
 | 3 | Proforma Invoice (PI) |
 | 4 | Sales Contract (매매계약서) |

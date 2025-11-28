@@ -85,7 +85,7 @@ export default function DocumentCreationPage({
 
   // Dynamic step names based on shippingOrder
   const stepShortNames = [
-    'Offer (HFD)',
+    'Offer Sheet',
     'Proforma Invoice (PI)',
     'Sales Contract',
     ...(shippingOrder ? [
