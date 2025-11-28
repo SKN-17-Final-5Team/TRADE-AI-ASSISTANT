@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Lock, User, IdCard } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Lock, IdCard } from 'lucide-react';
+import backgroundVideo from '../background.mp4';
 
 interface LoginPageProps {
   onLogin: (employeeId: string) => void;
@@ -76,14 +77,14 @@ function TypingEffect() {
 
   return (
     <div
-      className="text-5xl md:text-6xl lg:text-7xl font-bold text-slate-700 leading-tight"
-      style={{ textShadow: '0 2px 4px rgba(30, 58, 138, 0.1)' }}
+      className="text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight"
+      style={{ textShadow: '0 4px 20px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)' }}
     >
       {displayedLines.map((line, index) => (
         <div key={index} className="min-h-[1.2em]">
           {line}
           {currentLineIndex === index && !isPaused && (
-            <span className="inline-block w-1 h-12 md:h-14 lg:h-16 bg-blue-600 ml-1 animate-pulse" />
+            <span className="inline-block w-1 h-12 md:h-14 lg:h-16 bg-blue-400 ml-1 animate-pulse" />
           )}
         </div>
       ))}
@@ -125,22 +126,46 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     }, 800);
   };
 
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoLoaded, setVideoLoaded] = useState(false);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = 0.8; // Slightly slower for elegance
+    }
+  }, []);
+
   return (
-    <div className="min-h-screen animate-wave-gradient flex">
-      {/* 왼쪽: 타이핑 효과 영역 */}
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
-        <TypingEffect />
-      </div>
+    <div className="min-h-screen relative bg-slate-900">
+      {/* Full-screen Video Background */}
+      <video
+        ref={videoRef}
+        autoPlay
+        loop
+        muted
+        playsInline
+        onLoadedData={() => setVideoLoaded(true)}
+        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
+          videoLoaded ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <source src={backgroundVideo} type="video/mp4" />
+      </video>
 
-      {/* 오른쪽: 로그인 폼 영역 */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
+      {/* Dark Overlay for readability */}
+      <div className="absolute inset-0 bg-black/40" />
 
-          {/* Login Card */}
-          <div
-            className="bg-white/95 backdrop-blur-sm rounded-2xl p-8 border border-white/50"
-            style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15), 0 10px 25px -5px rgba(0, 0, 0, 0.1)' }}
-          >
+      {/* Content */}
+      <div className="relative z-10 min-h-screen flex">
+        {/* Left: Login Form */}
+        <div className="w-full lg:w-1/2 flex items-center justify-center p-4 lg:p-12">
+          <div className="w-full max-w-md">
+
+            {/* Login Card */}
+            <div
+              className="bg-white/95 backdrop-blur-sm rounded-2xl p-8 border border-white/50"
+              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15), 0 10px 25px -5px rgba(0, 0, 0, 0.1)' }}
+            >
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-1">로그인</h2> 
           </div>
@@ -211,16 +236,22 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           {/* Info Text */}
           <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
             <p className="text-blue-900 text-sm">
-              <strong>안내:</strong> 이 시스템은 회사 무역팀 전용입니다. 
+              <strong>안내:</strong> 이 시스템은 회사 무역팀 전용입니다.
               초기 비밀번호는 관리자에게 문의하세요.
             </p>
           </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-center mt-6 text-white/70 text-sm">
+              © 2025 Trade Document Management System. All rights reserved.
+            </div>
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="text-center mt-6 text-gray-600 text-sm">
-          © 2025 Trade Document Management System. All rights reserved.
-        </div>
+        {/* Right: Typing Effect */}
+        <div className="hidden lg:flex lg:w-1/2 items-center justify-start pl-8">
+          <TypingEffect />
         </div>
       </div>
     </div>
