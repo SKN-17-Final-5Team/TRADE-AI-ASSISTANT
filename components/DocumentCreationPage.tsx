@@ -16,7 +16,9 @@ import {
   PenTool,
   Paperclip,
   X,
-  File
+  File,
+  MinusCircle,
+  Ban
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageType, DocumentData } from '../App';
@@ -78,7 +80,7 @@ export default function DocumentCreationPage({
   const [shippingOrder, setShippingOrder] = useState<('CI' | 'PL')[] | null>(null);
 
   // New state for Upload vs Manual
-  const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | null>>({});
+  const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
   const [uploadedFiles, setUploadedFiles] = useState<Record<number, File | null>>({});
 
   // Dynamic step names based on shippingOrder
@@ -395,6 +397,9 @@ export default function DocumentCreationPage({
     // Check for uploaded file first
     if (uploadedFiles[stepNumber]) return true;
 
+    // Check for skip mode
+    if (stepModes[stepNumber] === 'skip') return true;
+
     if (stepNumber <= 3) {
       // If mode is upload but no file, it's incomplete (handled by first check)
       // If mode is manual or null, check content
@@ -476,13 +481,13 @@ export default function DocumentCreationPage({
               whileHover={{ scale: 1.05, y: -5 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: 'manual' }))}
-              className="w-72 h-80 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl border-2 border-blue-100 flex flex-col items-center justify-center p-8 shadow-lg hover:shadow-xl transition-all group"
+              className="w-64 h-80 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl border-2 border-blue-100 flex flex-col items-center justify-center p-6 shadow-lg hover:shadow-xl transition-all group"
             >
-              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-8 shadow-md group-hover:scale-110 transition-transform">
+              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-md group-hover:scale-110 transition-transform">
                 <PenTool className="w-10 h-10 text-blue-600" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-3">직접 작성</h3>
-              <p className="text-gray-500 text-center leading-relaxed">
+              <h3 className="text-xl font-bold text-gray-800 mb-2">직접 작성</h3>
+              <p className="text-sm text-gray-500 text-center leading-relaxed">
                 템플릿을 사용하여<br />직접 내용을 입력합니다.
               </p>
             </motion.button>
@@ -492,14 +497,30 @@ export default function DocumentCreationPage({
               whileHover={{ scale: 1.05, y: -5 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: 'upload' }))}
-              className="w-72 h-80 bg-gradient-to-br from-purple-50 to-pink-50 rounded-3xl border-2 border-purple-100 flex flex-col items-center justify-center p-8 shadow-lg hover:shadow-xl transition-all group"
+              className="w-64 h-80 bg-gradient-to-br from-purple-50 to-pink-50 rounded-3xl border-2 border-purple-100 flex flex-col items-center justify-center p-6 shadow-lg hover:shadow-xl transition-all group"
             >
-              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-8 shadow-md group-hover:scale-110 transition-transform">
+              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-md group-hover:scale-110 transition-transform">
                 <Upload className="w-10 h-10 text-purple-600" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-3">파일 업로드</h3>
-              <p className="text-gray-500 text-center leading-relaxed">
+              <h3 className="text-xl font-bold text-gray-800 mb-2">파일 업로드</h3>
+              <p className="text-sm text-gray-500 text-center leading-relaxed">
                 이미 작성된 파일을<br />업로드합니다.
+              </p>
+            </motion.button>
+
+            {/* Skip Option */}
+            <motion.button
+              whileHover={{ scale: 1.05, y: -5 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: 'skip' }))}
+              className="w-64 h-80 bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl border-2 border-gray-200 flex flex-col items-center justify-center p-6 shadow-lg hover:shadow-xl transition-all group"
+            >
+              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-md group-hover:scale-110 transition-transform">
+                <Ban className="w-10 h-10 text-gray-500" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">건너뛰기</h3>
+              <p className="text-sm text-gray-500 text-center leading-relaxed">
+                이 단계는 작성하지 않고<br />넘어갑니다.
               </p>
             </motion.button>
           </div>
@@ -587,7 +608,69 @@ export default function DocumentCreationPage({
       );
     }
 
-    // 3. Choice Screen for Shipping Documents (Step 4) - Existing Logic
+    // 3. Skipped State UI
+    if ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'skip') {
+      return (
+        <div className="h-full flex flex-col p-4">
+          <div className="mb-4 flex-shrink-0">
+            <button
+              onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: null }))}
+              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="font-medium">다시 선택하기</span>
+            </button>
+          </div>
+
+          <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col items-center"
+            >
+              <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6 relative">
+                <Ban className="w-16 h-16 text-gray-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">이 단계는 건너뛰었습니다</h3>
+              <p className="text-gray-500 mb-8">필요한 경우 다시 선택하기를 눌러 작성할 수 있습니다.</p>
+            </motion.div>
+          </div>
+        </div>
+      );
+    }
+
+    // 3. Skipped State UI
+    if ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'skip') {
+      return (
+        <div className="h-full flex flex-col p-4">
+          <div className="mb-4 flex-shrink-0">
+            <button
+              onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: null }))}
+              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="font-medium">다시 선택하기</span>
+            </button>
+          </div>
+
+          <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col items-center"
+            >
+              <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6 relative">
+                <Ban className="w-16 h-16 text-gray-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">이 단계는 건너뛰었습니다</h3>
+              <p className="text-gray-500 mb-8">필요한 경우 다시 선택하기를 눌러 작성할 수 있습니다.</p>
+            </motion.div>
+          </div>
+        </div>
+      );
+    }
+
+    // 4. Choice Screen for Shipping Documents (Step 4) - Existing Logic
     if (currentStep === 4 && !shippingOrder) {
       return (
         <div className="h-full flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
@@ -836,9 +919,11 @@ export default function DocumentCreationPage({
                               animate={{ scale: 1, rotate: 0 }}
                               exit={{ scale: 0, rotate: 180 }}
                             >
-                              {/* Show Paperclip if uploaded, otherwise Check */}
+                              {/* Show Paperclip if uploaded, MinusCircle if skipped, otherwise Check */}
                               {uploadedFiles[stepNumber] ? (
                                 <Paperclip className="w-4 h-4 text-white" />
+                              ) : stepModes[stepNumber] === 'skip' ? (
+                                <MinusCircle className="w-4 h-4 text-white" />
                               ) : (
                                 <Check className="w-4 h-4 text-white" />
                               )}
@@ -884,6 +969,7 @@ export default function DocumentCreationPage({
                         {/* Show small icon next to name if mode is selected */}
                         {stepModes[stepNumber] === 'upload' && <Paperclip className="w-3 h-3" />}
                         {stepModes[stepNumber] === 'manual' && <PenTool className="w-3 h-3" />}
+                        {stepModes[stepNumber] === 'skip' && <Ban className="w-3 h-3" />}
                       </motion.span>
                     </div>
                   );
