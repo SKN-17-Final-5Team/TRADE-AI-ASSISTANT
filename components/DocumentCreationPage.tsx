@@ -892,7 +892,13 @@ export default function DocumentCreationPage({
           <div className="px-8 py-4 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm flex-shrink-0 z-10 relative">
             <div className="max-w-6xl mx-auto relative">
               {/* Progress Line Background */}
-              <div className="absolute top-[15px] left-0 w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="absolute top-[15px] h-1 bg-gray-200 rounded-full overflow-hidden"
+                style={{
+                  left: `calc(100% / ${stepShortNames.length * 2})`,
+                  width: `calc(100% * ${(stepShortNames.length - 1) / stepShortNames.length})`
+                }}
+              >
                 {/* Animated Progress Line */}
                 <motion.div
                   className="h-full bg-gradient-to-r from-blue-500 to-indigo-600"
@@ -902,7 +908,10 @@ export default function DocumentCreationPage({
                 />
               </div>
 
-              <div className="flex items-center justify-between relative">
+              <div
+                className="grid items-center relative"
+                style={{ gridTemplateColumns: `repeat(${stepShortNames.length}, 1fr)` }}
+              >
                 {stepShortNames.map((name, index) => {
                   const stepNumber = index + 1;
                   const isActive = currentStep === stepNumber;
@@ -1016,19 +1025,19 @@ export default function DocumentCreationPage({
           </div>
 
           {/* Document Editor or Empty State */}
-          <div className="flex-1 flex flex-col overflow-hidden p-4">
+          <div className="flex-1 flex flex-col overflow-hidden p-4 mt-2">
             {renderStepContent()}
           </div>
         </div>
 
         {/* Chat Assistant - Slide in from right with resize handle */}
         <div
-          className={`flex-shrink-0 border-l flex flex-col overflow-hidden bg-white relative transition-all duration-300 ease-in-out ${isChatOpen ? 'opacity-100' : 'w-0 opacity-0 border-0'} `}
+          className={`flex-shrink-0 border-l border-gray-100 flex flex-col overflow-hidden bg-white relative transition-all duration-300 ease-in-out shadow-2xl z-30 ${isChatOpen ? 'opacity-100' : 'w-0 opacity-0 border-0'} `}
           style={{ width: isChatOpen ? `${chatWidth}px` : '0', minWidth: isChatOpen ? '300px' : '0' }}
         >
           {/* Resize Handle */}
           <div
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 bg-gray-300 transition-colors z-10"
+            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize group z-50 flex items-center justify-center hover:w-2 transition-all duration-200"
             onMouseDown={(e) => {
               e.preventDefault();
               const startX = e.clientX;
@@ -1048,7 +1057,10 @@ export default function DocumentCreationPage({
               document.addEventListener('mousemove', handleMouseMove);
               document.addEventListener('mouseup', handleMouseUp);
             }}
-          />
+          >
+            {/* Handle Visual Line */}
+            <div className="w-[1px] h-full bg-gradient-to-b from-transparent via-gray-300 to-transparent group-hover:bg-blue-400 transition-colors" />
+          </div>
           <ChatAssistant currentStep={currentStep} onClose={toggleChat} editorRef={editorRef} onApply={handleChatApply} />
         </div>
       </div>
