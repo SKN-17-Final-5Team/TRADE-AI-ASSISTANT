@@ -65,22 +65,22 @@ export const offerSheetTemplateHTML = `
     <!-- 하단 조건들 -->
     <div class="detail-block"><p></p>
         <div class="detail-row">
-            <span class="detail-label">Country of Origin</span> <mark>[coo]</mark>
+            <span class="detail-label">Country of Origin : </span> <mark>[coo]</mark>
         </div>
         <div class="detail-row">
-            <span class="detail-label">Shipment</span> <mark>[shipment_term]</mark>
+            <span class="detail-label">Shipment : </span> <mark>[shipment_term]</mark>
         </div>
         <div class="detail-row">
-            <span class="detail-label">Inspection</span> <mark>[inspection]</mark>
+            <span class="detail-label">Inspection : </span> <mark>[inspection]</mark>
         </div>
         <div class="detail-row">
-            <span class="detail-label">Payment</span> <mark>[payment_term]</mark>
+            <span class="detail-label">Payment : </span> <mark>[payment_term]</mark>
         </div>
         <div class="detail-row">
-            <span class="detail-label">Validity</span> <mark>[offer_validity]</mark>
+            <span class="detail-label">Validity : </span> <mark>[offer_validity]</mark>
         </div>
         <div class="detail-row">
-            <span class="detail-label">Remarks</span> <mark>[remarks]</mark>
+            <span class="detail-label">Remarks : </span> <mark>[remarks]</mark>
         </div>
     </div>
     <p><p>

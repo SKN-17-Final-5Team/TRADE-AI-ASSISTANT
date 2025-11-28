@@ -83,6 +83,10 @@ export default function DocumentCreationPage({
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
   const [uploadedFiles, setUploadedFiles] = useState<Record<number, File | null>>({});
 
+  // Download Modal State
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [selectedDownloadSteps, setSelectedDownloadSteps] = useState<Set<number>>(new Set());
+
   // Dynamic step names based on shippingOrder
   const stepShortNames = [
     'Offer Sheet',
@@ -333,50 +337,83 @@ export default function DocumentCreationPage({
   };
 
   const handleDownload = () => {
-    if (!editorRef.current) return;
+    // 1. Sync current editor content to documentData before opening modal
+    if (editorRef.current) {
+      const content = editorRef.current.getContent();
+      extractData(content);
 
-    const content = editorRef.current.getContent();
+      let saveKey = -1;
+      if (currentStep <= 3) saveKey = currentStep;
+      else if (shippingOrder) {
+        saveKey = getDocKeyForStep(currentStep);
+      }
 
-    // Create a temporary DOM element to manipulate the content
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = content;
+      if (saveKey !== -1) {
+        setDocumentData({
+          ...documentData,
+          [saveKey]: content
+        });
+      }
+    }
 
-    // Remove all <mark> tags and their content (highlighted placeholders)
-    const marks = tempDiv.querySelectorAll('mark');
-    marks.forEach(mark => {
-      mark.remove(); // Removes the element AND its content
+    // 2. Initialize selection with all available steps (that have content)
+    // We filter out 'title' and ensure we only pick steps that have actual content string
+    const availableSteps = Object.keys(documentData)
+      .filter(k => k !== 'title')
+      .map(Number)
+      .filter(step => documentData[step] && typeof documentData[step] === 'string' && documentData[step].length > 0);
+
+    setSelectedDownloadSteps(new Set(availableSteps));
+    setShowDownloadModal(true);
+  };
+
+  const handleBatchDownload = () => {
+    selectedDownloadSteps.forEach(stepIndex => {
+      const content = documentData[stepIndex];
+      if (!content) return;
+
+      // Clean content
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = content;
+      const marks = tempDiv.querySelectorAll('mark');
+      marks.forEach(mark => mark.remove());
+      const cleanContent = tempDiv.innerHTML;
+
+      // Get document name
+      // stepShortNames is 0-indexed, stepIndex is 1-based usually.
+      // However, for CI/PL (steps 4/5), stepShortNames has 5 elements if shippingOrder is set.
+      // Let's be safe and fallback.
+      const docName = stepShortNames[stepIndex - 1] || `Document_${stepIndex}`;
+
+      const blob = new Blob([`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>${documentData.title || 'Document'} - ${docName}</title>
+            <style>
+              body { font-family: sans-serif; padding: 20px; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { border: 1px solid black; padding: 8px; }
+              .contract-table { width: 100%; }
+              .data-field { background-color: transparent; }
+            </style>
+          </head>
+          <body>${cleanContent}</body>
+        </html>
+      `], { type: 'text/html' });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${documentData.title || 'Document'}_${docName}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     });
 
-    // Get the cleaned HTML
-    const cleanContent = tempDiv.innerHTML;
-
-    // Create a Blob and trigger download
-    const blob = new Blob([`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>${documentData.title || 'Document'}</title>
-          <style>
-            body { font-family: sans-serif; padding: 20px; }
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid black; padding: 8px; }
-            .contract-table { width: 100%; }
-            .data-field { background-color: transparent; }
-          </style>
-        </head>
-        <body>${cleanContent}</body>
-      </html>
-    `], { type: 'text/html' });
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${documentData.title || 'document'}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setShowDownloadModal(false);
   };
 
   const handleFileUpload = (step: number, file: File) => {
@@ -855,7 +892,13 @@ export default function DocumentCreationPage({
           <div className="px-8 py-4 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm flex-shrink-0 z-10 relative">
             <div className="max-w-6xl mx-auto relative">
               {/* Progress Line Background */}
-              <div className="absolute top-[15px] left-0 w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="absolute top-[15px] h-1 bg-gray-200 rounded-full overflow-hidden"
+                style={{
+                  left: `calc(100% / ${stepShortNames.length * 2})`,
+                  width: `calc(100% * ${(stepShortNames.length - 1) / stepShortNames.length})`
+                }}
+              >
                 {/* Animated Progress Line */}
                 <motion.div
                   className="h-full bg-gradient-to-r from-blue-500 to-indigo-600"
@@ -865,7 +908,10 @@ export default function DocumentCreationPage({
                 />
               </div>
 
-              <div className="flex items-center justify-between relative">
+              <div
+                className="grid items-center relative"
+                style={{ gridTemplateColumns: `repeat(${stepShortNames.length}, 1fr)` }}
+              >
                 {stepShortNames.map((name, index) => {
                   const stepNumber = index + 1;
                   const isActive = currentStep === stepNumber;
@@ -979,19 +1025,19 @@ export default function DocumentCreationPage({
           </div>
 
           {/* Document Editor or Empty State */}
-          <div className="flex-1 flex flex-col overflow-hidden p-4">
+          <div className="flex-1 flex flex-col overflow-hidden p-4 mt-2">
             {renderStepContent()}
           </div>
         </div>
 
         {/* Chat Assistant - Slide in from right with resize handle */}
         <div
-          className={`flex-shrink-0 border-l flex flex-col overflow-hidden bg-white relative transition-all duration-300 ease-in-out ${isChatOpen ? 'opacity-100' : 'w-0 opacity-0 border-0'} `}
+          className={`flex-shrink-0 border-l border-gray-100 flex flex-col overflow-hidden bg-white relative transition-all duration-300 ease-in-out shadow-2xl z-30 ${isChatOpen ? 'opacity-100' : 'w-0 opacity-0 border-0'} `}
           style={{ width: isChatOpen ? `${chatWidth}px` : '0', minWidth: isChatOpen ? '300px' : '0' }}
         >
           {/* Resize Handle */}
           <div
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 bg-gray-300 transition-colors z-10"
+            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize group z-50 flex items-center justify-center hover:w-2 transition-all duration-200"
             onMouseDown={(e) => {
               e.preventDefault();
               const startX = e.clientX;
@@ -1011,7 +1057,10 @@ export default function DocumentCreationPage({
               document.addEventListener('mousemove', handleMouseMove);
               document.addEventListener('mouseup', handleMouseUp);
             }}
-          />
+          >
+            {/* Handle Visual Line */}
+            <div className="w-[1px] h-full bg-gradient-to-b from-transparent via-gray-300 to-transparent group-hover:bg-blue-400 transition-colors" />
+          </div>
           <ChatAssistant currentStep={currentStep} onClose={toggleChat} editorRef={editorRef} onApply={handleChatApply} />
         </div>
       </div>
@@ -1264,6 +1313,134 @@ export default function DocumentCreationPage({
           </div>
         )
       }
-    </div >
+
+      {/* Download Modal */}
+      {showDownloadModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200]">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white rounded-2xl w-[500px] overflow-hidden shadow-2xl"
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md">
+                  <Download className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">문서 다운로드</h3>
+                  <p className="text-blue-100 text-xs">다운로드할 문서를 선택해주세요</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDownloadModal(false)}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 bg-gray-50">
+              <div className="flex items-center justify-between mb-4 px-2">
+                <span className="text-sm font-semibold text-gray-700">
+                  선택된 문서: {selectedDownloadSteps.size}개
+                </span>
+                <button
+                  onClick={() => {
+                    const allSteps = Object.keys(documentData)
+                      .filter(k => k !== 'title')
+                      .map(Number)
+                      .filter(step => documentData[step] && typeof documentData[step] === 'string' && documentData[step].length > 0);
+
+                    if (selectedDownloadSteps.size === allSteps.length) {
+                      setSelectedDownloadSteps(new Set());
+                    } else {
+                      setSelectedDownloadSteps(new Set(allSteps));
+                    }
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  {selectedDownloadSteps.size === Object.keys(documentData).filter(k => k !== 'title' && documentData[k]).length ? '전체 해제' : '전체 선택'}
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                {Object.keys(documentData)
+                  .filter(k => k !== 'title')
+                  .map(Number)
+                  .filter(step => documentData[step] && typeof documentData[step] === 'string' && documentData[step].length > 0)
+                  .sort((a, b) => a - b)
+                  .map((stepIndex) => (
+                    <div
+                      key={stepIndex}
+                      onClick={() => {
+                        const newSet = new Set(selectedDownloadSteps);
+                        if (newSet.has(stepIndex)) newSet.delete(stepIndex);
+                        else newSet.add(stepIndex);
+                        setSelectedDownloadSteps(newSet);
+                      }}
+                      className={`
+                        flex items-center p-3 rounded-xl border cursor-pointer transition-all duration-200
+                        ${selectedDownloadSteps.has(stepIndex)
+                          ? 'bg-blue-50 border-blue-200 shadow-sm'
+                          : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-gray-50'}
+                      `}
+                    >
+                      <div className={`
+                        w-5 h-5 rounded-md border flex items-center justify-center mr-3 transition-colors
+                        ${selectedDownloadSteps.has(stepIndex)
+                          ? 'bg-blue-600 border-blue-600'
+                          : 'border-gray-300 bg-white'}
+                      `}>
+                        {selectedDownloadSteps.has(stepIndex) && <Check className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-sm font-medium ${selectedDownloadSteps.has(stepIndex) ? 'text-blue-900' : 'text-gray-700'}`}>
+                          {stepShortNames[stepIndex - 1] || `Step ${stepIndex}`}
+                        </p>
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center border border-gray-100">
+                        <FileText className={`w-4 h-4 ${selectedDownloadSteps.has(stepIndex) ? 'text-blue-500' : 'text-gray-400'}`} />
+                      </div>
+                    </div>
+                  ))}
+
+                {Object.keys(documentData).filter(k => k !== 'title' && documentData[k]).length === 0 && (
+                  <div className="text-center py-8 text-gray-500 text-sm">
+                    저장된 문서가 없습니다.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-white border-t border-gray-100 flex justify-end gap-3">
+              <button
+                onClick={() => setShowDownloadModal(false)}
+                className="px-5 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleBatchDownload}
+                disabled={selectedDownloadSteps.size === 0}
+                className={`
+                  px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-blue-200
+                  ${selectedDownloadSteps.size === 0
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-xl hover:-translate-y-0.5 transition-all'}
+                `}
+              >
+                <Download className="w-4 h-4" />
+                {selectedDownloadSteps.size}개 문서 다운로드
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </div>
   );
 }

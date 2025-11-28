@@ -75,7 +75,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
     }
 
     return (
-        <div className="flex flex-wrap items-center gap-1 p-2 border border-b-0 border-gray-200 rounded-t-lg bg-gray-50">
+        <div className="flex flex-wrap items-center gap-1 p-2 border border-b-0 border-gray-200 rounded-t-lg bg-gray-50 relative z-10">
             {/* History */}
             <ToolbarButton
                 onClick={() => editor.chain().focus().undo().run()}
