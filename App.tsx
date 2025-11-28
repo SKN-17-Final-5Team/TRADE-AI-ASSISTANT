@@ -238,6 +238,7 @@ function App() {
             onLogout={handleLogout}
             onOpenDocument={handleOpenDocument}
             onLogoClick={handleOpenChat}
+            onDeleteDocument={handleDeleteDocument}
           />
           {/* 글로우 효과 원 */}
           <div
