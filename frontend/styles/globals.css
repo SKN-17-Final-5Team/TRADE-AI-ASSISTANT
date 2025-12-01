@@ -259,8 +259,6 @@ html {
   font-size: 12pt;
   line-height: 1.5;
   padding: 20px;
-  width: 100%;
-  box-sizing: border-box;
 }
 
 .offer-sheet-wrapper h1 {
@@ -292,8 +290,6 @@ html {
 .offer-sheet-wrapper .items-wrapper {
   margin-top: 10px;
   margin-bottom: 40px;
-  width: 100%;
-  overflow-x: auto;
 }
 
 .offer-sheet-wrapper table.offer-table {

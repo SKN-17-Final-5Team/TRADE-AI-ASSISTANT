@@ -376,7 +376,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             content: initialContent || saleContractTemplateHTML,
             editorProps: {
                 attributes: {
-                    class: 'prose prose-sm sm:prose lg:prose-lg max-w-none focus:outline-none min-h-[500px] p-4',
+                    class: 'focus:outline-none min-h-[500px] p-4 w-full',
                 },
             },
             onUpdate: ({ editor }) => {
@@ -699,10 +699,10 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
         }
 
         return (
-            <div className={`contract-editor flex flex-col h-full w-full ${className || ''}`}>
+            <div className={`contract-editor flex flex-col h-full ${className || ''}`}>
                 <EditorToolbar editor={editor} />
-                <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0 w-full">
-                    <EditorContent editor={editor} className="h-full w-full" />
+                <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0">
+                    <EditorContent editor={editor} className="h-full" />
                 </div>
             </div>
         )
