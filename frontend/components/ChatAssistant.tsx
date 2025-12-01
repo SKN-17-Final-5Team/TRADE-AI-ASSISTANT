@@ -1,6 +1,27 @@
 import { useState, useRef, useEffect, RefObject } from 'react';
-import { Sparkles, Send, X, Wand2, Eye, Undo2, Check, XCircle } from 'lucide-react';
+import { Sparkles, Send, X, Wand2, Eye, Undo2, Check, XCircle, Globe, Database, Wrench } from 'lucide-react';
 import { ContractEditorRef } from './editor/ContractEditor';
+import ReactMarkdown from 'react-markdown';
+
+// Tool usage interface
+interface ToolUsed {
+  id: string;
+  name: string;  // 표시될 이름 (예: "문서 검색", "웹 검색")
+  icon: string;
+  description: string;
+}
+
+// Get tool icon component
+const getToolIcon = (iconName: string) => {
+  switch (iconName) {
+    case 'web':
+      return Globe;
+    case 'document':
+      return Database;
+    default:
+      return Wrench;
+  }
+};
 
 interface Change {
   field: string;
@@ -16,6 +37,7 @@ interface Message {
   applyContent?: string;
   changes?: Change[];
   step?: number;
+  toolsUsed?: ToolUsed[];
 }
 
 interface PreviewState {
@@ -61,6 +83,7 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
     message: string;
     updatedHTML?: string;
     changes?: Change[];
+    toolsUsed?: ToolUsed[];
   }> => {
     try {
       const response = await fetch(`${DJANGO_API_URL}/api/chat/`, {
@@ -80,7 +103,8 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
       return {
         message: data.message,
         updatedHTML: data.html,
-        changes: data.changes
+        changes: data.changes,
+        toolsUsed: data.tools_used
       };
     } catch (error) {
       console.error('Django Agent API 오류:', error);
@@ -93,6 +117,7 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
     message: string;
     updatedHTML?: string;
     changes?: Change[];
+    toolsUsed?: ToolUsed[];
   }> => {
     if (!OPENAI_API_KEY) {
       return { message: 'API 키가 설정되지 않았습니다. .env 파일에 VITE_OPENAI_API_KEY를 설정해주세요.' };
@@ -248,7 +273,8 @@ ${documentContent}
       hasApply: !!response.updatedHTML,
       applyContent: response.updatedHTML,
       changes: response.changes,
-      step: requestStep // Propagate the step to the AI message
+      step: requestStep, // Propagate the step to the AI message
+      toolsUsed: response.toolsUsed
     };
 
     setMessages(prev => [...prev, aiMessage]);
@@ -397,9 +423,33 @@ ${documentContent}
                   : 'bg-white text-gray-800 border border-gray-100 rounded-2xl rounded-tl-sm'
                 }`}
             >
-              <p className={`text-sm whitespace-pre-wrap leading-relaxed ${message.type === 'ai' ? 'text-gray-700' : 'text-blue-50'}`}>
-                {message.content}
-              </p>
+              {/* Tool usage badges for AI messages */}
+              {message.type === 'ai' && message.toolsUsed && message.toolsUsed.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2 pb-2 border-b border-gray-100">
+                  {message.toolsUsed.map((tool, index) => {
+                    const IconComponent = getToolIcon(tool.icon);
+                    return (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-100"
+                      >
+                        <IconComponent className="w-3 h-3" />
+                        {tool.name}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {message.type === 'ai' ? (
+                <div className="text-sm leading-relaxed text-gray-700 prose prose-sm max-w-none prose-p:my-1 prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline">
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                </div>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap leading-relaxed text-blue-50">
+                  {message.content}
+                </p>
+              )}
 
               {message.hasApply && message.applyContent && (
                 <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
