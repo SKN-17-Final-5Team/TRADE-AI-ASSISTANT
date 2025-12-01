@@ -68,7 +68,7 @@ cd TRADE-AI-ASSISTANT
 
 ```bash
 # conda 사용 시
-conda create -n trade-assistant python=3.11
+conda create -n trade-assistant python=3.12
 conda activate trade-assistant
 
 # 또는 venv 사용 시
