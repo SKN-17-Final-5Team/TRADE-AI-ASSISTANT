@@ -3,6 +3,8 @@
 .contract-editor .ProseMirror {
     min-height: 500px;
     padding: 2rem;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .contract-editor .ProseMirror:focus {
