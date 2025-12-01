@@ -26,6 +26,7 @@ import { PageType, DocumentData } from '../App';
 import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
 import { MappedDataConfirmBanner } from './MappedDataConfirmBanner';
+import { ShootingStarIntro } from './ShootingStarIntro';
 import { offerSheetTemplateHTML } from '../templates/offerSheet';
 
 import { proformaInvoiceTemplateHTML } from '../templates/proformaInvoice';
@@ -93,6 +94,31 @@ export default function DocumentCreationPage({
   // Download Modal State
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [selectedDownloadSteps, setSelectedDownloadSteps] = useState<Set<number>>(new Set());
+
+  // Intro Animation State
+  const [hasShownIntro, setHasShownIntro] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
+  const chatButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Calculate visibility for chatbot button
+  const shouldShowChatButton = !isChatOpen && currentStep >= 1 && currentStep <= 5 && (
+    // Step 2 (PI): Always show (direct entry)
+    (currentStep === 2) ||
+    // Step 1, 3: Mode selected (Manual or Upload+File)
+    ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] && stepModes[currentStep] !== 'skip' && (
+      (stepModes[currentStep] === 'manual') ||
+      (stepModes[currentStep] === 'upload' && uploadedFiles[currentStep])
+    )) ||
+    // Step 4: Shipping Doc selected
+    (currentStep === 4 && activeShippingDoc)
+  );
+
+  // Trigger Intro Animation
+  useEffect(() => {
+    if (shouldShowChatButton && !hasShownIntro && !showIntro) {
+      setShowIntro(true);
+    }
+  }, [shouldShowChatButton, hasShownIntro, showIntro]);
 
   // Dynamic step names based on shippingOrder
   const stepShortNames = [
@@ -1199,26 +1225,29 @@ export default function DocumentCreationPage({
         </div>
       </div>
 
-      {/* Floating Chat Button - Only show after selecting manual mode OR after uploading a file OR after selecting shipping doc type OR for PI (Step 2) */}
-      {!isChatOpen && currentStep >= 1 && currentStep <= 5 && (
-        // Step 2 (PI): Always show (direct entry)
-        (currentStep === 2) ||
-        // Step 1, 3: Mode selected (Manual or Upload+File)
-        ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] && stepModes[currentStep] !== 'skip' && (
-          (stepModes[currentStep] === 'manual') ||
-          (stepModes[currentStep] === 'upload' && uploadedFiles[currentStep])
-        )) ||
-        // Step 4: Shipping Doc selected
-        (currentStep === 4 && activeShippingDoc)
-      ) && (
-          <button
-            onClick={toggleChat}
-            className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110 z-40"
-            title="AI 챗봇 열기"
-          >
-            <Sparkles className="w-6 h-6" />
-          </button>
-        )}
+      {/* Intro Animation */}
+      {showIntro && (
+        <ShootingStarIntro
+          onComplete={() => {
+            setShowIntro(false);
+            setHasShownIntro(true);
+          }}
+          targetRect={chatButtonRef.current?.getBoundingClientRect()}
+        />
+      )}
+
+      {/* Floating Chat Button */}
+      {shouldShowChatButton && (hasShownIntro || showIntro) && (
+        <button
+          ref={chatButtonRef}
+          onClick={toggleChat}
+          className={`fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform transition-colors duration-200 hover:scale-110 z-40 ${!hasShownIntro ? 'opacity-0 pointer-events-none' : ''}`}
+          title="AI 챗봇 열기"
+        >
+          {/* Show icon only after intro is finished */}
+          <Sparkles className="w-6 h-6" />
+        </button>
+      )}
 
 
       {/* My Page Modal */}
