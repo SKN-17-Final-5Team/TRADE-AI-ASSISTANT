@@ -28,6 +28,15 @@ const DataField = Node.create({
                     }
                 },
             },
+            source: {
+                default: null,
+                parseHTML: element => element.getAttribute('data-source'),
+                renderHTML: attributes => {
+                    return {
+                        'data-source': attributes.source,
+                    }
+                },
+            },
         }
     },
 
@@ -44,6 +53,18 @@ const DataField = Node.create({
     addNodeView() {
         return ReactNodeViewRenderer(({ node, getPos, editor }) => {
             const isPlaceholder = node.textContent === `[${node.attrs.fieldId}]`;
+            const source = node.attrs.source;
+
+            let bgClass = '';
+            if (isPlaceholder) {
+                bgClass = 'text-transparent bg-gray-50 hover:bg-gray-100 select-none';
+            } else if (source === 'agent') {
+                bgClass = 'bg-yellow-100'; // Agent generated
+            } else if (source === 'mapped') {
+                bgClass = 'bg-green-100'; // Mapped data
+            } else {
+                bgClass = 'bg-transparent'; // No highlight for user input or confirmed data
+            }
 
             const handleClick = (e: React.MouseEvent) => {
                 if (isPlaceholder && typeof getPos === 'function') {
@@ -61,9 +82,9 @@ const DataField = Node.create({
             return (
                 <NodeViewWrapper
                     as="span"
-                    className={`data-field-node ${isPlaceholder ? 'bg-yellow-200' : ''} transition-colors duration-200`}
+                    className={`data-field-node ${bgClass} transition-colors duration-200`}
                     onClick={handleClick}
-                    style={{ fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit' }}
+                    style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
                 >
                     {/* @ts-ignore */}
                     <NodeViewContent as="span" />
@@ -256,16 +277,19 @@ export interface ContractEditorRef {
     setContent: (content: string) => void
     insertContent: (content: string) => void
     replaceSelection: (content: string) => void
+    confirmMappedData: () => void
+    cancelMappedData: () => void
 }
 
 interface ContractEditorProps {
     initialContent?: string
     onChange?: (content: string) => void
+    onMappedFieldsDetected?: (hasMapped: boolean) => void
     className?: string
 }
 
 const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
-    ({ initialContent, onChange, className }, ref) => {
+    ({ initialContent, onChange, onMappedFieldsDetected, className }, ref) => {
         const editor = useEditor({
             extensions: [
                 StarterKit.configure({
@@ -358,10 +382,87 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             onUpdate: ({ editor }) => {
                 onChange?.(editor.getHTML())
 
+                // Check for mapped fields (only in current document, excluding currently edited field)
+                let hasMappedFields = false;
+                const { selection: editorSelection } = editor.state;
+                const currentPos = editorSelection.from;
+
+                editor.state.doc.descendants((node: any, pos: number) => {
+                    if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
+                        // Only count if it's not the currently edited field
+                        const isCurrentField = (pos <= currentPos && pos + node.nodeSize >= currentPos);
+                        if (!isCurrentField) {
+                            hasMappedFields = true;
+                            return false; // Stop iteration
+                        }
+                    }
+                });
+                onMappedFieldsDetected?.(hasMappedFields);
+
                 // Same-Doc Sync Logic
                 const { state, view } = editor;
                 const { selection, doc } = state;
                 const { from } = selection;
+
+                // 0. Auto-Cleaning & Restoring Logic
+                const tr = state.tr;
+                let cleaningModified = false;
+
+                // Robust "Subtraction" Cleaning Logic
+                // This handles cases where user types inside the placeholder (e.g. "[tag]A" or "[taAg]")
+                doc.descendants((node: any, pos: number) => {
+                    if (node.type.name === 'dataField') {
+                        const fieldId = node.attrs.fieldId;
+                        const placeholder = `[${fieldId}]`;
+                        const text = node.textContent;
+
+                        // Case 1: Dirty Placeholder (contains [ and ])
+                        // If the text is NOT exactly the placeholder, but contains brackets, it's likely a mixed state.
+                        if (text !== placeholder && text.includes('[') && text.includes(']')) {
+                            // Attempt to extract user input by removing placeholder characters
+                            let cleanText = text;
+                            // Remove first [ and last ] (or just first ])
+                            cleanText = cleanText.replace('[', '').replace(']', '');
+
+                            // Remove fieldId characters sequentially
+                            const chars = fieldId.split('');
+                            for (const char of chars) {
+                                cleanText = cleanText.replace(char, '');
+                            }
+
+                            // If cleanText is empty (e.g. user deleted a char from placeholder), restore placeholder
+                            // If cleanText is not empty (user typed something), use it.
+
+                            if (cleanText.trim() === '') {
+                                // Restore placeholder
+                                if (!cleaningModified) {
+                                    tr.insertText(placeholder, pos + 1, pos + node.nodeSize - 1);
+                                    tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
+                                    cleaningModified = true;
+                                }
+                            } else {
+                                // Use the cleaned text
+                                if (!cleaningModified) {
+                                    tr.insertText(cleanText, pos + 1, pos + node.nodeSize - 1);
+                                    cleaningModified = true;
+                                }
+                            }
+                        }
+                        // Case 2: Empty Content -> Restore Placeholder
+                        else if (text === '') {
+                            if (!cleaningModified) {
+                                tr.insertText(placeholder, pos + 1, pos + 1);
+                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
+                                cleaningModified = true;
+                            }
+                        }
+                    }
+                });
+
+                if (cleaningModified) {
+                    view.dispatch(tr);
+                    return; // Exit to let the next update cycle handle the rest
+                }
 
                 // 1. Identify the "active" field (the one being edited)
                 let activeFieldId: string | null = null;
@@ -397,6 +498,43 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                             if (node.textContent !== activeContent) {
                                 // Replace content of this node
                                 tr.insertText(activeContent!, pos + 1, pos + node.nodeSize - 1);
+                                // Set source to 'mapped' for other fields
+                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: 'mapped' });
+                                modified = true;
+                            }
+                        }
+                    });
+
+                    // Set source to 'user' for the active field (if it's not already)
+                    // We need to find the active node position again or just rely on the fact that we are editing it
+                    // Actually, we should update the active node's source to 'user'
+                    // But we can't easily find "the" active node if there are multiple.
+                    // However, the one where selection is, is the user one.
+
+                    // Let's iterate again or optimize.
+                    // Ideally, we update the active node to 'user' and others to 'mapped'.
+
+                    // Optimization: We know the active field ID.
+                    // We can just update ALL fields with that ID.
+                    // But wait, the one the user is typing in IS the user source.
+                    // The others are mapped.
+                    // So we need to distinguish the active node from others.
+
+                    // We can use the selection position to identify the active node.
+                    // But we are inside onUpdate, so selection is current.
+
+                    // Let's refine the logic:
+                    // 1. Find all nodes with activeFieldId.
+                    // 2. If node range includes selection.from, it's the USER node -> set source='user'.
+                    // 3. Else, it's a MAPPED node -> set source='mapped'.
+
+                    doc.descendants((node: any, pos: number) => {
+                        if (node.type.name === 'dataField' && node.attrs.fieldId === activeFieldId) {
+                            const isUserNode = (pos <= from && pos + node.nodeSize >= from);
+                            const newSource = isUserNode ? 'user' : 'mapped';
+
+                            if (node.attrs.source !== newSource) {
+                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: newSource });
                                 modified = true;
                             }
                         }
@@ -422,6 +560,68 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             },
             replaceSelection: (content: string) => {
                 editor?.commands.insertContent(content)
+            },
+            confirmMappedData: () => {
+                if (!editor) return;
+
+                const { state, view } = editor;
+                const tr = state.tr;
+                let modified = false;
+
+                // Find all mapped fields and remove highlight (set source to null)
+                state.doc.descendants((node: any, pos: number) => {
+                    if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
+                        tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
+                        modified = true;
+                    }
+                });
+
+                if (modified) {
+                    view.dispatch(tr);
+
+                    // Force a re-render to ensure HTML attributes are updated
+                    setTimeout(() => {
+                        const content = editor.getHTML();
+                        // Remove data-source="mapped" from HTML
+                        const updatedContent = content.replace(/data-source="mapped"/g, '');
+                        if (content !== updatedContent) {
+                            editor.commands.setContent(updatedContent);
+                        }
+                    }, 50);
+                }
+            },
+            cancelMappedData: () => {
+                if (!editor) return;
+
+                const { state, view } = editor;
+                const tr = state.tr;
+                let modified = false;
+
+                // Find all mapped fields and remove them (revert to placeholder)
+                state.doc.descendants((node: any, pos: number) => {
+                    if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
+                        const fieldId = node.attrs.fieldId;
+                        const placeholder = `[${fieldId}]`;
+
+                        // Replace content with placeholder and set source to null
+                        tr.insertText(placeholder, pos + 1, pos + node.nodeSize - 1);
+                        tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
+                        modified = true;
+                    }
+                });
+
+                if (modified) {
+                    view.dispatch(tr);
+
+                    // Also remove data-source="mapped" from HTML
+                    setTimeout(() => {
+                        const content = editor.getHTML();
+                        const updatedContent = content.replace(/data-source="mapped"/g, '');
+                        if (content !== updatedContent) {
+                            editor.commands.setContent(updatedContent);
+                        }
+                    }, 50);
+                }
             },
         }))
 

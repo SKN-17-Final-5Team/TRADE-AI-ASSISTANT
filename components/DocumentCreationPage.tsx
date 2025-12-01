@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Sparkles,
@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PageType, DocumentData } from '../App';
 import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
+import { MappedDataConfirmBanner } from './MappedDataConfirmBanner';
 import { offerSheetTemplateHTML } from '../templates/offerSheet';
 
 import { proformaInvoiceTemplateHTML } from '../templates/proformaInvoice';
@@ -81,6 +82,8 @@ export default function DocumentCreationPage({
   const [sharedData, setSharedData] = useState<Record<string, string>>({});
   const [shippingOrder, setShippingOrder] = useState<('CI' | 'PL')[] | null>(null);
   const [activeShippingDoc, setActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
+  const [hasMappedFields, setHasMappedFields] = useState(false);
+  const [showConfirmBanner, setShowConfirmBanner] = useState(false);
 
   // New state for Upload vs Manual
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
@@ -121,7 +124,9 @@ export default function DocumentCreationPage({
       const value = sharedData[key];
       // If we have a value, use it. Otherwise keep the placeholder [key]
       const content = value || `[${key}]`;
-      return `<span data-field-id="${key}">${content}</span>`;
+      // If we have a value, it's mapped data.
+      const sourceAttr = value ? ' data-source="mapped"' : '';
+      return `<span data-field-id="${key}"${sourceAttr}>${content}</span>`;
     });
   };
 
@@ -163,6 +168,8 @@ export default function DocumentCreationPage({
         // Also update if the field is currently a placeholder
         if (field.textContent !== sharedData[key]) {
           field.textContent = sharedData[key];
+          // Mark as mapped since it's coming from shared data
+          field.setAttribute('data-source', 'mapped');
           modified = true;
         }
       }
@@ -288,13 +295,30 @@ export default function DocumentCreationPage({
   };
 
   const handleChatApply = (content: string, step: number) => {
+    // Inject data-source="agent" into the content
+    // We parse the content, find all data fields that are NOT placeholders, and add source="agent"
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+    const fields = doc.querySelectorAll('span[data-field-id]');
+
+    fields.forEach(field => {
+      const key = field.getAttribute('data-field-id');
+      const value = field.textContent;
+      // If it has a value and is not a placeholder
+      if (key && value && value !== `[${key}]`) {
+        field.setAttribute('data-source', 'agent');
+      }
+    });
+
+    const contentWithSource = doc.body.innerHTML;
+
     // 1. Extract data to update sharedData
-    extractData(content);
+    extractData(contentWithSource);
 
     // 2. Update documentData for the specific step
     setDocumentData((prev: DocumentData) => ({
       ...prev,
-      [step]: content
+      [step]: contentWithSource
     }));
 
     // 3. Mark as modified
@@ -334,9 +358,52 @@ export default function DocumentCreationPage({
     }
 
     if (editorRef.current) {
-      editorRef.current.setContent(content);
+      editorRef.current.setContent(contentWithSource);
     }
   };
+
+  const handleMappedFieldsDetected = (hasMapped: boolean) => {
+    setHasMappedFields(hasMapped);
+    if (hasMapped && !showConfirmBanner) {
+      setShowConfirmBanner(true);
+    }
+  };
+
+  const handleConfirmMapped = () => {
+    editorRef.current?.confirmMappedData();
+    setShowConfirmBanner(false);
+    setHasMappedFields(false);
+  };
+
+  const handleDismissBanner = () => {
+    editorRef.current?.cancelMappedData();
+    setShowConfirmBanner(false);
+    setHasMappedFields(false);
+  };
+
+  // Check for mapped fields on document entry
+  useEffect(() => {
+    if (!editorRef.current) return;
+
+    // Check if current document has mapped fields
+    const checkForMappedFields = () => {
+      const content = editorRef.current?.getContent();
+      if (!content) return;
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(content, 'text/html');
+      const mappedFields = doc.querySelectorAll('span[data-field-id][data-source="mapped"]');
+
+      if (mappedFields.length > 0) {
+        setHasMappedFields(true);
+        setShowConfirmBanner(true);
+      }
+    };
+
+    // Small delay to ensure editor is fully loaded
+    const timer = setTimeout(checkForMappedFields, 300);
+    return () => clearTimeout(timer);
+  }, [currentStep, activeShippingDoc]);
 
   const handleDownload = () => {
     // 1. Sync current editor content to documentData before opening modal
@@ -839,6 +906,7 @@ export default function DocumentCreationPage({
               setIsDirty(true);
             }
           }}
+          onMappedFieldsDetected={handleMappedFieldsDetected}
         />
       </div>
     );
@@ -846,6 +914,16 @@ export default function DocumentCreationPage({
 
   return (
     <div className="h-screen flex flex-col">
+      {/* Mapped Data Confirmation Banner */}
+      {showConfirmBanner && hasMappedFields && (
+        <MappedDataConfirmBanner
+          onConfirm={handleConfirmMapped}
+          onDismiss={handleDismissBanner}
+          isChatOpen={isChatOpen}
+          chatWidth={chatWidth}
+        />
+      )}
+
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md shadow-sm flex-shrink-0">
         <div className="px-8 py-4 flex items-center justify-between">
