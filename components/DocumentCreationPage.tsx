@@ -1241,11 +1241,11 @@ export default function DocumentCreationPage({
         <button
           ref={chatButtonRef}
           onClick={toggleChat}
-          className={`fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110 z-40 ${(!hasShownIntro && !showIntro) ? 'opacity-0' : 'animate-bounce-in'}`}
+          className={`fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110 z-40 ${!hasShownIntro ? 'opacity-0 pointer-events-none' : 'animate-bounce-in'}`}
           title="AI 챗봇 열기"
         >
           {/* Show icon only after intro is finished */}
-          {!showIntro && <Sparkles className="w-6 h-6" />}
+          <Sparkles className="w-6 h-6" />
         </button>
       )}
 
