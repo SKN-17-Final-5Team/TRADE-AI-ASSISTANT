@@ -278,7 +278,7 @@ export interface ContractEditorRef {
     insertContent: (content: string) => void
     replaceSelection: (content: string) => void
     confirmMappedData: () => void
-    cancelMappedData: () => void
+    reviewMappedFields: () => void
 }
 
 interface ContractEditorProps {
@@ -382,21 +382,16 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             onUpdate: ({ editor }) => {
                 onChange?.(editor.getHTML())
 
-                // Check for mapped fields (only in current document, excluding currently edited field)
+                // Check for mapped fields IN THE CURRENT DOCUMENT ONLY
                 let hasMappedFields = false;
-                const { selection: editorSelection } = editor.state;
-                const currentPos = editorSelection.from;
-
-                editor.state.doc.descendants((node: any, pos: number) => {
+                editor.state.doc.descendants((node: any) => {
                     if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
-                        // Only count if it's not the currently edited field
-                        const isCurrentField = (pos <= currentPos && pos + node.nodeSize >= currentPos);
-                        if (!isCurrentField) {
-                            hasMappedFields = true;
-                            return false; // Stop iteration
-                        }
+                        hasMappedFields = true;
+                        return false; // Stop iteration
                     }
                 });
+
+                // Only notify if there are mapped fields in the current document
                 onMappedFieldsDetected?.(hasMappedFields);
 
                 // Same-Doc Sync Logic
@@ -573,6 +568,14 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                     if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
                         tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
                         modified = true;
+
+                        // Also remove any temporary highlight styles
+                        const domNode = editor.view.nodeDOM(pos);
+                        if (domNode && domNode instanceof HTMLElement) {
+                            domNode.style.boxShadow = '';
+                            domNode.style.transform = '';
+                            domNode.style.transition = '';
+                        }
                     }
                 });
 
@@ -590,38 +593,83 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                     }, 50);
                 }
             },
-            cancelMappedData: () => {
+            reviewMappedFields: async () => {
                 if (!editor) return;
 
-                const { state, view } = editor;
-                const tr = state.tr;
-                let modified = false;
+                const { state } = editor;
+                const mappedFieldPositions: { pos: number; fieldId: string; top: number }[] = [];
 
-                // Find all mapped fields and remove them (revert to placeholder)
+                // Collect all mapped field positions with their Y coordinates
                 state.doc.descendants((node: any, pos: number) => {
                     if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
-                        const fieldId = node.attrs.fieldId;
-                        const placeholder = `[${fieldId}]`;
-
-                        // Replace content with placeholder and set source to null
-                        tr.insertText(placeholder, pos + 1, pos + node.nodeSize - 1);
-                        tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
-                        modified = true;
+                        const domNode = editor.view.nodeDOM(pos);
+                        if (domNode && domNode instanceof HTMLElement) {
+                            const rect = domNode.getBoundingClientRect();
+                            mappedFieldPositions.push({
+                                pos,
+                                fieldId: node.attrs.fieldId,
+                                top: rect.top + window.scrollY
+                            });
+                        }
                     }
                 });
 
-                if (modified) {
-                    view.dispatch(tr);
+                if (mappedFieldPositions.length === 0) return;
 
-                    // Also remove data-source="mapped" from HTML
-                    setTimeout(() => {
-                        const content = editor.getHTML();
-                        const updatedContent = content.replace(/data-source="mapped"/g, '');
-                        if (content !== updatedContent) {
-                            editor.commands.setContent(updatedContent);
-                        }
-                    }, 50);
+                // Sort by vertical position
+                mappedFieldPositions.sort((a, b) => a.top - b.top);
+
+                // Group fields by screen/viewport (within 300px vertical distance)
+                const VIEWPORT_THRESHOLD = 150;
+                const groups: typeof mappedFieldPositions[] = [];
+                let currentGroup: typeof mappedFieldPositions = [mappedFieldPositions[0]];
+
+                for (let i = 1; i < mappedFieldPositions.length; i++) {
+                    const prevField = mappedFieldPositions[i - 1];
+                    const currentField = mappedFieldPositions[i];
+
+                    // If fields are close together (same screen), add to current group
+                    if (Math.abs(currentField.top - prevField.top) < VIEWPORT_THRESHOLD) {
+                        currentGroup.push(currentField);
+                    } else {
+                        // Start a new group
+                        groups.push(currentGroup);
+                        currentGroup = [currentField];
+                    }
                 }
+                groups.push(currentGroup); // Add last group
+
+                // Sequentially show each group
+                for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+                    const group = groups[groupIndex];
+
+                    // Scroll to the first field in the group
+                    const firstField = group[0];
+                    const firstDomNode = editor.view.nodeDOM(firstField.pos);
+
+                    if (firstDomNode && firstDomNode instanceof HTMLElement) {
+                        firstDomNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                        // Wait for scroll to complete
+                        await new Promise(resolve => setTimeout(resolve, 500));
+
+                        // Highlight all fields in this group
+                        for (const field of group) {
+                            const domNode = editor.view.nodeDOM(field.pos);
+                            if (domNode && domNode instanceof HTMLElement) {
+                                domNode.style.transition = 'all 0.3s ease';
+                                domNode.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.5)';
+                                domNode.style.transform = 'scale(1.05)';
+                            }
+                        }
+
+                        // Wait 1.5 seconds before moving to next group
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                    }
+                }
+
+                // Keep highlights until user confirms
+                // Highlights will be removed when user clicks confirm button
             },
         }))
 

@@ -6,13 +6,15 @@ interface MappedDataConfirmBannerProps {
     onDismiss: () => void;
     isChatOpen?: boolean;
     chatWidth?: number;
+    reviewCompleted?: boolean;
 }
 
 export const MappedDataConfirmBanner: React.FC<MappedDataConfirmBannerProps> = ({
     onConfirm,
     onDismiss,
     isChatOpen = false,
-    chatWidth = 400
+    chatWidth = 400,
+    reviewCompleted = false
 }) => {
     // Calculate right position based on chat state
     const rightPosition = isChatOpen ? `${chatWidth + 24}px` : '6rem'; // 6rem = 24 in Tailwind
@@ -37,10 +39,12 @@ export const MappedDataConfirmBanner: React.FC<MappedDataConfirmBannerProps> = (
                     {/* Content */}
                     <div className="flex-1">
                         <h3 className="text-base font-bold text-gray-900 mb-0.5">
-                            자동 매핑된 데이터가 있습니다
+                            {reviewCompleted ? '확인을 완료하셨나요?' : '자동 매핑된 데이터가 있습니다.'}
                         </h3>
                         <p className="text-xs text-gray-600">
-                            다른 필드에서 입력한 내용이 자동으로 반영되었습니다. 적용하시겠습니까?
+                            {reviewCompleted
+                                ? '확인하기를 클릭하면 하이라이트가 제거됩니다.'
+                                : '다른 필드에서 입력한 내용이 자동으로 반영되었습니다. 적용하시겠습니까?'}
                         </p>
                     </div>
 
@@ -54,7 +58,7 @@ export const MappedDataConfirmBanner: React.FC<MappedDataConfirmBannerProps> = (
                             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-20 transition-opacity duration-200"></div>
                             <div className="relative flex items-center gap-1.5">
                                 <Check className="w-4 h-4" />
-                                <span className="text-sm">적용하기</span>
+                                <span className="text-sm">확인하기</span>
                             </div>
                         </button>
 

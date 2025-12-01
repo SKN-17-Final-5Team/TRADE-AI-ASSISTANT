@@ -84,6 +84,7 @@ export default function DocumentCreationPage({
   const [activeShippingDoc, setActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
   const [hasMappedFields, setHasMappedFields] = useState(false);
   const [showConfirmBanner, setShowConfirmBanner] = useState(false);
+  const [reviewCompleted, setReviewCompleted] = useState(false);
 
   // New state for Upload vs Manual
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
@@ -369,16 +370,29 @@ export default function DocumentCreationPage({
     }
   };
 
-  const handleConfirmMapped = () => {
+  const handleConfirmMapped = async () => {
+    if (reviewCompleted) {
+      // If already reviewed, this is the final confirmation
+      handleFinalConfirm();
+    } else {
+      // First click: review all mapped fields (scroll through groups)
+      await editorRef.current?.reviewMappedFields();
+      setReviewCompleted(true);
+    }
+  };
+
+  const handleFinalConfirm = () => {
+    // Remove all highlights when user confirms
     editorRef.current?.confirmMappedData();
+
     setShowConfirmBanner(false);
     setHasMappedFields(false);
+    setReviewCompleted(false);
   };
 
   const handleDismissBanner = () => {
-    editorRef.current?.cancelMappedData();
     setShowConfirmBanner(false);
-    setHasMappedFields(false);
+    setReviewCompleted(false);
   };
 
   // Check for mapped fields on document entry
@@ -921,6 +935,7 @@ export default function DocumentCreationPage({
           onDismiss={handleDismissBanner}
           isChatOpen={isChatOpen}
           chatWidth={chatWidth}
+          reviewCompleted={reviewCompleted}
         />
       )}
 
