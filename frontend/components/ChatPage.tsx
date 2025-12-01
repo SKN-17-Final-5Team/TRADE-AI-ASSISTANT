@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Search, MessageCircle, FileText, TrendingUp, LogOut, User } from 'lucide-react';
+import { Send, Sparkles, Search, MessageCircle, FileText, TrendingUp, LogOut, User, Globe, Database, Wrench } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { PageType } from '../App';
 
 interface ChatPageProps {
@@ -9,12 +10,32 @@ interface ChatPageProps {
   onLogout: () => void;
 }
 
+interface ToolUsed {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
 interface Message {
   id: string;
   type: 'user' | 'ai' | 'search';
   content: string;
   timestamp: Date;
+  toolsUsed?: ToolUsed[];
 }
+
+// 툴 아이콘 매핑
+const getToolIcon = (iconName: string) => {
+  switch (iconName) {
+    case 'web':
+      return Globe;
+    case 'document':
+      return Database;
+    default:
+      return Wrench;
+  }
+};
 
 const suggestedQuestions = [
   {
@@ -92,6 +113,8 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
     }, 2000);
   };
 
+  const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
+
   const handleSend = async (customInput?: string) => {
     const messageToSend = customInput || input;
     if (!messageToSend.trim() || isLoading) return;
@@ -107,54 +130,40 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
     setInput('');
     setIsLoading(true);
 
-    const needsWebSearch = /최근|동향|현재|뉴스|트렌드/i.test(messageToSend);
+    try {
+      // Django 에이전트 API 호출
+      const response = await fetch(`${DJANGO_API_URL}/api/chat/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: messageToSend })
+      });
 
-    if (needsWebSearch) {
-      setTimeout(() => {
-        const searchMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          type: 'search',
-          content: '웹 검색을 통해 최신 정보를 찾고 있습니다...',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, searchMessage]);
+      if (!response.ok) {
+        throw new Error(`API 오류: ${response.status}`);
+      }
 
-        setTimeout(() => {
-          const aiResponse: Message = {
-            id: (Date.now() + 2).toString(),
-            type: 'ai',
-            content: `최근 무역 동향에 대한 정보입니다:\n\n• 2025년 글로벌 무역량은 전년 대비 3.2% 증가 예상\n• 디지털 무역 문서화가 빠르게 확산 중\n• 친환경 제품에 대한 수출입 규제 강화\n• 전자 신용장(e-LC) 사용이 증가하는 추세\n\n더 궁금하신 사항이 있으시면 말씀해주세요.`,
-            timestamp: new Date()
-          };
-          setMessages(prev => [...prev, aiResponse]);
-          setIsLoading(false);
-        }, 1500);
-      }, 800);
-    } else {
-      setTimeout(() => {
-        let response = '';
+      const data = await response.json();
 
-        if (/LC|신용장/i.test(messageToSend)) {
-          response = 'LC(Letter of Credit, 신용장)는 수입업자의 거래은행이 수출업자에게 대금 지급을 보증하는 문서입니다.\n\n주요 종류:\n• Irrevocable LC - 취소불능 신용장\n• Revocable LC - 취소가능 신용장\n• Confirmed LC - 확인 신용장\n\n신용장은 무역 거래의 안전성을 보장하는 중요한 결제 수단입니다.';
-        } else if (/BL|선하증권/i.test(messageToSend)) {
-          response = 'BL(Bill of Lading, 선하증권)은 운송인이 화물을 수령했다는 증거이자 물품 인도 청구권을 나타내는 유가증권입니다.\n\n주요 기능:\n• 화물 수령증\n• 운송 계약서\n• 물품 소유권 증서\n\n종류: Original BL, Sea Waybill, Surrender BL 등이 있습니다.';
-        } else if (/PI|Proforma Invoice/i.test(messageToSend)) {
-          response = 'PI(Proforma Invoice, 견적송장)는 정식 계약 전에 발행하는 견적서 형태의 송장입니다.\n\n주요 내용:\n• 상품 명세 및 수량\n• 단가 및 총액\n• 거래 조건\n• 유효 기간\n\nPI를 바탕으로 바이어가 구매를 결정하고 LC를 개설합니다.';
-        } else if (/작성|생성|도와/i.test(messageToSend)) {
-          response = '무역 문서 작성을 도와드리겠습니다!\n\n메인 페이지의 "문서 작성" 버튼을 클릭하시면 7단계 프로세스를 통해 체계적으로 문서를 작성할 수 있습니다.\n\n• 기존 문서 업로드 및 검토\n• AI 어시스턴트와 함께 직접 작성\n• 자동 양식 채우기\n• 오류 검토 및 수정 제안\n\n지금 시작해보시겠어요?';
-        } else {
-          response = `"${messageToSend}"에 대한 질문 감사합니다.\n\n무역 관련 더 구체적인 질문을 해주시면 상세한 답변을 드리겠습니다. 예를 들어:\n\n• 특정 무역 용어 설명 (LC, BL, PI 등)\n• 무역 문서 작성 방법\n• 최근 무역 동향\n• 수출입 절차\n\n어떤 것이 궁금하신가요?`;
-        }
+      const aiResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'ai',
+        content: data.message,
+        timestamp: new Date(),
+        toolsUsed: data.tools_used || []
+      };
+      setMessages(prev => [...prev, aiResponse]);
 
-        const aiResponse: Message = {
-          id: (Date.now() + 2).toString(),
-          type: 'ai',
-          content: response,
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiResponse]);
-        setIsLoading(false);
-      }, 1000);
+    } catch (error) {
+      console.error('API 호출 오류:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'ai',
+        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n서버가 실행 중인지 확인해주세요.`,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -222,7 +231,37 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
                     </div>
                   ) : (
                     <div className="bg-white border border-gray-200 rounded-2xl px-6 py-4 max-w-2xl shadow-sm">
-                      <p className="text-gray-800 whitespace-pre-wrap">{message.content}</p>
+                      {/* 사용된 툴 표시 */}
+                      {message.toolsUsed && message.toolsUsed.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-gray-100">
+                          {message.toolsUsed.map((tool) => {
+                            const IconComponent = getToolIcon(tool.icon);
+                            return (
+                              <div
+                                key={tool.id}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium"
+                                title={tool.description}
+                              >
+                                <IconComponent className="w-3 h-3" />
+                                <span>{tool.name}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="text-gray-800 prose prose-sm max-w-none prose-a:text-blue-600 prose-a:underline hover:prose-a:text-blue-800">
+                        <ReactMarkdown
+                          components={{
+                            a: ({ href, children }) => (
+                              <a href={href} target="_blank" rel="noopener noreferrer">
+                                {children}
+                              </a>
+                            ),
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   )}
                 </div>

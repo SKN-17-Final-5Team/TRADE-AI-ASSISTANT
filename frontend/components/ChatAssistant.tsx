@@ -53,8 +53,42 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+  const USE_DJANGO = import.meta.env.VITE_USE_DJANGO === 'true';
+  const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
 
-  // OpenAI API 호출 - 부분 수정 방식
+  // Django Agent API 호출
+  const callDjangoAgent = async (userMessage: string, documentContent: string): Promise<{
+    message: string;
+    updatedHTML?: string;
+    changes?: Change[];
+  }> => {
+    try {
+      const response = await fetch(`${DJANGO_API_URL}/api/chat/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          document: documentContent
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        message: data.message,
+        updatedHTML: data.html,
+        changes: data.changes
+      };
+    } catch (error) {
+      console.error('Django Agent API 오류:', error);
+      return { message: `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}` };
+    }
+  };
+
+  // OpenAI API 직접 호출 (테스트용)
   const callOpenAI = async (userMessage: string, documentContent: string): Promise<{
     message: string;
     updatedHTML?: string;
@@ -203,7 +237,9 @@ ${documentContent}
     setIsLoading(true);
 
     const documentContent = editorRef.current?.getContent() || '';
-    const response = await callOpenAI(currentInput, documentContent);
+    const response = USE_DJANGO
+      ? await callDjangoAgent(currentInput, documentContent)
+      : await callOpenAI(currentInput, documentContent);
 
     const aiMessage: Message = {
       id: (Date.now() + 1).toString(),

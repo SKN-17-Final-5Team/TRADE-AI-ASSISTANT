@@ -38,3 +38,18 @@ lerna-debug.log*
 
 # OS
 Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+*.egg-info/
+
+# Django
+*.sqlite3
+staticfiles/
+media/
