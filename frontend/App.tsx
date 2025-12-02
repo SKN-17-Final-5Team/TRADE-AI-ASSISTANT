@@ -22,6 +22,12 @@ export interface SavedDocument {
   status: 'completed' | 'in-progress';
   content?: DocumentData;
   lastStep?: number;
+  versions?: {
+    id: string;
+    timestamp: number;
+    data: DocumentData;
+    step: number;
+  }[];
 }
 
 function App() {
@@ -116,21 +122,78 @@ function App() {
   const handleSaveDocument = (data: DocumentData, step: number) => {
     const completedStepsCount = Object.keys(data).filter(k => k !== 'title').length;
     const progress = Math.round((completedStepsCount / 5) * 100);
+    const now = Date.now();
 
-    const newDoc: SavedDocument = {
-      id: Date.now().toString(),
-      name: data.title || 'Untitled Document',
-      date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
-      completedSteps: completedStepsCount, // Count steps with data
-      totalSteps: 5,
-      progress: progress,
-      status: progress === 100 ? 'completed' : 'in-progress',
-      content: data,
-      lastStep: step
+    // Check if we are updating an existing document (by title match for simplicity in this demo, or ID if we had it in context)
+    // For this demo, we'll assume we are always creating a "new" entry in the list or updating the top one if it matches.
+    // Ideally, we should pass the doc ID to handleSaveDocument.
+    // Let's try to find if a document with this title already exists at the top of the list (most recent).
+
+    // Create new version object
+    const newVersion = {
+      id: now.toString(),
+      timestamp: now,
+      data: { ...data },
+      step: step
     };
 
-    setSavedDocuments([newDoc, ...savedDocuments]);
-    // setCurrentPage('main'); // Prevent navigation on save
+    setSavedDocuments(prev => {
+      const existingDocIndex = prev.findIndex(d => d.name === (data.title || 'Untitled Document'));
+
+      if (existingDocIndex !== -1) {
+        // Update existing document
+        const updatedDocs = [...prev];
+        const existingDoc = updatedDocs[existingDocIndex];
+
+        updatedDocs[existingDocIndex] = {
+          ...existingDoc,
+          date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
+          completedSteps: completedStepsCount,
+          progress: progress,
+          status: progress === 100 ? 'completed' : 'in-progress',
+          content: data,
+          lastStep: step,
+          versions: [...(existingDoc.versions || []), newVersion]
+        };
+
+        // Move to top
+        updatedDocs.splice(existingDocIndex, 1);
+        updatedDocs.unshift(updatedDocs[existingDocIndex]); // Wait, this is buggy if I just removed it. 
+        // Correct logic: remove then unshift the modified object.
+        // Actually, let's just create a new array.
+        const docToMove = updatedDocs[existingDocIndex]; // This is undefined because I spliced it? No, I haven't spliced yet.
+        // Let's redo the logic cleanly.
+
+        const newDocs = prev.filter((_, i) => i !== existingDocIndex);
+        const updatedDoc: SavedDocument = {
+          ...prev[existingDocIndex],
+          date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
+          completedSteps: completedStepsCount,
+          progress: progress,
+          status: progress === 100 ? 'completed' : 'in-progress',
+          content: data,
+          lastStep: step,
+          versions: [...(prev[existingDocIndex].versions || []), newVersion]
+        };
+
+        return [updatedDoc, ...newDocs];
+      } else {
+        // Create new document
+        const newDoc: SavedDocument = {
+          id: now.toString(),
+          name: data.title || 'Untitled Document',
+          date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
+          completedSteps: completedStepsCount,
+          totalSteps: 5,
+          progress: progress,
+          status: progress === 100 ? 'completed' : 'in-progress',
+          content: data,
+          lastStep: step,
+          versions: [newVersion]
+        };
+        return [newDoc, ...prev];
+      }
+    });
   };
 
   // 컴포넌트 마운트 시 localStorage에서 인증 상태 복원
@@ -284,6 +347,18 @@ function App() {
           userEmployeeId={userEmail}
           onLogout={handleLogout}
           onSave={handleSaveDocument}
+          versions={savedDocuments.find(d => d.name === (documentData.title || 'Untitled Document'))?.versions || []}
+          onRestore={(version) => {
+            setDocumentData(prev => ({
+              ...prev,
+              [version.step]: version.data[version.step]
+            }));
+            // We don't need to set current step as we are already on it (filtered view), 
+            // but if we want to be safe or if we change filtering logic later:
+            if (currentStep !== version.step) {
+              setCurrentStep(version.step);
+            }
+          }}
         />
       )}
 

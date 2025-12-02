@@ -684,6 +684,13 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
         }, [])
 
         useEffect(() => {
+            if (editor && initialContent !== undefined && editor.getHTML() !== initialContent) {
+                // Force update content
+                editor.commands.setContent(initialContent);
+            }
+        }, [editor, initialContent]);
+
+        useEffect(() => {
             document.addEventListener('keydown', handleKeyDown)
             return () => {
                 document.removeEventListener('keydown', handleKeyDown)
