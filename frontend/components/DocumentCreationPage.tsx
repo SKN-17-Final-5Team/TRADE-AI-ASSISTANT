@@ -334,9 +334,10 @@ export default function DocumentCreationPage({
   };
 
   const handleSave = () => {
-    // Extract data before saving
+    // Extra  const handleSave = () => {
     if (editorRef.current) {
       const content = editorRef.current.getContent();
+
       const extractedData = extractData(content);
 
       // Merge with existing sharedData for this save operation

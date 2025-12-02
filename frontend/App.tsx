@@ -39,6 +39,7 @@ function App() {
   const [documentData, setDocumentData] = useState<DocumentData>({});
   const [transition, setTransition] = useState<TransitionType>('none');
   const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
+  const [docSessionId, setDocSessionId] = useState<string>(Date.now().toString());
 
   const handleNavigate = (page: PageType) => {
     if (page === 'main') {
@@ -50,9 +51,9 @@ function App() {
       // (handleOpenDocument sets the ID before navigating)
       if (!currentDocId) {
         setCurrentStep(1);
-        setCurrentStep(1);
         setDocumentData({});
         setCurrentActiveShippingDoc(null);
+        setDocSessionId(Date.now().toString()); // New session for new document
       }
     }
     setCurrentPage(page);
@@ -67,6 +68,7 @@ function App() {
     setCurrentStep(doc.lastStep || 1); // Resume from last step or default to 1
     const shippingDoc = doc.lastActiveShippingDoc || null;
     setCurrentActiveShippingDoc(shippingDoc);
+    setDocSessionId(Date.now().toString()); // New session for opened document
 
     // Use setTimeout to ensure state is set before navigation
     setTimeout(() => {
@@ -361,7 +363,7 @@ function App() {
       {/* 문서 페이지 */}
       {currentPage === 'documents' && (
         <DocumentCreationPage
-          key={currentDocId || 'new'}
+          key={docSessionId}
           currentStep={currentStep}
           setCurrentStep={setCurrentStep}
           documentData={documentData}
@@ -370,14 +372,12 @@ function App() {
           userEmployeeId={userEmail}
           onLogout={handleLogout}
           onSave={handleSaveDocument}
-          versions={savedDocuments.find(d => d.id === currentDocId)?.versions || []}
+          versions={currentDocId ? savedDocuments.find(d => d.id === currentDocId)?.versions : undefined}
           onRestore={(version) => {
             setDocumentData(prev => ({
               ...prev,
               [version.step]: version.data[version.step]
             }));
-            // We don't need to set current step as we are already on it (filtered view), 
-            // but if we want to be safe or if we change filtering logic later:
             if (currentStep !== version.step) {
               setCurrentStep(version.step);
             }
