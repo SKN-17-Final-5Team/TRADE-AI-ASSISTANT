@@ -11,6 +11,7 @@ from django.utils.decorators import method_decorator
 from agents import Runner
 from agents.items import ToolCallItem
 from agent_core.trade_agent import get_trade_agent
+from .config import PROMPT_VERSION, PROMPT_LABEL, USE_LANGFUSE
 
 
 # 툴 이름 → 표시 정보 매핑
@@ -95,8 +96,14 @@ class ChatView(APIView):
                 full_input = message
 
             # Agent 실행 (비동기 → 동기 변환)
+            # 환경 변수 기반 프롬프트 버전 사용
+            agent = get_trade_agent(
+                use_langfuse=USE_LANGFUSE,
+                prompt_version=PROMPT_VERSION,
+                prompt_label=PROMPT_LABEL
+            )
             result = asyncio.run(
-                Runner.run(get_trade_agent(), input=full_input)
+                Runner.run(agent, input=full_input)
             )
 
             # 사용된 툴 정보 추출
@@ -170,7 +177,13 @@ class ChatStreamView(View):
             seen_tools = set()
 
             try:
-                result = Runner.run_streamed(get_trade_agent(), input=full_input)
+                # 환경 변수 기반 프롬프트 버전 사용
+                agent = get_trade_agent(
+                    use_langfuse=USE_LANGFUSE,
+                    prompt_version=PROMPT_VERSION,
+                    prompt_label=PROMPT_LABEL
+                )
+                result = Runner.run_streamed(agent, input=full_input)
 
                 async for event in result.stream_events():
                     # 텍스트 델타 이벤트 처리
