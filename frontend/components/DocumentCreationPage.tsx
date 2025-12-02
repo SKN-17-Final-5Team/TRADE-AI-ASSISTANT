@@ -96,27 +96,39 @@ export default function DocumentCreationPage({
   // New state for Upload vs Manual
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
   const [uploadedFiles, setUploadedFiles] = useState<Record<number, File | null>>({});
+  const [uploadedFileNames, setUploadedFileNames] = useState<Record<number, string>>({});
 
   // Initialize stepModes based on existing documentData
   useEffect(() => {
-    setStepModes(prev => {
-      const newModes = { ...prev };
-      let changed = false;
+    // Restore stepModes if available
+    if (documentData.stepModes) {
+      setStepModes(prev => ({ ...prev, ...(documentData.stepModes as any) }));
+    } else {
+      // Fallback for legacy documents
+      setStepModes(prev => {
+        const newModes = { ...prev };
+        let changed = false;
 
-      // Check Offer Sheet (Step 1)
-      if (documentData[1] && !newModes[1]) {
-        newModes[1] = 'manual';
-        changed = true;
-      }
+        // Check Offer Sheet (Step 1)
+        if (documentData[1] && !newModes[1]) {
+          newModes[1] = 'manual';
+          changed = true;
+        }
 
-      // Check Sales Contract (Step 3)
-      if (documentData[3] && !newModes[3]) {
-        newModes[3] = 'manual';
-        changed = true;
-      }
+        // Check Sales Contract (Step 3)
+        if (documentData[3] && !newModes[3]) {
+          newModes[3] = 'manual';
+          changed = true;
+        }
 
-      return changed ? newModes : prev;
-    });
+        return changed ? newModes : prev;
+      });
+    }
+
+    // Restore uploaded file names
+    if (documentData.uploadedFileNames) {
+      setUploadedFileNames(documentData.uploadedFileNames as any);
+    }
   }, [documentData]);
 
   // Sync activeShippingDoc with prop when it changes (e.g. re-opening document)
@@ -353,7 +365,12 @@ export default function DocumentCreationPage({
       // Update local state first
       const updatedDocData = {
         ...documentData,
-        [saveKey]: content
+        [saveKey]: content,
+        stepModes: stepModes,
+        uploadedFileNames: Object.entries(uploadedFiles).reduce((acc, [key, file]) => {
+          if (file) acc[Number(key)] = file.name;
+          return acc;
+        }, {} as Record<number, string>)
       };
 
       // Also update all other documents with the latest shared data
@@ -646,12 +663,17 @@ export default function DocumentCreationPage({
       delete newFiles[step];
       return newFiles;
     });
+    setUploadedFileNames(prev => {
+      const newNames = { ...prev };
+      delete newNames[step];
+      return newNames;
+    });
   };
 
   // Helper to check completion status for a specific step index (1-based)
   const getStepCompletionStatus = (stepNumber: number) => {
     // Check for uploaded file first
-    if (uploadedFiles[stepNumber]) return true;
+    if (uploadedFiles[stepNumber] || uploadedFileNames[stepNumber]) return true;
 
     // Check for skip mode
     if (stepModes[stepNumber] === 'skip') return true;
@@ -659,7 +681,7 @@ export default function DocumentCreationPage({
     if (stepNumber <= 3) {
       // If mode is upload but no file, it's incomplete (handled by first check)
       // If mode is manual or null, check content
-      if (stepModes[stepNumber] === 'upload' && !uploadedFiles[stepNumber]) return false;
+      if (stepModes[stepNumber] === 'upload' && !uploadedFiles[stepNumber] && !uploadedFileNames[stepNumber]) return false;
 
       const stepContent = documentData[stepNumber] || hydrateTemplate(
         stepNumber === 1 ? offerSheetTemplateHTML :
@@ -792,6 +814,7 @@ export default function DocumentCreationPage({
     // 2. Upload UI
     if ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'upload') {
       const file = uploadedFiles[currentStep];
+      const fileName = file?.name || uploadedFileNames[currentStep];
 
       return (
         <div className="h-full flex flex-col p-4">
@@ -809,7 +832,7 @@ export default function DocumentCreationPage({
           </div>
 
           <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
-            {file ? (
+            {fileName ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -825,8 +848,8 @@ export default function DocumentCreationPage({
                     <Check className="w-6 h-6" />
                   </motion.div>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">{file.name}</h3>
-                <p className="text-gray-500 mb-8">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                <h3 className="text-2xl font-bold text-gray-800 mb-2">{fileName}</h3>
+                <p className="text-gray-500 mb-8">{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'Previously uploaded'}</p>
 
                 <button
                   onClick={() => removeUploadedFile(currentStep)}
@@ -1276,7 +1299,7 @@ export default function DocumentCreationPage({
                               exit={{ scale: 0, rotate: 180 }}
                             >
                               {/* Show Paperclip if uploaded, MinusCircle if skipped, otherwise Check */}
-                              {uploadedFiles[stepNumber] ? (
+                              {uploadedFiles[stepNumber] || uploadedFileNames[stepNumber] ? (
                                 <Paperclip className="w-4 h-4 text-white" />
                               ) : stepModes[stepNumber] === 'skip' ? (
                                 <MinusCircle className="w-4 h-4 text-white" />
