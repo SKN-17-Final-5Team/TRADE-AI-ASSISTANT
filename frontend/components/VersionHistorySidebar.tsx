@@ -32,9 +32,9 @@ export default function VersionHistorySidebar({
   // Update filter when sidebar opens or currentStep changes
   useEffect(() => {
     if (isOpen) {
-      setSelectedFilter(currentStep);
+      setSelectedFilter('all');
     }
-  }, [isOpen, currentStep]);
+  }, [isOpen]);
 
   // Close filter dropdown when clicking outside
   useEffect(() => {
