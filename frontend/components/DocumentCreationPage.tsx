@@ -48,9 +48,10 @@ interface DocumentCreationPageProps {
   onNavigate: (page: PageType) => void;
   userEmployeeId: string;
   onLogout: () => void;
-  onSave: (data: DocumentData, step: number) => void;
+  onSave: (data: DocumentData, step: number, activeShippingDoc?: 'CI' | 'PL' | null) => void;
   versions?: Version[];
   onRestore?: (version: Version) => void;
+  initialActiveShippingDoc?: 'CI' | 'PL' | null;
 }
 
 export default function DocumentCreationPage({
@@ -63,7 +64,8 @@ export default function DocumentCreationPage({
   onLogout,
   onSave,
   versions = [],
-  onRestore
+  onRestore,
+  initialActiveShippingDoc
 }: DocumentCreationPageProps) {
   const editorRef = useRef<ContractEditorRef>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -86,7 +88,7 @@ export default function DocumentCreationPage({
 
   const [sharedData, setSharedData] = useState<Record<string, string>>({});
   const [shippingOrder, setShippingOrder] = useState<('CI' | 'PL')[] | null>(null);
-  const [activeShippingDoc, setActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
+  const [activeShippingDoc, setActiveShippingDoc] = useState<'CI' | 'PL' | null>(initialActiveShippingDoc || null);
   const [hasMappedFields, setHasMappedFields] = useState(false);
   const [showConfirmBanner, setShowConfirmBanner] = useState(false);
   const [reviewCompleted, setReviewCompleted] = useState(false);
@@ -116,6 +118,11 @@ export default function DocumentCreationPage({
       return changed ? newModes : prev;
     });
   }, [documentData]);
+
+  // Sync activeShippingDoc with prop when it changes (e.g. re-opening document)
+  useEffect(() => {
+    setActiveShippingDoc(initialActiveShippingDoc || null);
+  }, [initialActiveShippingDoc]);
 
   // Download Modal State
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -356,11 +363,11 @@ export default function DocumentCreationPage({
         const docKey = Number(key);
         if (isNaN(docKey) || key === 'title') return;
 
-        const originalContent = updatedDocData[docKey];
+        const originalContent = (updatedDocData as any)[key];
         if (typeof originalContent === 'string') {
           const newContent = updateContentWithData(originalContent, currentSharedData);
           if (newContent !== originalContent) {
-            updatedDocData[docKey] = newContent;
+            (updatedDocData as any)[key] = newContent;
             updatedModifiedSteps.add(docKey);
           }
         }
@@ -370,9 +377,9 @@ export default function DocumentCreationPage({
       setModifiedSteps(updatedModifiedSteps);
 
       // Then call parent save
-      onSave(updatedDocData, saveKey !== -1 ? saveKey : currentStep);
+      onSave(updatedDocData, saveKey !== -1 ? saveKey : currentStep, activeShippingDoc);
     } else {
-      onSave(documentData, currentStep);
+      onSave(documentData, currentStep, activeShippingDoc);
     }
     setIsDirty(false);
     setShowSaveSuccessModal(true);

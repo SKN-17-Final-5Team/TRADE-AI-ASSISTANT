@@ -22,6 +22,7 @@ export interface SavedDocument {
   status: 'completed' | 'in-progress';
   content?: DocumentData;
   lastStep?: number;
+  lastActiveShippingDoc?: 'CI' | 'PL' | null;
   versions?: {
     id: string;
     timestamp: number;
@@ -49,7 +50,9 @@ function App() {
       // (handleOpenDocument sets the ID before navigating)
       if (!currentDocId) {
         setCurrentStep(1);
+        setCurrentStep(1);
         setDocumentData({});
+        setCurrentActiveShippingDoc(null);
       }
     }
     setCurrentPage(page);
@@ -62,7 +65,13 @@ function App() {
       setDocumentData(doc.content);
     }
     setCurrentStep(doc.lastStep || 1); // Resume from last step or default to 1
-    setCurrentPage('documents');
+    const shippingDoc = doc.lastActiveShippingDoc || null;
+    setCurrentActiveShippingDoc(shippingDoc);
+
+    // Use setTimeout to ensure state is set before navigation
+    setTimeout(() => {
+      setCurrentPage('documents');
+    }, 0);
   };
 
   // 로고 클릭으로 채팅 열기 (확장 애니메이션)
@@ -99,9 +108,9 @@ function App() {
       id: '1',
       name: 'Samsung Electronics - Offer Sheet',
       date: '2025.11.20',
-      completedSteps: 1, // Changed from 4 to 1
-      totalSteps: 6,
-      progress: 17, // Changed from 67 to 17
+      completedSteps: 1,
+      totalSteps: 5,
+      progress: 20,
       status: 'in-progress',
       content: {}
     },
@@ -110,9 +119,9 @@ function App() {
       name: 'LG Display - Complete Set',
       date: '2025.11.18',
       completedSteps: 5,
-      totalSteps: 6,
-      progress: 83,
-      status: 'in-progress',
+      totalSteps: 5,
+      progress: 100,
+      status: 'completed',
       content: {}
     },
     {
@@ -120,8 +129,8 @@ function App() {
       name: 'Hyundai Motors - PI & SC',
       date: '2025.11.15',
       completedSteps: 2,
-      totalSteps: 6,
-      progress: 33,
+      totalSteps: 5,
+      progress: 40,
       status: 'in-progress',
       content: {}
     }
@@ -129,14 +138,24 @@ function App() {
 
   // Track the ID of the document currently being edited
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
+  const [currentActiveShippingDoc, setCurrentActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
 
-  const handleSaveDocument = (data: DocumentData, step: number) => {
+  const handleSaveDocument = (data: DocumentData, step: number, activeShippingDoc?: 'CI' | 'PL' | null) => {
+    // Update currentActiveShippingDoc if provided
+    if (activeShippingDoc) {
+      setCurrentActiveShippingDoc(activeShippingDoc);
+    }
+
+    // Normalize step to visual step (1-4), not docKey (1-5)
+    // If step is 5 (PL docKey), it should be saved as step 4
+    const visualStep = step > 4 ? 4 : step;
+
     const completedStepsCount = Object.keys(data)
       .filter(k => k !== 'title')
       .map(Number)
-      .filter(step => step >= 1 && step <= 6)
+      .filter(step => step >= 1 && step <= 5)
       .length;
-    const progress = Math.round((completedStepsCount / 6) * 100);
+    const progress = Math.round((completedStepsCount / 5) * 100);
     const now = Date.now();
 
     // Determine the document ID to use
@@ -151,7 +170,7 @@ function App() {
       id: now.toString(),
       timestamp: now,
       data: { ...data },
-      step: step
+      step: visualStep  // Use visualStep for version history
     };
 
     setSavedDocuments(prev => {
@@ -166,10 +185,12 @@ function App() {
           name: data.title || 'Untitled Document',
           date: new Date().toLocaleDateString('ko-KR').replace(/\. /g, '.').slice(0, -1),
           completedSteps: completedStepsCount,
+          totalSteps: 5,
           progress: progress,
           status: progress === 100 ? 'completed' : 'in-progress',
           content: data,
-          lastStep: step,
+          lastStep: visualStep,  // Use visualStep
+          lastActiveShippingDoc: activeShippingDoc || existingDoc.lastActiveShippingDoc,
           versions: [newVersion, ...(existingDoc.versions || [])]
         };
 
@@ -184,11 +205,12 @@ function App() {
           name: data.title || 'Untitled Document',
           date: new Date().toLocaleDateString('ko-KR').replace(/\. /g, '.').slice(0, -1),
           completedSteps: completedStepsCount,
-          totalSteps: 6,
+          totalSteps: 5,
           progress: progress,
           status: 'in-progress',
           content: data,
-          lastStep: step,
+          lastStep: visualStep,  // Use visualStep
+          lastActiveShippingDoc: activeShippingDoc || null,
           versions: [newVersion]
         };
         return [newDoc, ...prev];
@@ -339,6 +361,7 @@ function App() {
       {/* 문서 페이지 */}
       {currentPage === 'documents' && (
         <DocumentCreationPage
+          key={currentDocId || 'new'}
           currentStep={currentStep}
           setCurrentStep={setCurrentStep}
           documentData={documentData}
@@ -359,6 +382,7 @@ function App() {
               setCurrentStep(version.step);
             }
           }}
+          initialActiveShippingDoc={currentActiveShippingDoc}
         />
       )}
 
