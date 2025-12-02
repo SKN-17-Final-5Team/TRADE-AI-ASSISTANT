@@ -29,10 +29,18 @@ export default function VersionHistorySidebar({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
-  // Update filter when sidebar opens or currentStep changes
+  // Update filter when sidebar opens
   useEffect(() => {
     if (isOpen) {
-      setSelectedFilter('all');
+      if (versions.length > 0) {
+        // Find the most recent version
+        const lastVersion = versions.reduce((prev, current) =>
+          (prev.timestamp > current.timestamp) ? prev : current
+        );
+        setSelectedFilter(lastVersion.step);
+      } else {
+        setSelectedFilter('all');
+      }
     }
   }, [isOpen]);
 
@@ -72,26 +80,25 @@ export default function VersionHistorySidebar({
   const getTemplateName = (step: number) => {
     switch (step) {
       case 1: return 'Offer Sheet';
-      case 3: return 'Proforma Invoice (PI)';
-      case 4: return 'Sales Contract';
-      case 5: return 'COMMERCIAL INVOICE';
-      case 6: return 'PACKING LIST';
+      case 2: return 'Proforma Invoice (PI)';
+      case 3: return 'Sales Contract';
+      case 4: return 'Commercial Invoice';
+      case 5: return 'Packing List';
       default: return 'Unknown Document';
     }
   };
 
-  const filteredVersions = versions.filter(v => {
-    if (selectedFilter === 'all') return true;
-    return v.step === selectedFilter;
-  });
+  const filteredVersions = versions
+    .filter(v => selectedFilter === 'all' || v.step === selectedFilter)
+    .sort((a, b) => b.timestamp - a.timestamp);
 
   const filterOptions = [
     { value: 'all', label: '전체 문서 보기' },
     { value: 1, label: 'Offer Sheet' },
-    { value: 3, label: 'Proforma Invoice (PI)' },
-    { value: 4, label: 'Sales Contract' },
-    { value: 5, label: 'COMMERCIAL INVOICE' },
-    { value: 6, label: 'PACKING LIST' }
+    { value: 2, label: 'Proforma Invoice (PI)' },
+    { value: 3, label: 'Sales Contract' },
+    { value: 4, label: 'Commercial Invoice' },
+    { value: 5, label: 'Packing List' }
   ];
 
   const currentFilterLabel = filterOptions.find(o => o.value === selectedFilter)?.label;

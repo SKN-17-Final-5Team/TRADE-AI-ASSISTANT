@@ -40,15 +40,23 @@ function App() {
   const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
 
   const handleNavigate = (page: PageType) => {
+    if (page === 'main') {
+      setCurrentDocId(null);
+    }
+
     if (page === 'documents') {
-      // New Document: Reset state
-      setCurrentStep(0);
-      setDocumentData({});
+      // If we are navigating to documents and don't have an ID, it's a new document
+      // (handleOpenDocument sets the ID before navigating)
+      if (!currentDocId) {
+        setCurrentStep(1);
+        setDocumentData({});
+      }
     }
     setCurrentPage(page);
   };
 
   const handleOpenDocument = (doc: SavedDocument) => {
+    setCurrentDocId(doc.id);
     // Resume Document: Load content and go to Step 1
     if (doc.content) {
       setDocumentData(doc.content);
@@ -91,9 +99,9 @@ function App() {
       id: '1',
       name: 'Samsung Electronics - Offer Sheet',
       date: '2025.11.20',
-      completedSteps: 4,
-      totalSteps: 5,
-      progress: 57,
+      completedSteps: 1, // Changed from 4 to 1
+      totalSteps: 6,
+      progress: 17, // Changed from 67 to 17
       status: 'in-progress',
       content: {}
     },
@@ -102,9 +110,9 @@ function App() {
       name: 'LG Display - Complete Set',
       date: '2025.11.18',
       completedSteps: 5,
-      totalSteps: 5,
-      progress: 100,
-      status: 'completed',
+      totalSteps: 6,
+      progress: 83,
+      status: 'in-progress',
       content: {}
     },
     {
@@ -112,22 +120,31 @@ function App() {
       name: 'Hyundai Motors - PI & SC',
       date: '2025.11.15',
       completedSteps: 2,
-      totalSteps: 5,
-      progress: 28,
+      totalSteps: 6,
+      progress: 33,
       status: 'in-progress',
       content: {}
     }
   ]);
 
+  // Track the ID of the document currently being edited
+  const [currentDocId, setCurrentDocId] = useState<string | null>(null);
+
   const handleSaveDocument = (data: DocumentData, step: number) => {
-    const completedStepsCount = Object.keys(data).filter(k => k !== 'title').length;
-    const progress = Math.round((completedStepsCount / 5) * 100);
+    const completedStepsCount = Object.keys(data)
+      .filter(k => k !== 'title')
+      .map(Number)
+      .filter(step => step >= 1 && step <= 6)
+      .length;
+    const progress = Math.round((completedStepsCount / 6) * 100);
     const now = Date.now();
 
-    // Check if we are updating an existing document (by title match for simplicity in this demo, or ID if we had it in context)
-    // For this demo, we'll assume we are always creating a "new" entry in the list or updating the top one if it matches.
-    // Ideally, we should pass the doc ID to handleSaveDocument.
-    // Let's try to find if a document with this title already exists at the top of the list (most recent).
+    // Determine the document ID to use
+    let docId = currentDocId;
+    if (!docId) {
+      docId = now.toString();
+      setCurrentDocId(docId);
+    }
 
     // Create new version object
     const newVersion = {
@@ -138,55 +155,38 @@ function App() {
     };
 
     setSavedDocuments(prev => {
-      const existingDocIndex = prev.findIndex(d => d.name === (data.title || 'Untitled Document'));
+      const existingDocIndex = prev.findIndex(d => d.id === docId);
 
       if (existingDocIndex !== -1) {
         // Update existing document
-        const updatedDocs = [...prev];
-        const existingDoc = updatedDocs[existingDocIndex];
+        const existingDoc = prev[existingDocIndex];
 
-        updatedDocs[existingDocIndex] = {
-          ...existingDoc,
-          date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
-          completedSteps: completedStepsCount,
-          progress: progress,
-          status: progress === 100 ? 'completed' : 'in-progress',
-          content: data,
-          lastStep: step,
-          versions: [...(existingDoc.versions || []), newVersion]
-        };
-
-        // Move to top
-        updatedDocs.splice(existingDocIndex, 1);
-        updatedDocs.unshift(updatedDocs[existingDocIndex]); // Wait, this is buggy if I just removed it. 
-        // Correct logic: remove then unshift the modified object.
-        // Actually, let's just create a new array.
-        const docToMove = updatedDocs[existingDocIndex]; // This is undefined because I spliced it? No, I haven't spliced yet.
-        // Let's redo the logic cleanly.
-
-        const newDocs = prev.filter((_, i) => i !== existingDocIndex);
         const updatedDoc: SavedDocument = {
-          ...prev[existingDocIndex],
-          date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
+          ...existingDoc,
+          name: data.title || 'Untitled Document',
+          date: new Date().toLocaleDateString('ko-KR').replace(/\. /g, '.').slice(0, -1),
           completedSteps: completedStepsCount,
           progress: progress,
           status: progress === 100 ? 'completed' : 'in-progress',
           content: data,
           lastStep: step,
-          versions: [...(prev[existingDocIndex].versions || []), newVersion]
+          versions: [newVersion, ...(existingDoc.versions || [])]
         };
 
-        return [updatedDoc, ...newDocs];
+        // Move updated doc to top
+        const finalDocs = prev.filter(d => d.id !== docId);
+        finalDocs.unshift(updatedDoc);
+        return finalDocs;
       } else {
         // Create new document
         const newDoc: SavedDocument = {
-          id: now.toString(),
+          id: docId!, // We know docId is set
           name: data.title || 'Untitled Document',
-          date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
+          date: new Date().toLocaleDateString('ko-KR').replace(/\. /g, '.').slice(0, -1),
           completedSteps: completedStepsCount,
-          totalSteps: 5,
+          totalSteps: 6,
           progress: progress,
-          status: progress === 100 ? 'completed' : 'in-progress',
+          status: 'in-progress',
           content: data,
           lastStep: step,
           versions: [newVersion]
@@ -347,7 +347,7 @@ function App() {
           userEmployeeId={userEmail}
           onLogout={handleLogout}
           onSave={handleSaveDocument}
-          versions={savedDocuments.find(d => d.name === (documentData.title || 'Untitled Document'))?.versions || []}
+          versions={savedDocuments.find(d => d.id === currentDocId)?.versions || []}
           onRestore={(version) => {
             setDocumentData(prev => ({
               ...prev,

@@ -82,12 +82,7 @@ export default function DocumentCreationPage({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
   // Track which steps have been actually modified or already existed
-  const [modifiedSteps, setModifiedSteps] = useState<Set<number>>(() => {
-    const initialSteps = Object.keys(documentData)
-      .filter(k => k !== 'title')
-      .map(Number);
-    return new Set(initialSteps);
-  });
+  const [modifiedSteps, setModifiedSteps] = useState<Set<number>>(new Set());
 
   const [sharedData, setSharedData] = useState<Record<string, string>>({});
   const [shippingOrder, setShippingOrder] = useState<('CI' | 'PL')[] | null>(null);
@@ -99,6 +94,28 @@ export default function DocumentCreationPage({
   // New state for Upload vs Manual
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
   const [uploadedFiles, setUploadedFiles] = useState<Record<number, File | null>>({});
+
+  // Initialize stepModes based on existing documentData
+  useEffect(() => {
+    setStepModes(prev => {
+      const newModes = { ...prev };
+      let changed = false;
+
+      // Check Offer Sheet (Step 1)
+      if (documentData[1] && !newModes[1]) {
+        newModes[1] = 'manual';
+        changed = true;
+      }
+
+      // Check Sales Contract (Step 3)
+      if (documentData[3] && !newModes[3]) {
+        newModes[3] = 'manual';
+        changed = true;
+      }
+
+      return changed ? newModes : prev;
+    });
+  }, [documentData]);
 
   // Download Modal State
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -168,7 +185,7 @@ export default function DocumentCreationPage({
   };
 
   // Helper to extract data from current content
-  const extractData = (content: string) => {
+  const extractData = (content: string): Record<string, string> => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(content, 'text/html');
     const fields = doc.querySelectorAll('span[data-field-id]');
@@ -187,10 +204,11 @@ export default function DocumentCreationPage({
     if (Object.keys(newData).length > 0) {
       setSharedData(prev => ({ ...prev, ...newData }));
     }
+    return newData;
   };
 
   // Helper to update existing content with latest shared data
-  const updateContentWithSharedData = (content: string) => {
+  const updateContentWithData = (content: string, data: Record<string, string>) => {
     if (!content) return '';
 
     const parser = new DOMParser();
@@ -200,11 +218,11 @@ export default function DocumentCreationPage({
     let modified = false;
     fields.forEach(field => {
       const key = field.getAttribute('data-field-id');
-      if (key && sharedData[key]) {
+      if (key && data[key]) {
         // If the field content is different from sharedData (and sharedData is not empty), update it
         // Also update if the field is currently a placeholder
-        if (field.textContent !== sharedData[key]) {
-          field.textContent = sharedData[key];
+        if (field.textContent !== data[key]) {
+          field.textContent = data[key];
           // Mark as mapped since it's coming from shared data
           field.setAttribute('data-source', 'mapped');
           modified = true;
@@ -213,6 +231,11 @@ export default function DocumentCreationPage({
     });
 
     return modified ? doc.body.innerHTML : content;
+  };
+
+  // Wrapper for existing usage that relies on state
+  const updateContentWithSharedData = (content: string) => {
+    return updateContentWithData(content, sharedData);
   };
 
   // Helper to check if a step is complete (all placeholders filled)
@@ -245,7 +268,7 @@ export default function DocumentCreationPage({
       // Determine save key
       let saveKey = -1;
       if (currentStep <= 3) saveKey = currentStep;
-      else if (shippingOrder) {
+      else {
         saveKey = getDocKeyForStep(currentStep);
       }
 
@@ -307,23 +330,47 @@ export default function DocumentCreationPage({
     // Extract data before saving
     if (editorRef.current) {
       const content = editorRef.current.getContent();
-      extractData(content);
+      const extractedData = extractData(content);
+
+      // Merge with existing sharedData for this save operation
+      // Note: We use this merged data to update other documents immediately
+      const currentSharedData = { ...sharedData, ...extractedData };
 
       let saveKey = -1;
       if (currentStep <= 3) saveKey = currentStep;
-      else if (shippingOrder) {
+      else {
         saveKey = getDocKeyForStep(currentStep);
       }
 
       // Update local state first
-      const newDocData = {
+      const updatedDocData = {
         ...documentData,
         [saveKey]: content
       };
-      setDocumentData(newDocData);
+
+      // Also update all other documents with the latest shared data
+      const updatedModifiedSteps = new Set(modifiedSteps);
+      updatedModifiedSteps.add(saveKey); // Always mark current as modified
+
+      Object.keys(updatedDocData).forEach(key => {
+        const docKey = Number(key);
+        if (isNaN(docKey) || key === 'title') return;
+
+        const originalContent = updatedDocData[docKey];
+        if (typeof originalContent === 'string') {
+          const newContent = updateContentWithData(originalContent, currentSharedData);
+          if (newContent !== originalContent) {
+            updatedDocData[docKey] = newContent;
+            updatedModifiedSteps.add(docKey);
+          }
+        }
+      });
+
+      setDocumentData(updatedDocData);
+      setModifiedSteps(updatedModifiedSteps);
 
       // Then call parent save
-      onSave(newDocData, currentStep); // Note: onSave might need update if it relies on step number strictly
+      onSave(updatedDocData, saveKey !== -1 ? saveKey : currentStep);
     } else {
       onSave(documentData, currentStep);
     }
@@ -1030,6 +1077,18 @@ export default function DocumentCreationPage({
           if (onRestore) {
             onRestore(version);
             setShowVersionHistory(false);
+
+            // Navigate to the restored step
+            const step = version.step;
+            if (step <= 3) {
+              setCurrentStep(step);
+              // Also ensure mode is manual if it was skipped/upload
+              setStepModes(prev => ({ ...prev, [step]: 'manual' }));
+            } else {
+              setCurrentStep(4);
+              if (step === 4) setActiveShippingDoc('CI');
+              if (step === 5) setActiveShippingDoc('PL');
+            }
           }
         }}
       />
@@ -1553,10 +1612,17 @@ export default function DocumentCreationPage({
                       .filter(stepIndex => modifiedSteps.has(stepIndex)) // Only show modified steps
                       .sort((a, b) => a - b) // Sort by step number
                       .map((stepIndex) => {
+                        const documentNames: Record<number, string> = {
+                          1: 'Offer Sheet',
+                          2: 'Proforma Invoice (PI)',
+                          3: 'Sales Contract',
+                          4: 'Commercial Invoice',
+                          5: 'Packing List'
+                        };
                         return (
                           <div key={stepIndex} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/50 transition-colors">
                             <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                            <span className="text-sm text-gray-700 font-medium">{stepShortNames[stepIndex - 1]}</span>
+                            <span className="text-sm text-gray-700 font-medium">{documentNames[stepIndex] || `Document ${stepIndex}`}</span>
                           </div>
                         );
                       })}
@@ -1642,52 +1708,61 @@ export default function DocumentCreationPage({
                 {Object.keys(documentData)
                   .filter(k => k !== 'title')
                   .map(Number)
-                  .filter(step => documentData[step] && typeof documentData[step] === 'string' && documentData[step].length > 0)
+                  .filter(step => step > 0 && documentData[step] && typeof documentData[step] === 'string' && documentData[step].length > 0)
                   .sort((a, b) => a - b)
-                  .map((stepIndex) => (
-                    <div
-                      key={stepIndex}
-                      onClick={() => {
-                        const newSet = new Set(selectedDownloadSteps);
-                        if (newSet.has(stepIndex)) newSet.delete(stepIndex);
-                        else newSet.add(stepIndex);
-                        setSelectedDownloadSteps(newSet);
-                      }}
-                      className={`
+                  .map((stepIndex) => {
+                    const documentNames: Record<number, string> = {
+                      1: 'Offer Sheet',
+                      2: 'Proforma Invoice (PI)',
+                      3: 'Sales Contract',
+                      4: 'Commercial Invoice',
+                      5: 'Packing List'
+                    };
+                    return (
+                      <div
+                        key={stepIndex}
+                        onClick={() => {
+                          const newSet = new Set(selectedDownloadSteps);
+                          if (newSet.has(stepIndex)) newSet.delete(stepIndex);
+                          else newSet.add(stepIndex);
+                          setSelectedDownloadSteps(newSet);
+                        }}
+                        className={`
                         flex items-center p-3.5 rounded-xl border cursor-pointer transition-all duration-200 group relative overflow-hidden
                         ${selectedDownloadSteps.has(stepIndex)
-                          ? 'bg-blue-50/50 border-blue-200 shadow-sm'
-                          : 'bg-white/60 border-gray-200 hover:border-blue-300 hover:bg-white/80 hover:shadow-md'}
+                            ? 'bg-blue-50/50 border-blue-200 shadow-sm'
+                            : 'bg-white/60 border-gray-200 hover:border-blue-300 hover:bg-white/80 hover:shadow-md'}
                       `}
-                    >
-                      <div className={`
+                      >
+                        <div className={`
                         w-5 h-5 rounded-md border flex items-center justify-center mr-3.5 transition-all duration-200 relative z-10
                         ${selectedDownloadSteps.has(stepIndex)
-                          ? 'bg-blue-600 border-blue-600 shadow-sm scale-110'
-                          : 'border-gray-300 bg-white group-hover:border-blue-400'}
+                            ? 'bg-blue-600 border-blue-600 shadow-sm scale-110'
+                            : 'border-gray-300 bg-white group-hover:border-blue-400'}
                       `}>
-                        {selectedDownloadSteps.has(stepIndex) && <Check className="w-3.5 h-3.5 text-white" />}
-                      </div>
-                      <div className="flex-1 relative z-10">
-                        <p className={`text-sm font-semibold transition-colors ${selectedDownloadSteps.has(stepIndex) ? 'text-blue-900' : 'text-gray-700 group-hover:text-gray-900'}`}>
-                          {stepShortNames[stepIndex - 1] || `Step ${stepIndex}`}
-                        </p>
-                      </div>
-                      <div className={`
+                          {selectedDownloadSteps.has(stepIndex) && <Check className="w-3.5 h-3.5 text-white" />}
+                        </div>
+                        <div className="flex-1 relative z-10">
+                          <p className={`text-sm font-semibold transition-colors ${selectedDownloadSteps.has(stepIndex) ? 'text-blue-900' : 'text-gray-700 group-hover:text-gray-900'}`}>
+                            {documentNames[stepIndex] || `Document ${stepIndex}`}
+                          </p>
+                        </div>
+                        <div className={`
                         w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-200 relative z-10
                         ${selectedDownloadSteps.has(stepIndex)
-                          ? 'bg-white border-blue-100 text-blue-600 shadow-sm'
-                          : 'bg-gray-50 border-gray-100 text-gray-400 group-hover:bg-white group-hover:border-blue-100 group-hover:text-blue-500'}
+                            ? 'bg-white border-blue-100 text-blue-600 shadow-sm'
+                            : 'bg-gray-50 border-gray-100 text-gray-400 group-hover:bg-white group-hover:border-blue-100 group-hover:text-blue-500'}
                       `}>
-                        <FileText className="w-4 h-4" />
-                      </div>
+                          <FileText className="w-4 h-4" />
+                        </div>
 
-                      {/* Selection Highlight */}
-                      {selectedDownloadSteps.has(stepIndex) && (
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 pointer-events-none" />
-                      )}
-                    </div>
-                  ))}
+                        {/* Selection Highlight */}
+                        {selectedDownloadSteps.has(stepIndex) && (
+                          <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 pointer-events-none" />
+                        )}
+                      </div>
+                    );
+                  })}
 
                 {Object.keys(documentData).filter(k => k !== 'title' && documentData[k]).length === 0 && (
                   <div className="text-center py-12">
