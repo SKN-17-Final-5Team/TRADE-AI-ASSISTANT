@@ -19,7 +19,9 @@ import {
   File,
   MinusCircle,
   Ban,
-  Package
+  Package,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -92,6 +94,7 @@ export default function DocumentCreationPage({
   const [hasMappedFields, setHasMappedFields] = useState(false);
   const [showConfirmBanner, setShowConfirmBanner] = useState(false);
   const [reviewCompleted, setReviewCompleted] = useState(false);
+  const [isStepIndicatorVisible, setIsStepIndicatorVisible] = useState(true);
 
   // New state for Upload vs Manual
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
@@ -738,6 +741,55 @@ export default function DocumentCreationPage({
     }
   }
 
+  const renderStepHeaderControls = () => {
+    // Back to Selection Button (Only for Step 1 & 3 in Manual Mode)
+    if ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'manual') {
+      return (
+        <div className="px-8 pb-4 flex-shrink-0">
+          <button
+            onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: null }))}
+            className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="font-medium">작성 방식 다시 선택하기</span>
+          </button>
+        </div>
+      );
+    }
+
+    // Quick Switcher for Shipping Documents (Step 4)
+    if (currentStep === 4 && activeShippingDoc) {
+      return (
+        <div className="px-8 pb-4 flex justify-center">
+          <div className="bg-gray-100 p-1.5 rounded-full flex items-center shadow-inner gap-1">
+            <button
+              onClick={() => setActiveShippingDoc('CI')}
+              className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'CI'
+                ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                }`}
+            >
+              <FileText className="w-4 h-4" />
+              Commercial Invoice
+            </button>
+            <button
+              onClick={() => setActiveShippingDoc('PL')}
+              className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'PL'
+                ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                }`}
+            >
+              <Package className="w-4 h-4" />
+              Packing List
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const renderStepContent = () => {
     // 0. Initial Empty State
     if (currentStep === 0) {
@@ -1027,46 +1079,6 @@ export default function DocumentCreationPage({
     // 4. Default Editor (Manual Entry)
     return (
       <div className="flex flex-col h-full">
-        {/* Back to Selection Button (Only for Step 1 & 3 in Manual Mode) */}
-        {(currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'manual' && (
-          <div className="mb-4 flex-shrink-0">
-            <button
-              onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: null }))}
-              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="font-medium">작성 방식 다시 선택하기</span>
-            </button>
-          </div>
-        )}
-
-        {/* Quick Switcher for Shipping Documents (Step 4) */}
-        {currentStep === 4 && activeShippingDoc && (
-          <div className="flex justify-center mb-6">
-            <div className="bg-gray-100 p-1.5 rounded-full flex items-center shadow-inner gap-1">
-              <button
-                onClick={() => setActiveShippingDoc('CI')}
-                className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'CI'
-                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                  }`}
-              >
-                <FileText className="w-4 h-4" />
-                Commercial Invoice
-              </button>
-              <button
-                onClick={() => setActiveShippingDoc('PL')}
-                className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'PL'
-                  ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                  }`}
-              >
-                <Package className="w-4 h-4" />
-                Packing List
-              </button>
-            </div>
-          </div>
-        )}
 
         <ContractEditor
           key={`${currentStep}-${activeShippingDoc || 'default'}`}
@@ -1244,143 +1256,169 @@ export default function DocumentCreationPage({
       </header>
 
       {/* Main Content - Split Layout (includes tabs and editor) */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex min-h-0">
         {/* Left side: Tabs + Editor */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0">
           {/* Tab Navigation */}
-          <div className="px-8 py-4 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm flex-shrink-0 z-10 relative">
-            <div className="max-w-6xl mx-auto relative">
-              {/* Progress Line Background */}
-              <div
-                className="absolute top-[15px] h-1 bg-gray-200 rounded-full overflow-hidden"
-                style={{
-                  left: `calc(100% / ${stepShortNames.length * 2})`,
-                  width: `calc(100% * ${(stepShortNames.length - 1) / stepShortNames.length})`
-                }}
-              >
-                {/* Animated Progress Line */}
-                <motion.div
-                  className="h-full bg-gradient-to-r from-blue-500 to-indigo-600"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${((maxProgressStep - 1) / (stepShortNames.length - 1)) * 100}%` }}
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                />
-              </div>
+          <motion.div
+            initial={false}
+            animate={{
+              height: isStepIndicatorVisible ? 'auto' : 0,
+              opacity: isStepIndicatorVisible ? 1 : 0
+            }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm flex-shrink-0 z-10 relative overflow-hidden"
+          >
+            <div className="px-8 py-4">
+              <div className="max-w-6xl mx-auto relative">
+                {/* Progress Line Background */}
+                <div
+                  className="absolute top-[15px] h-1 bg-gray-200 rounded-full overflow-hidden"
+                  style={{
+                    left: `calc(100% / ${stepShortNames.length * 2})`,
+                    width: `calc(100% * ${(stepShortNames.length - 1) / stepShortNames.length})`
+                  }}
+                >
+                  {/* Animated Progress Line */}
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-blue-500 to-indigo-600"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${((maxProgressStep - 1) / (stepShortNames.length - 1)) * 100}%` }}
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  />
+                </div>
 
-              <div
-                className="grid items-center relative"
-                style={{ gridTemplateColumns: `repeat(${stepShortNames.length}, 1fr)` }}
-              >
-                {stepShortNames.map((name, index) => {
-                  const stepNumber = index + 1;
-                  const isActive = currentStep === stepNumber;
+                <div
+                  className="grid items-center relative"
+                  style={{ gridTemplateColumns: `repeat(${stepShortNames.length}, 1fr)` }}
+                >
+                  {stepShortNames.map((name, index) => {
+                    const stepNumber = index + 1;
+                    const isActive = currentStep === stepNumber;
 
-                  // Determine completion status
-                  const isComplete = getStepCompletionStatus(stepNumber);
+                    // Determine completion status
+                    const isComplete = getStepCompletionStatus(stepNumber);
 
-                  // Check accessibility
-                  let isAccessible = true;
-                  if (stepNumber > 1) {
-                    const prevStepNumber = stepNumber - 1;
-                    const prevStepComplete = getStepCompletionStatus(prevStepNumber);
-                    isAccessible = prevStepComplete;
-                  }
+                    // Check accessibility
+                    let isAccessible = true;
+                    if (stepNumber > 1) {
+                      const prevStepNumber = stepNumber - 1;
+                      const prevStepComplete = getStepCompletionStatus(prevStepNumber);
+                      isAccessible = prevStepComplete;
+                    }
 
-                  return (
-                    <div key={index} className="flex flex-col items-center gap-2 relative group z-10">
-                      <motion.button
-                        onClick={() => isAccessible && handleStepChange(stepNumber)}
-                        disabled={!isAccessible}
-                        initial={false}
-                        animate={{
-                          scale: isActive ? 1.2 : isAccessible ? 1 : 0.9,
-                          opacity: !isAccessible ? 0.6 : 1,
-                        }}
-                        whileHover={isAccessible ? { scale: isActive ? 1.25 : 1.1 } : {}}
-                        whileTap={isAccessible ? { scale: 0.95 } : {}}
-                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-colors duration-300 relative ${isActive
-                          ? 'bg-blue-600 ring-4 ring-blue-100'
-                          : isComplete
-                            ? 'bg-green-500'
-                            : !isAccessible
-                              ? 'bg-gray-200'
-                              : 'bg-white border-2 border-gray-300 hover:border-blue-400'
-                          }`}
-                      >
-                        <AnimatePresence mode="wait">
-                          {isActive ? (
-                            <motion.div
-                              key="active"
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              exit={{ scale: 0 }}
-                              className="w-2.5 h-2.5 bg-white rounded-full"
-                            />
-                          ) : isComplete ? (
-                            <motion.div
-                              key="complete"
-                              initial={{ scale: 0, rotate: -180 }}
-                              animate={{ scale: 1, rotate: 0 }}
-                              exit={{ scale: 0, rotate: 180 }}
-                            >
-                              {/* Show Paperclip if uploaded, MinusCircle if skipped, otherwise Check */}
-                              {uploadedFiles[stepNumber] || uploadedFileNames[stepNumber] ? (
-                                <Paperclip className="w-4 h-4 text-white" />
-                              ) : stepModes[stepNumber] === 'skip' ? (
-                                <MinusCircle className="w-4 h-4 text-white" />
-                              ) : (
-                                <Check className="w-4 h-4 text-white" />
-                              )}
-                            </motion.div>
-                          ) : !isAccessible ? (
-                            <motion.div
-                              key="locked"
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                            >
-                              <Lock className="w-3.5 h-3.5 text-gray-400" />
-                            </motion.div>
-                          ) : (
-                            <motion.div
-                              key="next"
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              exit={{ scale: 0 }}
-                            >
-                              <Plus className="w-4 h-4 text-gray-400 group-hover:text-blue-400" />
-                            </motion.div>
+                    return (
+                      <div key={index} className="flex flex-col items-center gap-2 relative group z-10">
+                        <motion.button
+                          onClick={() => isAccessible && handleStepChange(stepNumber)}
+                          disabled={!isAccessible}
+                          initial={false}
+                          animate={{
+                            scale: isActive ? 1.2 : isAccessible ? 1 : 0.9,
+                            opacity: !isAccessible ? 0.6 : 1,
+                          }}
+                          whileHover={isAccessible ? { scale: isActive ? 1.25 : 1.1 } : {}}
+                          whileTap={isAccessible ? { scale: 0.95 } : {}}
+                          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-colors duration-300 relative ${isActive
+                            ? 'bg-blue-600 ring-4 ring-blue-100'
+                            : isComplete
+                              ? 'bg-green-500'
+                              : !isAccessible
+                                ? 'bg-gray-200'
+                                : 'bg-white border-2 border-gray-300 hover:border-blue-400'
+                            }`}
+                        >
+                          <AnimatePresence mode="wait">
+                            {isActive ? (
+                              <motion.div
+                                key="active"
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                exit={{ scale: 0 }}
+                                className="w-2.5 h-2.5 bg-white rounded-full"
+                              />
+                            ) : isComplete ? (
+                              <motion.div
+                                key="complete"
+                                initial={{ scale: 0, rotate: -180 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                exit={{ scale: 0, rotate: 180 }}
+                              >
+                                {/* Show Paperclip if uploaded, MinusCircle if skipped, otherwise Check */}
+                                {uploadedFiles[stepNumber] || uploadedFileNames[stepNumber] ? (
+                                  <Paperclip className="w-4 h-4 text-white" />
+                                ) : stepModes[stepNumber] === 'skip' ? (
+                                  <MinusCircle className="w-4 h-4 text-white" />
+                                ) : (
+                                  <Check className="w-4 h-4 text-white" />
+                                )}
+                              </motion.div>
+                            ) : !isAccessible ? (
+                              <motion.div
+                                key="locked"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                              >
+                                <Lock className="w-3.5 h-3.5 text-gray-400" />
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="next"
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                exit={{ scale: 0 }}
+                              >
+                                <Plus className="w-4 h-4 text-gray-400 group-hover:text-blue-400" />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          {/* Pulse effect for next accessible step */}
+                          {isAccessible && !isComplete && !isActive && (
+                            <span className="absolute inset-0 rounded-full animate-ping bg-blue-400 opacity-20" />
                           )}
-                        </AnimatePresence>
+                        </motion.button>
 
-                        {/* Pulse effect for next accessible step */}
-                        {isAccessible && !isComplete && !isActive && (
-                          <span className="absolute inset-0 rounded-full animate-ping bg-blue-400 opacity-20" />
-                        )}
-                      </motion.button>
-
-                      {/* Label */}
-                      <motion.span
-                        animate={{
-                          y: isActive ? 0 : 0,
-                          opacity: isActive ? 1 : isAccessible ? 0.8 : 0.5,
-                          fontWeight: isActive ? 600 : 500,
-                          color: isActive ? '#2563EB' : isAccessible ? '#4B5563' : '#9CA3AF'
-                        }}
-                        className="text-xs whitespace-nowrap flex items-center gap-1"
-                      >
-                        {name}
-                        {/* Show small icon next to name if mode is selected */}
-                        {stepModes[stepNumber] === 'upload' && <Paperclip className="w-3 h-3" />}
-                        {(stepModes[stepNumber] === 'manual' || stepNumber === 2 || stepNumber === 4) && <PenTool className="w-3 h-3" />}
-                        {stepModes[stepNumber] === 'skip' && <Ban className="w-3 h-3" />}
-                      </motion.span>
-                    </div>
-                  );
-                })}
+                        {/* Label */}
+                        <motion.span
+                          animate={{
+                            y: isActive ? 0 : 0,
+                            opacity: isActive ? 1 : isAccessible ? 0.8 : 0.5,
+                            fontWeight: isActive ? 600 : 500,
+                            color: isActive ? '#2563EB' : isAccessible ? '#4B5563' : '#9CA3AF'
+                          }}
+                          className="text-xs whitespace-nowrap flex items-center gap-1"
+                        >
+                          {name}
+                          {/* Show small icon next to name if mode is selected */}
+                          {stepModes[stepNumber] === 'upload' && <Paperclip className="w-3 h-3" />}
+                          {(stepModes[stepNumber] === 'manual' || stepNumber === 2 || stepNumber === 4) && <PenTool className="w-3 h-3" />}
+                          {stepModes[stepNumber] === 'skip' && <Ban className="w-3 h-3" />}
+                        </motion.span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
+            {renderStepHeaderControls()}
+          </motion.div>
+
+          {/* Toggle Button */}
+          <div className="relative z-50 flex justify-center -mt-4">
+            <button
+              onClick={() => setIsStepIndicatorVisible(!isStepIndicatorVisible)}
+              className="group bg-white border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-full w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:border-blue-100 hover:shadow-[0_4px_12px_rgba(37,99,235,0.15)] hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm transition-all duration-300"
+              title={isStepIndicatorVisible ? "단계 표시줄 접기" : "단계 표시줄 펼치기"}
+            >
+              {isStepIndicatorVisible ? (
+                <ChevronUp className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+              ) : (
+                <ChevronDown className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+              )}
+            </button>
           </div>
 
           {/* Document Editor or Empty State */}
