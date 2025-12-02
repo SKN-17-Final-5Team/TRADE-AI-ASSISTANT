@@ -1,7 +1,12 @@
 import asyncio
+import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from django.http import StreamingHttpResponse
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from agents import Runner
 from agents.items import ToolCallItem
@@ -111,3 +116,113 @@ class ChatView(APIView):
                 {'error': f'에이전트 실행 오류: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ChatStreamView(View):
+    """
+    스트리밍 채팅 API 엔드포인트 (Server-Sent Events)
+
+    POST /api/chat/stream/
+    {
+        "message": "사용자 메시지",
+        "document": "문서 내용 (선택)"
+    }
+    """
+
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+            message = data.get('message')
+            document = data.get('document', '')
+        except json.JSONDecodeError:
+            return StreamingHttpResponse(
+                f"data: {json.dumps({'error': 'Invalid JSON'})}\n\n",
+                content_type='text/event-stream'
+            )
+
+        if not message:
+            return StreamingHttpResponse(
+                f"data: {json.dumps({'error': '메시지가 필요합니다.'})}\n\n",
+                content_type='text/event-stream'
+            )
+
+        # 문서 컨텍스트가 있으면 메시지에 포함
+        if document:
+            full_input = f"[현재 문서 내용]\n{document}\n\n[사용자 질문]\n{message}"
+        else:
+            full_input = message
+
+        response = StreamingHttpResponse(
+            self.stream_response(full_input),
+            content_type='text/event-stream'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
+
+    def stream_response(self, full_input):
+        """
+        Agent 스트리밍 응답 생성기
+        """
+        async def run_stream():
+            tools_used = []
+            seen_tools = set()
+
+            try:
+                result = Runner.run_streamed(trade_agent, input=full_input)
+
+                async for event in result.stream_events():
+                    # 텍스트 델타 이벤트 처리
+                    if event.type == "raw_response_event":
+                        data = event.data
+
+                        # ResponseTextDeltaEvent만 처리 (도구 호출 인자 제외)
+                        if hasattr(data, 'type') and data.type == 'response.output_text.delta':
+                            if hasattr(data, 'delta') and data.delta:
+                                yield f"data: {json.dumps({'type': 'text', 'content': data.delta})}\n\n"
+
+                    # 툴 호출 이벤트
+                    elif event.type == "run_item_stream_event":
+                        item = event.item
+                        if isinstance(item, ToolCallItem):
+                            try:
+                                tool_name = item.raw_item.name
+                            except AttributeError:
+                                try:
+                                    tool_name = getattr(item, 'name', None)
+                                except:
+                                    continue
+
+                            if tool_name and tool_name not in seen_tools:
+                                seen_tools.add(tool_name)
+                                tool_info = TOOL_DISPLAY_INFO.get(tool_name, {
+                                    'name': tool_name,
+                                    'icon': 'tool',
+                                    'description': f'{tool_name} 도구를 사용했습니다.'
+                                })
+                                tool_data = {'id': tool_name, **tool_info}
+                                tools_used.append(tool_data)
+                                yield f"data: {json.dumps({'type': 'tool', 'tool': tool_data})}\n\n"
+
+                # 완료 이벤트
+                yield f"data: {json.dumps({'type': 'done', 'tools_used': tools_used})}\n\n"
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+        # 비동기 제너레이터를 동기로 변환
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            async_gen = run_stream()
+            while True:
+                try:
+                    chunk = loop.run_until_complete(async_gen.__anext__())
+                    yield chunk
+                except StopAsyncIteration:
+                    break
+        finally:
+            loop.close()

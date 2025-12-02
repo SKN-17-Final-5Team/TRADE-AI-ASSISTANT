@@ -256,28 +256,138 @@ ${documentContent}
       step: requestStep
     };
 
+    const aiMessageId = (Date.now() + 1).toString();
+
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input;
     setInput('');
     setIsLoading(true);
 
     const documentContent = editorRef.current?.getContent() || '';
-    const response = USE_DJANGO
-      ? await callDjangoAgent(currentInput, documentContent)
-      : await callOpenAI(currentInput, documentContent);
 
-    const aiMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      type: 'ai',
-      content: response.message,
-      hasApply: !!response.updatedHTML,
-      applyContent: response.updatedHTML,
-      changes: response.changes,
-      step: requestStep, // Propagate the step to the AI message
-      toolsUsed: response.toolsUsed
-    };
+    // Django 스트리밍 사용 여부
+    if (USE_DJANGO) {
+      try {
+        const response = await fetch(`${DJANGO_API_URL}/api/chat/stream/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: currentInput,
+            document: documentContent
+          })
+        });
 
-    setMessages(prev => [...prev, aiMessage]);
+        if (!response.ok) {
+          throw new Error(`API 오류: ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) {
+          throw new Error('스트림을 읽을 수 없습니다.');
+        }
+
+        // 스트리밍 시작 전 AI 메시지 추가
+        setMessages(prev => [...prev, {
+          id: aiMessageId,
+          type: 'ai',
+          content: '',
+          step: requestStep,
+          toolsUsed: []
+        }]);
+
+        let accumulatedContent = '';
+        let accumulatedTools: ToolUsed[] = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.type === 'text') {
+                  accumulatedContent += data.content;
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === aiMessageId
+                      ? { ...msg, content: accumulatedContent }
+                      : msg
+                  ));
+                } else if (data.type === 'tool') {
+                  accumulatedTools = [...accumulatedTools, data.tool];
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === aiMessageId
+                      ? { ...msg, toolsUsed: accumulatedTools }
+                      : msg
+                  ));
+                } else if (data.type === 'done') {
+                  // 스트리밍 완료 시 최종 도구 정보 업데이트
+                  if (data.tools_used && data.tools_used.length > 0) {
+                    setMessages(prev => prev.map(msg =>
+                      msg.id === aiMessageId
+                        ? { ...msg, toolsUsed: data.tools_used }
+                        : msg
+                    ));
+                  }
+                } else if (data.type === 'error') {
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === aiMessageId
+                      ? { ...msg, content: `오류가 발생했습니다: ${data.error}` }
+                      : msg
+                  ));
+                }
+              } catch {
+                // JSON 파싱 실패 시 무시
+              }
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('API 호출 오류:', error);
+        const errorContent = `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`;
+
+        // AI 메시지가 이미 추가되었는지 확인 후 처리
+        setMessages(prev => {
+          const hasAiMessage = prev.some(m => m.id === aiMessageId);
+          if (hasAiMessage) {
+            return prev.map(msg =>
+              msg.id === aiMessageId ? { ...msg, content: errorContent } : msg
+            );
+          } else {
+            return [...prev, {
+              id: aiMessageId,
+              type: 'ai' as const,
+              content: errorContent,
+              step: requestStep
+            }];
+          }
+        });
+      }
+    } else {
+      // 비스트리밍 (OpenAI 직접 호출)
+      const response = await callOpenAI(currentInput, documentContent);
+
+      const aiMessage: Message = {
+        id: aiMessageId,
+        type: 'ai',
+        content: response.message,
+        hasApply: !!response.updatedHTML,
+        applyContent: response.updatedHTML,
+        changes: response.changes,
+        step: requestStep,
+        toolsUsed: response.toolsUsed
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+    }
+
     setIsLoading(false);
   };
 
@@ -476,16 +586,20 @@ ${documentContent}
             </div>
           </div>
         ))}
-        {isLoading && (
+        {/* 스트리밍 중이 아닐 때만 로딩 표시 (마지막 메시지가 user일 때) */}
+        {isLoading && messages.length > 0 && messages[messages.length - 1].type === 'user' && (
           <div className="flex justify-start items-end gap-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-md flex-shrink-0 mb-1">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-              <div className="flex gap-1.5">
-                <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                </div>
+                <span className="text-xs text-gray-500">답변 생성중...</span>
               </div>
             </div>
           </div>
