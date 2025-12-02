@@ -400,6 +400,19 @@ ${documentContent}
                       ? { ...msg, toolsUsed: accumulatedTools }
                       : msg
                   ));
+                } else if (data.type === 'edit') {
+                  // 문서 수정 응답 처리
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === aiMessageId
+                      ? {
+                          ...msg,
+                          content: data.message || '문서를 수정했습니다.',
+                          hasApply: true,
+                          applyContent: data.html,
+                          changes: data.changes || []
+                        }
+                      : msg
+                  ));
                 } else if (data.type === 'done') {
                   // 스트리밍 완료 시 최종 도구 정보 업데이트
                   if (data.tools_used && data.tools_used.length > 0) {

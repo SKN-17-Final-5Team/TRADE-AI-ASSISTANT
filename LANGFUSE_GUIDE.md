@@ -201,7 +201,7 @@ Langfuse UI에서 각 버전에 설명을 작성하여 변경 사항 추적:
 
 ### 기본 사용
 ```python
-from agent_core.trade_agent import get_trade_agent
+from agent_core import get_trade_agent
 
 # production 라벨 사용 (기본값)
 agent = get_trade_agent()

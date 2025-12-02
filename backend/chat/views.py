@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -10,7 +11,7 @@ from django.utils.decorators import method_decorator
 
 from agents import Runner
 from agents.items import ToolCallItem
-from agent_core.trade_agent import get_trade_agent
+from agent_core import get_trade_agent, get_document_writing_agent
 from .config import PROMPT_VERSION, PROMPT_LABEL, USE_LANGFUSE
 
 
@@ -38,16 +39,12 @@ def extract_tools_used(result) -> list:
 
     for item in result.new_items:
         if isinstance(item, ToolCallItem):
-            # ToolCallItem의 실제 속성 확인
-            # raw_item.name 또는 tool_call 내부에서 이름 추출
             try:
-                # OpenAI Agents SDK의 ToolCallItem 구조에 맞게 접근
                 tool_name = item.raw_item.name
             except AttributeError:
                 try:
                     tool_name = item.tool_call.function.name
                 except AttributeError:
-                    # 디버깅: 실제 속성 출력
                     print(f"ToolCallItem attributes: {dir(item)}")
                     print(f"ToolCallItem: {item}")
                     continue
@@ -67,9 +64,39 @@ def extract_tools_used(result) -> list:
     return tools_used
 
 
+def parse_edit_response(text: str) -> dict | None:
+    """
+    Agent 응답에서 편집 JSON을 파싱
+
+    Returns:
+        편집 정보 dict 또는 None (일반 텍스트인 경우)
+    """
+    # JSON 블록 추출 시도 (```json ... ``` 형식)
+    json_match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
+    if json_match:
+        json_str = json_match.group(1)
+    else:
+        # 전체 텍스트가 JSON인지 확인
+        json_str = text.strip()
+
+    try:
+        parsed = json.loads(json_str)
+        if isinstance(parsed, dict) and parsed.get('type') == 'edit':
+            return {
+                'type': 'edit',
+                'message': parsed.get('message', ''),
+                'html': parsed.get('html', ''),
+                'changes': parsed.get('changes', [])
+            }
+    except json.JSONDecodeError:
+        pass
+
+    return None
+
+
 class ChatView(APIView):
     """
-    채팅 API 엔드포인트
+    채팅 API 엔드포인트 (비스트리밍)
 
     POST /api/chat/
     {
@@ -89,36 +116,52 @@ class ChatView(APIView):
             )
 
         try:
-            # 문서 컨텍스트가 있으면 메시지에 포함
+            # 문서가 있으면 document_writing_agent, 없으면 trade_agent
             if document:
-                full_input = f"[현재 문서 내용]\n{document}\n\n[사용자 질문]\n{message}"
+                agent = get_document_writing_agent(
+                    document_content=document,
+                    use_langfuse=USE_LANGFUSE,
+                    prompt_version=PROMPT_VERSION,
+                    prompt_label=PROMPT_LABEL
+                )
+                full_input = message  # 문서는 이미 프롬프트에 포함됨
             else:
+                agent = get_trade_agent(
+                    use_langfuse=USE_LANGFUSE,
+                    prompt_version=PROMPT_VERSION,
+                    prompt_label=PROMPT_LABEL
+                )
                 full_input = message
 
-            # Agent 실행 (비동기 → 동기 변환)
-            # 환경 변수 기반 프롬프트 버전 사용
-            agent = get_trade_agent(
-                use_langfuse=USE_LANGFUSE,
-                prompt_version=PROMPT_VERSION,
-                prompt_label=PROMPT_LABEL
-            )
-            result = asyncio.run(
-                Runner.run(agent, input=full_input)
-            )
+            # Agent 실행
+            result = asyncio.run(Runner.run(agent, input=full_input))
 
             # 사용된 툴 정보 추출
             tools_used = extract_tools_used(result)
 
-            return Response({
-                'message': result.final_output,
-                'tools_used': tools_used,
-                'html': None,
-                'changes': []
-            })
+            # 편집 응답인지 확인
+            edit_response = parse_edit_response(result.final_output)
+
+            if edit_response:
+                return Response({
+                    'type': 'edit',
+                    'message': edit_response['message'],
+                    'html': edit_response['html'],
+                    'changes': edit_response['changes'],
+                    'tools_used': tools_used
+                })
+            else:
+                return Response({
+                    'type': 'chat',
+                    'message': result.final_output,
+                    'html': None,
+                    'changes': [],
+                    'tools_used': tools_used
+                })
 
         except Exception as e:
             import traceback
-            traceback.print_exc()  # 터미널에 전체 에러 출력
+            traceback.print_exc()
             return Response(
                 {'error': f'에이전트 실행 오류: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -135,6 +178,8 @@ class ChatStreamView(View):
         "message": "사용자 메시지",
         "document": "문서 내용 (선택)"
     }
+
+    문서가 있으면 document_writing_agent 사용 (수정 기능 포함)
     """
 
     def post(self, request):
@@ -144,45 +189,51 @@ class ChatStreamView(View):
             document = data.get('document', '')
         except json.JSONDecodeError:
             return StreamingHttpResponse(
-                f"data: {json.dumps({'error': 'Invalid JSON'})}\n\n",
+                f"data: {json.dumps({'type': 'error', 'error': 'Invalid JSON'})}\n\n",
                 content_type='text/event-stream'
             )
 
         if not message:
             return StreamingHttpResponse(
-                f"data: {json.dumps({'error': '메시지가 필요합니다.'})}\n\n",
+                f"data: {json.dumps({'type': 'error', 'error': '메시지가 필요합니다.'})}\n\n",
                 content_type='text/event-stream'
             )
 
-        # 문서 컨텍스트가 있으면 메시지에 포함
-        if document:
-            full_input = f"[현재 문서 내용]\n{document}\n\n[사용자 질문]\n{message}"
-        else:
-            full_input = message
-
         response = StreamingHttpResponse(
-            self.stream_response(full_input),
+            self.stream_response(message, document),
             content_type='text/event-stream'
         )
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'
         return response
 
-    def stream_response(self, full_input):
+    def stream_response(self, message: str, document: str):
         """
         Agent 스트리밍 응답 생성기
         """
         async def run_stream():
             tools_used = []
             seen_tools = set()
+            full_response = ""  # 전체 응답 수집 (편집 JSON 파싱용)
 
             try:
-                # 환경 변수 기반 프롬프트 버전 사용
-                agent = get_trade_agent(
-                    use_langfuse=USE_LANGFUSE,
-                    prompt_version=PROMPT_VERSION,
-                    prompt_label=PROMPT_LABEL
-                )
+                # 문서가 있으면 document_writing_agent, 없으면 trade_agent
+                if document:
+                    agent = get_document_writing_agent(
+                        document_content=document,
+                        use_langfuse=USE_LANGFUSE,
+                        prompt_version=PROMPT_VERSION,
+                        prompt_label=PROMPT_LABEL
+                    )
+                    full_input = message
+                else:
+                    agent = get_trade_agent(
+                        use_langfuse=USE_LANGFUSE,
+                        prompt_version=PROMPT_VERSION,
+                        prompt_label=PROMPT_LABEL
+                    )
+                    full_input = message
+
                 result = Runner.run_streamed(agent, input=full_input)
 
                 async for event in result.stream_events():
@@ -190,9 +241,9 @@ class ChatStreamView(View):
                     if event.type == "raw_response_event":
                         data = event.data
 
-                        # ResponseTextDeltaEvent만 처리 (도구 호출 인자 제외)
                         if hasattr(data, 'type') and data.type == 'response.output_text.delta':
                             if hasattr(data, 'delta') and data.delta:
+                                full_response += data.delta
                                 yield f"data: {json.dumps({'type': 'text', 'content': data.delta})}\n\n"
 
                     # 툴 호출 이벤트
@@ -217,6 +268,16 @@ class ChatStreamView(View):
                                 tool_data = {'id': tool_name, **tool_info}
                                 tools_used.append(tool_data)
                                 yield f"data: {json.dumps({'type': 'tool', 'tool': tool_data})}\n\n"
+
+                # 스트리밍 완료 후 편집 응답인지 확인
+                print(f"[DEBUG] full_response 길이: {len(full_response)}")
+                print(f"[DEBUG] full_response 앞 500자: {full_response[:500]}")
+                edit_response = parse_edit_response(full_response)
+                print(f"[DEBUG] edit_response: {edit_response}")
+
+                if edit_response:
+                    # 편집 응답이면 edit 이벤트 전송
+                    yield f"data: {json.dumps({'type': 'edit', 'message': edit_response['message'], 'html': edit_response['html'], 'changes': edit_response['changes']})}\n\n"
 
                 # 완료 이벤트
                 yield f"data: {json.dumps({'type': 'done', 'tools_used': tools_used})}\n\n"

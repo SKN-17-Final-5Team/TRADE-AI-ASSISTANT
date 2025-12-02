@@ -29,7 +29,8 @@ from .serializers import (
     DocumentChatResponseSerializer,
 )
 from agent_core.s3_utils import s3_manager
-from agent_core.document_agent import create_document_agent
+from agent_core import get_read_document_agent
+from chat.config import PROMPT_VERSION, PROMPT_LABEL, USE_LANGFUSE
 
 logger = logging.getLogger(__name__)
 
@@ -352,10 +353,13 @@ class DocumentChatView(APIView):
             )
 
             # 4. Agent 생성 및 실행
-            agent = create_document_agent(
+            agent = get_read_document_agent(
                 document_id=document.id,
                 document_name=document.original_filename,
-                document_type=document.get_document_type_display()
+                document_type=document.get_document_type_display(),
+                use_langfuse=USE_LANGFUSE,
+                prompt_version=PROMPT_VERSION,
+                prompt_label=PROMPT_LABEL
             )
 
             result = asyncio.run(
@@ -474,10 +478,13 @@ class DocumentChatStreamView(View):
         )
 
         # 4. Agent 생성
-        agent = create_document_agent(
+        agent = get_read_document_agent(
             document_id=document.id,
             document_name=document.original_filename,
-            document_type=document.get_document_type_display()
+            document_type=document.get_document_type_display(),
+            use_langfuse=USE_LANGFUSE,
+            prompt_version=PROMPT_VERSION,
+            prompt_label=PROMPT_LABEL
         )
 
         # 5. 비동기 스트리밍 (Agent 실행만)
