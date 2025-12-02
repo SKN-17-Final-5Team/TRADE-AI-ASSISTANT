@@ -32,11 +32,21 @@ def load_instructions(filename: str = "trade_instructions.txt") -> str:
 # Agent 정의 (무역 전문가 Agent)
 # =====================================================================
 
-trade_agent = Agent(
-    name="Trade Compliance Analyst",
-    model="gpt-4o",
-    instructions=load_instructions(),  # 외부 파일에서 로드
-    tools=[search_trade_documents, search_web],
-)
+def get_trade_agent():
+    """
+    매 요청마다 최신 프롬프트로 Agent 생성
+
+    개발 중 프롬프트 수정사항을 서버 재시작 없이 반영하기 위해
+    매번 파일에서 instructions를 새로 로드합니다.
+    """
+    return Agent(
+        name="Trade Compliance Analyst",
+        model="gpt-4o",
+        instructions=load_instructions(),  # 매번 파일에서 최신 내용 로드
+        tools=[search_trade_documents, search_web],
+    )
+
+# 하위 호환성을 위한 기본 인스턴스 (deprecated)
+trade_agent = get_trade_agent()
 
 

@@ -1,5 +1,5 @@
 """Agents 패키지"""
 
-from .trade_agent import trade_agent
+from .trade_agent import trade_agent, get_trade_agent
 
-__all__ = ["trade_agent"]
+__all__ = ["trade_agent", "get_trade_agent"]

@@ -10,7 +10,7 @@ from django.utils.decorators import method_decorator
 
 from agents import Runner
 from agents.items import ToolCallItem
-from agent_core.trade_agent import trade_agent
+from agent_core.trade_agent import get_trade_agent
 
 
 # 툴 이름 → 표시 정보 매핑
@@ -96,7 +96,7 @@ class ChatView(APIView):
 
             # Agent 실행 (비동기 → 동기 변환)
             result = asyncio.run(
-                Runner.run(trade_agent, input=full_input)
+                Runner.run(get_trade_agent(), input=full_input)
             )
 
             # 사용된 툴 정보 추출
@@ -170,7 +170,7 @@ class ChatStreamView(View):
             seen_tools = set()
 
             try:
-                result = Runner.run_streamed(trade_agent, input=full_input)
+                result = Runner.run_streamed(get_trade_agent(), input=full_input)
 
                 async for event in result.stream_events():
                     # 텍스트 델타 이벤트 처리
