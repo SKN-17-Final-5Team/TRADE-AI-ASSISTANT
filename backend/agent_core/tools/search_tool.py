@@ -16,6 +16,7 @@ from agent_core.config import (
     qdrant_client,
     openai_client,
     COLLECTION_NAME,
+    COLLECTION_USER_DOCS,
     EMBEDDING_MODEL,
     USE_RERANKER,
     USE_PER_QUERY_RERANK
@@ -332,3 +333,90 @@ async def _rerank_per_query(grouped_points: dict, sub_queries: List[str], total_
     print(f"\n✓ 개별 Rerank 완료: 총 {len(all_reranked)}개 문서 선정\n")
 
     return all_reranked
+
+
+# ===== 사용자 업로드 문서 검색 =====
+
+@function_tool
+async def search_user_document(document_id: int, query: str, limit: int = 10) -> str:
+    """
+    특정 사용자 업로드 문서 내에서 검색
+
+    Args:
+        document_id: 검색할 문서 ID (UserDocument.id)
+        query: 사용자 질문
+        limit: 반환할 최대 문서 수 (기본 10개)
+
+    Returns:
+        Agent가 읽을 수 있게 포맷된 문서 텍스트
+    """
+    from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+    print(f"\n🔍 문서 내 검색: document_id={document_id}, query='{query}', limit={limit}")
+
+    try:
+        # 1. Query embedding 생성
+        print("   Step 1: Embedding 생성 중...")
+        embedding_response = await asyncio.to_thread(
+            openai_client.embeddings.create,
+            model=EMBEDDING_MODEL,
+            input=query
+        )
+        query_vector = embedding_response.data[0].embedding
+
+        # 2. Qdrant 검색 (document_id 필터 적용)
+        print(f"   Step 2: Qdrant 검색 중 (collection: {COLLECTION_USER_DOCS})...")
+        search_result = await asyncio.to_thread(
+            qdrant_client.query_points,
+            collection_name=COLLECTION_USER_DOCS,
+            query=query_vector,
+            query_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchValue(value=document_id)
+                    )
+                ]
+            ),
+            limit=limit,
+            with_payload=True
+        )
+
+        points = search_result.points if hasattr(search_result, 'points') else []
+
+        if not points:
+            print("⚠️  검색 결과가 없습니다.\n")
+            return "이 문서에서 관련 내용을 찾을 수 없습니다."
+
+        print(f"✓ {len(points)}개 청크 검색됨\n")
+
+        # 3. 결과 포맷팅
+        formatted = []
+        print("="*60)
+        print(f"📄 검색된 문서 청크 ({len(points)}개)")
+        print("="*60)
+
+        for rank, point in enumerate(points, 1):
+            text = point.payload.get("text", "")
+            page = point.payload.get("page", "?")
+            score = point.score
+
+            # Agent에게 전달할 텍스트
+            doc_text = f"[페이지 {page}] {text}\n   (관련도: {score:.3f})"
+            formatted.append(doc_text)
+
+            # 콘솔 디버깅 출력
+            print(f"\n청크 {rank}:")
+            print(f"  페이지: {page}")
+            print(f"  점수: {score:.3f}")
+            print(f"  내용: {text[:200]}{'...' if len(text) > 200 else ''}")
+
+        print("\n" + "=" * 60)
+        print("🤖 모델이 위 내용을 기반으로 답변 생성 중...")
+        print("=" * 60 + "\n")
+
+        return "\n\n".join(formatted)
+
+    except Exception as e:
+        print(f"❌ 검색 실패: {e}")
+        return f"검색 중 오류가 발생했습니다: {str(e)}"

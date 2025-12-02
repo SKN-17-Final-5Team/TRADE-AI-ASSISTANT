@@ -16,11 +16,14 @@ import {
   PenTool,
   Paperclip,
   X,
-  File,
   MinusCircle,
   Ban,
-  Package
+  Package,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
+import { uploadDocumentFlow, DocumentStatus } from '../utils/documentApi';
+import PdfViewer from './PdfViewer';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -92,6 +95,11 @@ export default function DocumentCreationPage({
   // New state for Upload vs Manual
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
   const [uploadedFiles, setUploadedFiles] = useState<Record<number, File | null>>({});
+  const [uploadedDocumentIds, setUploadedDocumentIds] = useState<Record<number, number | null>>({});
+  const [uploadedDocumentUrls, setUploadedDocumentUrls] = useState<Record<number, string | null>>({});
+  const [uploadStatus, setUploadStatus] = useState<Record<number, 'idle' | 'uploading' | 'processing' | 'ready' | 'error'>>({});
+  const [uploadError, setUploadError] = useState<Record<number, string | null>>({});
+  const [uploadUnsubscribe, setUploadUnsubscribe] = useState<Record<number, (() => void) | null>>({});
 
   // Download Modal State
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -106,10 +114,10 @@ export default function DocumentCreationPage({
   const shouldShowChatButton = !isChatOpen && currentStep >= 1 && currentStep <= 5 && (
     // Step 2 (PI): Always show (direct entry)
     (currentStep === 2) ||
-    // Step 1, 3: Mode selected (Manual or Upload+File)
+    // Step 1, 3: Mode selected (Manual or Upload+ready)
     ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] && stepModes[currentStep] !== 'skip' && (
       (stepModes[currentStep] === 'manual') ||
-      (stepModes[currentStep] === 'upload' && uploadedFiles[currentStep])
+      (stepModes[currentStep] === 'upload' && uploadStatus[currentStep] === 'ready')
     )) ||
     // Step 4: Shipping Doc selected
     (currentStep === 4 && activeShippingDoc)
@@ -149,7 +157,7 @@ export default function DocumentCreationPage({
     if (!template) return '';
 
     // Replace <mark>[key]</mark> with <span data-field-id="key">...</span>
-    return template.replace(/<mark>\[(.*?)\]<\/mark>/g, (match, key) => {
+    return template.replace(/<mark>\[(.*?)\]<\/mark>/g, (_match, key) => {
       const value = sharedData[key];
       // If we have a value, use it. Otherwise keep the placeholder [key]
       const content = value || `[${key}]`;
@@ -404,7 +412,7 @@ export default function DocumentCreationPage({
       handleFinalConfirm();
     } else {
       // First click: review all mapped fields (scroll through groups)
-      await editorRef.current?.reviewMappedFields();
+      editorRef.current?.reviewMappedFields();
       setReviewCompleted(true);
     }
   };
@@ -572,17 +580,65 @@ export default function DocumentCreationPage({
     }
   };
 
-  const handleFileUpload = (step: number, file: File) => {
+  const handleFileUpload = async (step: number, file: File) => {
+    // 파일 저장
     setUploadedFiles(prev => ({ ...prev, [step]: file }));
-    // Auto-complete step if needed, or just let the state update trigger it
+    setUploadStatus(prev => ({ ...prev, [step]: 'uploading' }));
+    setUploadError(prev => ({ ...prev, [step]: null }));
+
+    const documentType = step === 1 ? 'offer_sheet' : 'sales_contract';
+
+    try {
+      const unsubscribe = await uploadDocumentFlow(file, documentType, {
+        onPresignedUrl: (data) => {
+          setUploadedDocumentIds(prev => ({ ...prev, [step]: data.document_id }));
+        },
+        onS3UploadComplete: () => {
+          // S3 업로드 완료
+        },
+        onProcessingStart: () => {
+          setUploadStatus(prev => ({ ...prev, [step]: 'processing' }));
+        },
+        onStatus: (status: DocumentStatus) => {
+          // 처리 중 상태 업데이트 (progress 등)
+          console.log(`Document ${status.document_id} status: ${status.status} - ${status.message}`);
+        },
+        onComplete: (status: DocumentStatus) => {
+          setUploadStatus(prev => ({ ...prev, [step]: 'ready' }));
+          setUploadedDocumentUrls(prev => ({ ...prev, [step]: status.s3_url || null }));
+        },
+        onError: (error: string) => {
+          setUploadStatus(prev => ({ ...prev, [step]: 'error' }));
+          setUploadError(prev => ({ ...prev, [step]: error }));
+        }
+      });
+
+      // 구독 취소 함수 저장
+      setUploadUnsubscribe(prev => ({ ...prev, [step]: unsubscribe }));
+
+    } catch (error) {
+      setUploadStatus(prev => ({ ...prev, [step]: 'error' }));
+      setUploadError(prev => ({ ...prev, [step]: error instanceof Error ? error.message : '업로드 실패' }));
+    }
   };
 
   const removeUploadedFile = (step: number) => {
+    // SSE 구독 취소
+    if (uploadUnsubscribe[step]) {
+      uploadUnsubscribe[step]?.();
+      setUploadUnsubscribe(prev => ({ ...prev, [step]: null }));
+    }
+
+    // 상태 초기화
     setUploadedFiles(prev => {
       const newFiles = { ...prev };
       delete newFiles[step];
       return newFiles;
     });
+    setUploadedDocumentIds(prev => ({ ...prev, [step]: null }));
+    setUploadedDocumentUrls(prev => ({ ...prev, [step]: null }));
+    setUploadStatus(prev => ({ ...prev, [step]: 'idle' }));
+    setUploadError(prev => ({ ...prev, [step]: null }));
   };
 
   // Helper to check completion status for a specific step index (1-based)
@@ -729,7 +785,122 @@ export default function DocumentCreationPage({
     // 2. Upload UI
     if ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'upload') {
       const file = uploadedFiles[currentStep];
+      const status = uploadStatus[currentStep] || 'idle';
+      const documentUrl = uploadedDocumentUrls[currentStep];
+      const error = uploadError[currentStep];
 
+      // ready 상태: PdfViewer 렌더링
+      if (status === 'ready' && documentUrl) {
+        return (
+          <div className="h-full flex flex-col">
+            <div className="mb-4 flex-shrink-0 flex items-center justify-between px-4">
+              <button
+                onClick={() => {
+                  setStepModes(prev => ({ ...prev, [currentStep]: null }));
+                  removeUploadedFile(currentStep);
+                }}
+                className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="font-medium">다시 업로드하기</span>
+              </button>
+              <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-full">
+                <CheckCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">{file?.name}</span>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
+              <PdfViewer fileUrl={documentUrl} className="h-full" />
+            </div>
+          </div>
+        );
+      }
+
+      // uploading/processing 상태: 로딩 스피너
+      if (status === 'uploading' || status === 'processing') {
+        return (
+          <div className="h-full flex flex-col p-4">
+            <div className="mb-4 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setStepModes(prev => ({ ...prev, [currentStep]: null }));
+                  removeUploadedFile(currentStep);
+                }}
+                className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="font-medium">취소하기</span>
+              </button>
+            </div>
+            <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col items-center"
+              >
+                <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-6 relative">
+                  <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">
+                  {status === 'uploading' ? '파일 업로드 중...' : 'PDF 분석 중...'}
+                </h3>
+                <p className="text-gray-500 mb-2">{file?.name}</p>
+                <p className="text-sm text-gray-400">
+                  {status === 'uploading' ? 'S3에 파일을 업로드하고 있습니다' : '문서 내용을 분석하고 있습니다'}
+                </p>
+              </motion.div>
+            </div>
+          </div>
+        );
+      }
+
+      // error 상태: 오류 메시지 + 재시도 버튼
+      if (status === 'error') {
+        return (
+          <div className="h-full flex flex-col p-4">
+            <div className="mb-4 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setStepModes(prev => ({ ...prev, [currentStep]: null }));
+                  removeUploadedFile(currentStep);
+                }}
+                className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="font-medium">다시 선택하기</span>
+              </button>
+            </div>
+            <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col items-center text-center"
+              >
+                <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center mb-6">
+                  <AlertCircle className="w-12 h-12 text-red-500" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">업로드 실패</h3>
+                <p className="text-red-500 mb-6 max-w-md">{error || '알 수 없는 오류가 발생했습니다'}</p>
+                <button
+                  onClick={() => {
+                    if (file) {
+                      handleFileUpload(currentStep, file);
+                    } else {
+                      removeUploadedFile(currentStep);
+                    }
+                  }}
+                  className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors font-medium"
+                >
+                  <Upload className="w-5 h-5" />
+                  다시 시도
+                </button>
+              </motion.div>
+            </div>
+          </div>
+        );
+      }
+
+      // idle 상태: 파일 선택 UI
       return (
         <div className="h-full flex flex-col p-4">
           <div className="mb-4 flex-shrink-0">
@@ -746,61 +917,33 @@ export default function DocumentCreationPage({
           </div>
 
           <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
-            {file ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col items-center"
+            <div className="w-full max-w-2xl">
+              <label
+                className="flex flex-col items-center justify-center w-full h-96 border-3 border-dashed border-gray-300 rounded-3xl cursor-pointer bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition-all group relative overflow-hidden"
               >
-                <div className="w-32 h-32 bg-green-50 rounded-full flex items-center justify-center mb-6 relative">
-                  <File className="w-16 h-16 text-green-600" />
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute -right-2 -bottom-2 bg-green-500 text-white p-2 rounded-full shadow-lg"
-                  >
-                    <Check className="w-6 h-6" />
-                  </motion.div>
-                </div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">{file.name}</h3>
-                <p className="text-gray-500 mb-8">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-                <button
-                  onClick={() => removeUploadedFile(currentStep)}
-                  className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-full hover:bg-red-100 transition-colors font-medium"
-                >
-                  <X className="w-5 h-5" />
-                  파일 삭제하고 다시 올리기
-                </button>
-              </motion.div>
-            ) : (
-              <div className="w-full max-w-2xl">
-                <label
-                  className="flex flex-col items-center justify-center w-full h-96 border-3 border-dashed border-gray-300 rounded-3xl cursor-pointer bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition-all group relative overflow-hidden"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6 relative z-10">
-                    <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform duration-300">
-                      <Upload className="w-10 h-10 text-gray-400 group-hover:text-blue-500" />
-                    </div>
-                    <p className="mb-2 text-xl text-gray-600 font-medium">
-                      <span className="font-bold text-blue-600">클릭하여 업로드</span> 또는 파일을 여기로 드래그하세요
-                    </p>
-                    <p className="text-sm text-gray-500">PDF, Word, Excel, Image (최대 10MB)</p>
+                <div className="flex flex-col items-center justify-center pt-5 pb-6 relative z-10">
+                  <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform duration-300">
+                    <Upload className="w-10 h-10 text-gray-400 group-hover:text-blue-500" />
                   </div>
-                  <input
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleFileUpload(currentStep, e.target.files[0]);
-                      }
-                    }}
-                  />
-                </label>
-              </div>
-            )}
+                  <p className="mb-2 text-xl text-gray-600 font-medium">
+                    <span className="font-bold text-blue-600">클릭하여 업로드</span> 또는 파일을 여기로 드래그하세요
+                  </p>
+                  <p className="text-sm text-gray-500">PDF 파일 (최대 10MB)</p>
+                </div>
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleFileUpload(currentStep, e.target.files[0]);
+                    }
+                  }}
+                />
+              </label>
+            </div>
           </div>
         </div>
       );
@@ -1268,7 +1411,13 @@ export default function DocumentCreationPage({
             {/* Handle Visual Line */}
             <div className="w-[1px] h-full bg-gradient-to-b from-transparent via-gray-300 to-transparent group-hover:bg-blue-400 transition-colors" />
           </div>
-          <ChatAssistant currentStep={currentStep} onClose={toggleChat} editorRef={editorRef} onApply={handleChatApply} />
+          <ChatAssistant
+            currentStep={currentStep}
+            onClose={toggleChat}
+            editorRef={editorRef}
+            onApply={handleChatApply}
+            documentId={stepModes[currentStep] === 'upload' ? uploadedDocumentIds[currentStep] : null}
+          />
         </div>
       </div>
 
