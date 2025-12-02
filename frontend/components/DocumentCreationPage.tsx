@@ -21,6 +21,8 @@ import {
   Ban,
   Package
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageType, DocumentData } from '../App';
 import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
@@ -476,53 +478,98 @@ export default function DocumentCreationPage({
     setShowDownloadModal(true);
   };
 
-  const handleBatchDownload = () => {
-    selectedDownloadSteps.forEach(stepIndex => {
-      const content = documentData[stepIndex];
-      if (!content) return;
+  const handleBatchDownload = async () => {
+    // Hide modal first
+    setShowDownloadModal(false);
 
-      // Clean content
+    for (const stepIndex of selectedDownloadSteps) {
+      const content = documentData[stepIndex];
+      if (!content) continue;
+
+      // Clean content (remove marks)
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = content;
       const marks = tempDiv.querySelectorAll('mark');
-      marks.forEach(mark => mark.remove());
-      const cleanContent = tempDiv.innerHTML;
+      marks.forEach(mark => {
+        const span = document.createElement('span');
+        span.innerHTML = mark.innerHTML;
+        mark.parentNode?.replaceChild(span, mark);
+      });
 
-      // Get document name
-      // stepShortNames is 0-indexed, stepIndex is 1-based usually.
-      // However, for CI/PL (steps 4/5), stepShortNames has 5 elements if shippingOrder is set.
-      // Let's be safe and fallback.
-      const docName = stepShortNames[stepIndex - 1] || `Document_${stepIndex}`;
+      // Create a container for PDF rendering
+      // We use a fixed width to ensure consistent PDF output (A4 width approx)
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      container.style.width = '210mm'; // A4 width
+      container.style.padding = '20mm'; // A4 margins
+      container.style.backgroundColor = 'white';
+      container.style.color = 'black';
+      container.style.fontFamily = 'sans-serif';
+      container.style.fontSize = '12pt';
+      container.style.lineHeight = '1.5';
 
-      const blob = new Blob([`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <title>${documentData.title || 'Document'} - ${docName}</title>
-            <style>
-              body { font-family: sans-serif; padding: 20px; }
-              table { border-collapse: collapse; width: 100%; }
-              th, td { border: 1px solid black; padding: 8px; }
-              .contract-table { width: 100%; }
-              .data-field { background-color: transparent; }
-            </style>
-          </head>
-          <body>${cleanContent}</body>
-        </html>
-      `], { type: 'text/html' });
+      // Add some basic styles for tables to match the editor/template
+      const style = document.createElement('style');
+      style.textContent = `
+        table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; font-size: 10pt; }
+        h1, h2, h3 { margin-top: 0; }
+        .contract-table { width: 100%; }
+        img { max-width: 100%; }
+      `;
+      container.appendChild(style);
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${documentData.title || 'Document'}_${docName}.html`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    });
+      const contentWrapper = document.createElement('div');
+      contentWrapper.innerHTML = tempDiv.innerHTML;
+      container.appendChild(contentWrapper);
 
-    setShowDownloadModal(false);
+      document.body.appendChild(container);
+
+      try {
+        // Generate Canvas
+        const canvas = await html2canvas(container, {
+          scale: 2, // Higher scale for better quality
+          useCORS: true,
+          logging: false
+        });
+
+        // Generate PDF
+        const imgData = canvas.toDataURL('image/png');
+        const imgWidth = 210; // A4 width in mm
+        const pageHeight = 297; // A4 height in mm
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        // Add first page
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        // Add extra pages if content is long
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        // Get document name
+        const docName = stepShortNames[stepIndex - 1] || `Document_${stepIndex}`;
+        const fileName = `${documentData.title || 'Document'}_${docName}.pdf`;
+
+        pdf.save(fileName);
+
+      } catch (error) {
+        console.error('PDF Generation Error:', error);
+        alert('PDF 생성 중 오류가 발생했습니다.');
+      } finally {
+        document.body.removeChild(container);
+      }
+    }
   };
 
   const handleFileUpload = (step: number, file: File) => {
@@ -1174,7 +1221,7 @@ export default function DocumentCreationPage({
                         {name}
                         {/* Show small icon next to name if mode is selected */}
                         {stepModes[stepNumber] === 'upload' && <Paperclip className="w-3 h-3" />}
-                        {stepModes[stepNumber] === 'manual' && <PenTool className="w-3 h-3" />}
+                        {(stepModes[stepNumber] === 'manual' || stepNumber === 2 || stepNumber === 4) && <PenTool className="w-3 h-3" />}
                         {stepModes[stepNumber] === 'skip' && <Ban className="w-3 h-3" />}
                       </motion.span>
                     </div>
