@@ -1,7 +1,7 @@
 """
 무역 전문가 Agent
 
-무역사기, CISG, Incoterms, 무역 클레임, 해외인증 정보를 다루는 전문 Agent
+무역사기, CISG, Incoterms, 무역 클레임, UCP 600, 해외인증 정보를 다루는 전문 Agent
 Langfuse를 통한 프롬프트 버전 관리 지원
 """
 
