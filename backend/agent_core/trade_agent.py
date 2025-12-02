@@ -148,7 +148,7 @@ def get_trade_agent(
     )
 
 
-# 하위 호환성을 위한 기본 인스턴스 (deprecated)
-trade_agent = get_trade_agent()
+# 하위 호환성을 위한 기본 인스턴스는 제거됨
+# 매번 get_trade_agent()를 호출하여 최신 프롬프트 사용
 
 
