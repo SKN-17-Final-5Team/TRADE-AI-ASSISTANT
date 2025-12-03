@@ -5,16 +5,16 @@ interface MyPageModalProps {
   isOpen: boolean;
   onClose: () => void;
   userEmployeeId: string;
-  onPasswordChangeClick: () => void;
-  onLogoutClick: () => void;
+  onPasswordChange: () => void;
+  onLogout: () => void;
 }
 
 export default function MyPageModal({
   isOpen,
   onClose,
   userEmployeeId,
-  onPasswordChangeClick,
-  onLogoutClick
+  onPasswordChange,
+  onLogout
 }: MyPageModalProps) {
   if (!isOpen) return null;
 
@@ -46,7 +46,7 @@ export default function MyPageModal({
           <h3 className="text-gray-900 mb-2">안녕하세요, {userEmployeeId}님</h3>
           <p className="text-gray-500 text-sm mb-6">Trade Copilot <br />무역서류작성 시스템에 오신 걸 환영합니다 :)</p>
           <button
-            onClick={onPasswordChangeClick}
+            onClick={onPasswordChange}
             className="w-full max-w-xs mx-auto bg-white hover:bg-gray-50 text-gray-700 px-6 py-3 rounded-full border border-gray-300 transition-colors text-sm"
           >
             비밀번호 변경
@@ -55,7 +55,7 @@ export default function MyPageModal({
 
         <div className="border-t border-gray-200">
           <button
-            onClick={onLogoutClick}
+            onClick={onLogout}
             className="w-full px-6 py-4 text-gray-700 hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
           >
             <LogOut className="w-4 h-4" />

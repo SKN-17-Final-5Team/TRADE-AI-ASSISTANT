@@ -5,13 +5,13 @@ import { LogOut } from 'lucide-react';
 interface LogoutConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onLogout: () => void;
 }
 
 export default function LogoutConfirmModal({
   isOpen,
   onClose,
-  onConfirm
+  onLogout
 }: LogoutConfirmModalProps) {
   if (!isOpen) return null;
 
@@ -48,7 +48,7 @@ export default function LogoutConfirmModal({
               취소
             </button>
             <button
-              onClick={onConfirm}
+              onClick={onLogout}
               className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl hover:shadow-lg hover:shadow-red-200 hover:-translate-y-0.5 transition-all font-bold text-sm shadow-md"
             >
               로그아웃

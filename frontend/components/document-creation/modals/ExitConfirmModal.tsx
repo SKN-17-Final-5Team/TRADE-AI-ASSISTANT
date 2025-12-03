@@ -3,13 +3,13 @@
 interface ExitConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onExit: () => void;
 }
 
 export default function ExitConfirmModal({
   isOpen,
   onClose,
-  onConfirm
+  onExit
 }: ExitConfirmModalProps) {
   if (!isOpen) return null;
 
@@ -29,7 +29,7 @@ export default function ExitConfirmModal({
             취소
           </button>
           <button
-            onClick={onConfirm}
+            onClick={onExit}
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
           >
             나가기

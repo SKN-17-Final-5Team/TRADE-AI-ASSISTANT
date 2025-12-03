@@ -350,7 +350,7 @@ export default function DocumentCreationPage({
   const handleEditorChange = (content: string) => {
     const saveKey = getDocKeyForStep(currentStep);
     if (saveKey !== -1) {
-      setDocumentData(prev => ({
+      setDocumentData((prev: DocumentData) => ({
         ...prev,
         [saveKey]: content
       }));
@@ -371,7 +371,7 @@ export default function DocumentCreationPage({
     if (editorRef.current && activeShippingDoc) {
       const content = editorRef.current.getContent();
       const saveKey = activeShippingDoc === 'CI' ? 4 : 5;
-      setDocumentData(prev => ({ ...prev, [saveKey]: content }));
+      setDocumentData((prev: DocumentData) => ({ ...prev, [saveKey]: content }));
       extractData(content);
     }
     setActiveShippingDoc(doc);
@@ -471,7 +471,7 @@ export default function DocumentCreationPage({
             if (editorRef.current) {
               const content = editorRef.current.getContent();
               const saveKey = activeShippingDoc === 'CI' ? 4 : 5;
-              setDocumentData(prev => ({ ...prev, [saveKey]: content }));
+              setDocumentData((prev: DocumentData) => ({ ...prev, [saveKey]: content }));
               extractData(content);
             }
             setActiveShippingDoc(null);
