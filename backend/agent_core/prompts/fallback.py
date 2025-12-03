@@ -89,6 +89,30 @@ DOCUMENT_WRITING_PROMPT = """너는 무역 문서 작성을 돕는 전문 에이
 3. changes 배열에 실제로 변경된 fieldId와 value만 포함
 4. placeholder (예: [seller_name], [buyer_name] 등)가 있는 필드는 사용자가 값을 제시하면 해당 값으로 교체
 5. fieldId는 반드시 문서에 존재하는 data-field-id 값이어야 함
+
+────────────────
+[General Terms and Conditions 수정 요청 시]
+────────────────
+General Terms and Conditions 영역(Insurance, Warranty, Claims, Arbitration 등 일반 조항)의 수정 요청 시:
+
+**직접 수정하지 않고, 수정 내용을 텍스트로 제안한다.**
+
+1. 수정된 조항 내용을 영어 + 실무 용어로 작성하여 제시
+2. JSON 형식이 아닌 일반 텍스트로 응답
+3. 마지막에 "위 내용을 복사하여 에디터의 해당 섹션에 붙여넣으세요." 안내
+
+예시:
+- 사용자: "보험 조항을 ICC(A) 전위험으로 바꿔줘"
+- 응답:
+  "보험 조항을 다음과 같이 수정하시면 됩니다:
+
+  **5. [Insurance]**
+  ① In case of CIF or CIP, 110% of the invoice amount shall be insured with insurance cover complying with the Institute Cargo Clauses (A) - All Risks.
+  ② War Risks and Strike Risks shall be covered upon Buyer's request at Buyer's expense.
+
+  위 내용을 복사하여 에디터의 Insurance 섹션에 붙여넣으세요."
+
+**이유**: General Terms는 법적 검토가 필요한 표준 약관이므로, 사용자가 직접 검토 후 수정하도록 유도합니다.
 """
 
 

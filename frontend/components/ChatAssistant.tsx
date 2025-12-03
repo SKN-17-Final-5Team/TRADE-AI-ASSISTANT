@@ -36,12 +36,14 @@ interface Message {
   changes?: Change[];  // fieldId/value pairs for field-level updates
   step?: number;
   toolsUsed?: ToolUsed[];
+  isApplied?: boolean;  // 적용 완료 여부 (중복 적용 방지)
 }
 
 interface PreviewState {
   isOpen: boolean;
   changes: Change[];
   step?: number;
+  messageId?: string;  // 적용 완료 상태 추적용
 }
 
 interface ChatAssistantProps {
@@ -67,6 +69,7 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
     changes: []
   });
   const [history, setHistory] = useState<string[]>([]);
+  const [isConnected, setIsConnected] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
@@ -114,7 +117,7 @@ ${documentContent}
           'Authorization': `Bearer ${OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4o',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage }
@@ -149,11 +152,12 @@ ${documentContent}
   };
 
   // 미리보기 열기
-  const openPreview = (changes: Change[], step: number) => {
+  const openPreview = (changes: Change[], step: number, messageId: string) => {
     setPreview({
       isOpen: true,
       changes,
-      step
+      step,
+      messageId
     });
   };
 
@@ -164,6 +168,12 @@ ${documentContent}
       const currentContent = editorRef.current?.getContent() || '';
       setHistory(prev => [...prev, currentContent]);
       onApply(preview.changes, preview.step);
+      // 적용 완료 상태로 변경
+      if (preview.messageId) {
+        setMessages(prev => prev.map(msg =>
+          msg.id === preview.messageId ? { ...msg, isApplied: true } : msg
+        ));
+      }
     }
     setPreview({ isOpen: false, changes: [] });
   };
@@ -190,14 +200,51 @@ ${documentContent}
     scrollToBottom();
   }, [messages]);
 
-  const quickSuggestions = [
-    { icon: '📝', text: '작성 도움' },
-    { icon: '✨', text: '표준 형식' }
-  ];
+  // 연결 상태 체크
+  useEffect(() => {
+    const checkConnection = async () => {
+      // 인터넷 연결 체크
+      if (!navigator.onLine) {
+        setIsConnected(false);
+        return;
+      }
 
-  const handleQuickSuggestion = (text: string) => {
-    setInput(text);
-  };
+      // Django 백엔드 사용 시 health check
+      if (USE_DJANGO) {
+        try {
+          const response = await fetch(`${DJANGO_API_URL}/api/health/`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000)
+          });
+          setIsConnected(response.ok);
+        } catch {
+          setIsConnected(false);
+        }
+      } else {
+        // OpenAI 직접 연결 시 API 키 존재 여부로 판단
+        setIsConnected(!!OPENAI_API_KEY);
+      }
+    };
+
+    // 초기 체크
+    checkConnection();
+
+    // 주기적 체크 (30초마다)
+    const interval = setInterval(checkConnection, 30000);
+
+    // 브라우저 online/offline 이벤트 리스너
+    const handleOnline = () => checkConnection();
+    const handleOffline = () => setIsConnected(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [USE_DJANGO, DJANGO_API_URL, OPENAI_API_KEY]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -542,8 +589,8 @@ ${documentContent}
             <div>
               <h2 className="font-bold text-base tracking-tight">AI 어시스턴트</h2>
               <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
-                <p className="text-blue-100 text-[11px] font-medium">Online</p>
+                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`}></span>
+                <p className="text-blue-100 text-[11px] font-medium">{isConnected ? 'Connected' : 'Disconnected'}</p>
               </div>
             </div>
           </div>
@@ -567,22 +614,6 @@ ${documentContent}
               </button>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Quick Suggestions */}
-      <div className="px-4 py-3 bg-gray-50/50 border-b border-gray-100 backdrop-blur-sm">
-        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-          {quickSuggestions.map((suggestion, index) => (
-            <button
-              key={index}
-              onClick={() => handleQuickSuggestion(suggestion.text)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-100 rounded-full hover:border-blue-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-xs whitespace-nowrap group"
-            >
-              <span className="group-hover:scale-110 transition-transform">{suggestion.icon}</span>
-              <span className="text-gray-600 font-medium group-hover:text-blue-600">{suggestion.text}</span>
-            </button>
-          ))}
         </div>
       </div>
 
@@ -637,8 +668,13 @@ ${documentContent}
               {message.hasApply && message.changes && message.changes.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
                   <button
-                    onClick={() => openPreview(message.changes!, message.step!)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-700 border border-amber-200 text-xs font-medium rounded-lg hover:bg-amber-100 transition-colors"
+                    onClick={() => openPreview(message.changes!, message.step!, message.id)}
+                    disabled={message.isApplied}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+                      message.isApplied
+                        ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                        : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                    }`}
                   >
                     <Eye className="w-3.5 h-3.5" />
                     미리보기
@@ -648,11 +684,20 @@ ${documentContent}
                       const beforeHTML = editorRef.current?.getContent() || '';
                       setHistory(prev => [...prev, beforeHTML]);
                       onApply(message.changes!, message.step!);
+                      // 적용 완료 상태로 변경
+                      setMessages(prev => prev.map(msg =>
+                        msg.id === message.id ? { ...msg, isApplied: true } : msg
+                      ));
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
+                    disabled={message.isApplied}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+                      message.isApplied
+                        ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                        : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                    }`}
                   >
                     <Wand2 className="w-3.5 h-3.5" />
-                    바로 적용
+                    {message.isApplied ? '적용됨' : '바로 적용'}
                   </button>
                 </div>
               )}
@@ -688,7 +733,7 @@ ${documentContent}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="AI에게 무엇이든 물어보세요..."
+            placeholder="업무에 관한 무엇이든 물어보고 요청하세요..."
             className="w-full px-6 py-3.5 pr-14 rounded-full border border-gray-200 bg-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.03)] focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 focus:shadow-[0_4px_20px_rgba(37,99,235,0.1)] transition-all duration-300 text-sm relative z-10 placeholder:text-gray-400"
             disabled={isLoading}
           />
