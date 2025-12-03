@@ -2,7 +2,7 @@ import { useEditor, EditorContent, Node, mergeAttributes, ReactNodeViewRenderer,
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import Placeholder from '@tiptap/extension-placeholder'
-import Underline from '@tiptap/extension-underline'
+// import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
 import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
@@ -361,7 +361,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 Placeholder.configure({
                     placeholder: 'Start typing or ask AI for help...',
                 }),
-                Underline,
+                // Underline, // Removed to fix duplicate extension warning
                 TextAlign.configure({
                     types: ['heading', 'paragraph'],
                 }),
@@ -682,6 +682,13 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 console.log('Save triggered')
             }
         }, [])
+
+        useEffect(() => {
+            if (editor && initialContent !== undefined && editor.getHTML() !== initialContent) {
+                // Force update content
+                editor.commands.setContent(initialContent);
+            }
+        }, [editor, initialContent]);
 
         useEffect(() => {
             document.addEventListener('keydown', handleKeyDown)

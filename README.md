@@ -174,6 +174,13 @@ npm run dev
 
 프론트엔드 서버: http://localhost:5173
 
+#### 3-4. 개발 서버 재시작
+```bash
+rm -rf node_modules package-lock.json && npm install
+
+npm run dev
+```
+
 ---
 
 ## 실행 순서 요약

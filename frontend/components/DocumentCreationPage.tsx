@@ -39,6 +39,8 @@ import { packingListTemplateHTML } from '../templates/packingList';
 import { saleContractTemplateHTML } from '../templates/saleContract';
 import { commercialInvoiceTemplateHTML } from '../templates/commercialInvoice';
 
+import VersionHistorySidebar, { Version } from './VersionHistorySidebar';
+import { Clock } from 'lucide-react';
 
 interface DocumentCreationPageProps {
   currentStep: number;
@@ -48,7 +50,10 @@ interface DocumentCreationPageProps {
   onNavigate: (page: PageType) => void;
   userEmployeeId: string;
   onLogout: () => void;
-  onSave: (data: DocumentData, step: number) => void;
+  onSave: (data: DocumentData, step: number, activeShippingDoc?: 'CI' | 'PL' | null) => void;
+  versions?: Version[];
+  onRestore?: (version: Version) => void;
+  initialActiveShippingDoc?: 'CI' | 'PL' | null;
 }
 
 export default function DocumentCreationPage({
@@ -59,7 +64,10 @@ export default function DocumentCreationPage({
   onNavigate,
   userEmployeeId,
   onLogout,
-  onSave
+  onSave,
+  versions = [],
+  onRestore,
+  initialActiveShippingDoc
 }: DocumentCreationPageProps) {
   const editorRef = useRef<ContractEditorRef>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -87,7 +95,7 @@ export default function DocumentCreationPage({
 
   const [sharedData, setSharedData] = useState<Record<string, string>>({});
   const [shippingOrder, setShippingOrder] = useState<('CI' | 'PL')[] | null>(null);
-  const [activeShippingDoc, setActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
+  const [activeShippingDoc, setActiveShippingDoc] = useState<'CI' | 'PL' | null>(initialActiveShippingDoc || null);
   const [hasMappedFields, setHasMappedFields] = useState(false);
   const [showConfirmBanner, setShowConfirmBanner] = useState(false);
   const [reviewCompleted, setReviewCompleted] = useState(false);
@@ -108,6 +116,7 @@ export default function DocumentCreationPage({
   // Intro Animation State
   const [hasShownIntro, setHasShownIntro] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const chatButtonRef = useRef<HTMLButtonElement>(null);
 
   // Calculate visibility for chatbot button
@@ -323,9 +332,9 @@ export default function DocumentCreationPage({
       setDocumentData(newDocData);
 
       // Then call parent save
-      onSave(newDocData, currentStep); // Note: onSave might need update if it relies on step number strictly
+      onSave(newDocData, currentStep, activeShippingDoc);
     } else {
-      onSave(documentData, currentStep);
+      onSave(documentData, currentStep, activeShippingDoc);
     }
     setIsDirty(false);
     setShowSaveSuccessModal(true);
@@ -1155,6 +1164,29 @@ export default function DocumentCreationPage({
         />
       )}
 
+      {/* Version History Sidebar */}
+      <VersionHistorySidebar
+        isOpen={showVersionHistory}
+        onClose={() => setShowVersionHistory(false)}
+        versions={versions}
+        currentStep={currentStep}
+        onRestore={(version) => {
+          if (onRestore) {
+            onRestore(version);
+            setShowVersionHistory(false);
+            const step = version.step;
+            if (step <= 3) {
+              setCurrentStep(step);
+              setStepModes(prev => ({ ...prev, [step]: 'manual' }));
+            } else {
+              setCurrentStep(4);
+              if (step === 4) setActiveShippingDoc('CI');
+              if (step === 5) setActiveShippingDoc('PL');
+            }
+          }
+        }}
+      />
+
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md shadow-sm flex-shrink-0">
         <div className="px-8 py-4 flex items-center justify-between">
@@ -1215,6 +1247,17 @@ export default function DocumentCreationPage({
             >
               <Download className="w-4 h-4" />
               다운로드
+            </button>
+            <button
+              onClick={() => setShowVersionHistory(true)}
+              className="text-gray-600 hover:text-blue-600 text-sm flex items-center gap-1 transition-colors group relative"
+              title="버전 기록"
+            >
+              <Clock className="w-4 h-4" />
+              버전 기록
+              {versions.filter(v => v.step === currentStep).length > 0 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full border border-white" />
+              )}
             </button>
             <div className="w-px h-4 bg-gray-300 mx-2"></div>
             <span className="text-gray-600 text-sm">{userEmployeeId}</span>

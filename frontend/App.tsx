@@ -22,6 +22,13 @@ export interface SavedDocument {
   status: 'completed' | 'in-progress';
   content?: DocumentData;
   lastStep?: number;
+  lastActiveShippingDoc?: 'CI' | 'PL' | null;
+  versions?: {
+    id: string;
+    timestamp: number;
+    data: DocumentData;
+    step: number;
+  }[];
 }
 
 function App() {
@@ -32,23 +39,41 @@ function App() {
   const [documentData, setDocumentData] = useState<DocumentData>({});
   const [transition, setTransition] = useState<TransitionType>('none');
   const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
+  const [docSessionId, setDocSessionId] = useState<string>(Date.now().toString());
 
   const handleNavigate = (page: PageType) => {
+    if (page === 'main') {
+      setCurrentDocId(null);
+    }
+
     if (page === 'documents') {
-      // New Document: Reset state
-      setCurrentStep(0);
-      setDocumentData({});
+      // If we are navigating to documents and don't have an ID, it's a new document
+      // (handleOpenDocument sets the ID before navigating)
+      if (!currentDocId) {
+        setCurrentStep(1);
+        setDocumentData({});
+        setCurrentActiveShippingDoc(null);
+        setDocSessionId(Date.now().toString()); // New session for new document
+      }
     }
     setCurrentPage(page);
   };
 
   const handleOpenDocument = (doc: SavedDocument) => {
+    setCurrentDocId(doc.id);
     // Resume Document: Load content and go to Step 1
     if (doc.content) {
       setDocumentData(doc.content);
     }
     setCurrentStep(doc.lastStep || 1); // Resume from last step or default to 1
-    setCurrentPage('documents');
+    const shippingDoc = doc.lastActiveShippingDoc || null;
+    setCurrentActiveShippingDoc(shippingDoc);
+    setDocSessionId(Date.now().toString()); // New session for opened document
+
+    // Use setTimeout to ensure state is set before navigation
+    setTimeout(() => {
+      setCurrentPage('documents');
+    }, 0);
   };
 
   // 로고 클릭으로 채팅 열기 (확장 애니메이션)
@@ -85,9 +110,9 @@ function App() {
       id: '1',
       name: 'Samsung Electronics - Offer Sheet',
       date: '2025.11.20',
-      completedSteps: 4,
+      completedSteps: 1,
       totalSteps: 5,
-      progress: 57,
+      progress: 20,
       status: 'in-progress',
       content: {}
     },
@@ -107,30 +132,92 @@ function App() {
       date: '2025.11.15',
       completedSteps: 2,
       totalSteps: 5,
-      progress: 28,
+      progress: 40,
       status: 'in-progress',
       content: {}
     }
   ]);
 
-  const handleSaveDocument = (data: DocumentData, step: number) => {
-    const completedStepsCount = Object.keys(data).filter(k => k !== 'title').length;
-    const progress = Math.round((completedStepsCount / 5) * 100);
+  // Track the ID of the document currently being edited
+  const [currentDocId, setCurrentDocId] = useState<string | null>(null);
+  const [currentActiveShippingDoc, setCurrentActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
 
-    const newDoc: SavedDocument = {
-      id: Date.now().toString(),
-      name: data.title || 'Untitled Document',
-      date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').slice(0, -1),
-      completedSteps: completedStepsCount, // Count steps with data
-      totalSteps: 5,
-      progress: progress,
-      status: progress === 100 ? 'completed' : 'in-progress',
-      content: data,
-      lastStep: step
+  const handleSaveDocument = (data: DocumentData, step: number, activeShippingDoc?: 'CI' | 'PL' | null) => {
+    // Update currentActiveShippingDoc if provided
+    if (activeShippingDoc) {
+      setCurrentActiveShippingDoc(activeShippingDoc);
+    }
+
+    // Normalize step to visual step (1-4), not docKey (1-5)
+    // If step is 5 (PL docKey), it should be saved as step 4
+    const visualStep = step > 4 ? 4 : step;
+
+    const completedStepsCount = Object.keys(data)
+      .filter(k => k !== 'title')
+      .map(Number)
+      .filter(step => step >= 1 && step <= 5)
+      .length;
+    const progress = Math.round((completedStepsCount / 5) * 100);
+    const now = Date.now();
+
+    // Determine the document ID to use
+    let docId = currentDocId;
+    if (!docId) {
+      docId = now.toString();
+      setCurrentDocId(docId);
+    }
+
+    // Create new version object
+    const newVersion = {
+      id: now.toString(),
+      timestamp: now,
+      data: { ...data },
+      step: visualStep  // Use visualStep for version history
     };
 
-    setSavedDocuments([newDoc, ...savedDocuments]);
-    // setCurrentPage('main'); // Prevent navigation on save
+    setSavedDocuments(prev => {
+      const existingDocIndex = prev.findIndex(d => d.id === docId);
+
+      if (existingDocIndex !== -1) {
+        // Update existing document
+        const existingDoc = prev[existingDocIndex];
+
+        const updatedDoc: SavedDocument = {
+          ...existingDoc,
+          name: data.title || 'Untitled Document',
+          date: new Date().toLocaleDateString('ko-KR').replace(/\. /g, '.').slice(0, -1),
+          completedSteps: completedStepsCount,
+          totalSteps: 5,
+          progress: progress,
+          status: progress === 100 ? 'completed' : 'in-progress',
+          content: data,
+          lastStep: visualStep,  // Use visualStep
+          lastActiveShippingDoc: activeShippingDoc || existingDoc.lastActiveShippingDoc,
+          versions: [newVersion, ...(existingDoc.versions || [])]
+        };
+
+        // Move updated doc to top
+        const finalDocs = prev.filter(d => d.id !== docId);
+        finalDocs.unshift(updatedDoc);
+        return finalDocs;
+      } else {
+        // Create new document
+        const newDoc: SavedDocument = {
+          id: docId!, // We know docId is set
+          name: data.title || 'Untitled Document',
+          date: new Date().toLocaleDateString('ko-KR').replace(/\. /g, '.').slice(0, -1),
+          completedSteps: completedStepsCount,
+          totalSteps: 5,
+          progress: progress,
+          status: 'in-progress',
+          content: data,
+          lastStep: visualStep,  // Use visualStep
+          lastActiveShippingDoc: activeShippingDoc || null,
+          versions: [newVersion]
+        };
+        return [newDoc, ...prev];
+      }
+    });
   };
 
   // 컴포넌트 마운트 시 localStorage에서 인증 상태 복원
@@ -276,6 +363,7 @@ function App() {
       {/* 문서 페이지 */}
       {currentPage === 'documents' && (
         <DocumentCreationPage
+          key={docSessionId}
           currentStep={currentStep}
           setCurrentStep={setCurrentStep}
           documentData={documentData}
@@ -284,6 +372,17 @@ function App() {
           userEmployeeId={userEmail}
           onLogout={handleLogout}
           onSave={handleSaveDocument}
+          versions={currentDocId ? savedDocuments.find(d => d.id === currentDocId)?.versions : undefined}
+          onRestore={(version) => {
+            setDocumentData(prev => ({
+              ...prev,
+              [version.step]: version.data[version.step]
+            }));
+            if (currentStep !== version.step) {
+              setCurrentStep(version.step);
+            }
+          }}
+          initialActiveShippingDoc={currentActiveShippingDoc}
         />
       )}
 
