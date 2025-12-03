@@ -118,6 +118,8 @@ const DataField = Node.create({
                 bgClass = 'bg-yellow-100';
             } else if (source === 'mapped') {
                 bgClass = 'bg-green-100';
+            } else if (source === 'user') {
+                bgClass = 'bg-blue-100';
             } else {
                 bgClass = 'bg-transparent';
             }
@@ -335,19 +337,18 @@ export interface ContractEditorRef {
     setContent: (content: string) => void
     insertContent: (content: string) => void
     replaceSelection: (content: string) => void
-    confirmMappedData: () => void
-    reviewMappedFields: () => void
 }
 
 interface ContractEditorProps {
     initialContent?: string
     onChange?: (content: string) => void
-    onMappedFieldsDetected?: (hasMapped: boolean) => void
     className?: string
+    showFieldHighlight?: boolean
+    showAgentHighlight?: boolean
 }
 
 const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
-    ({ initialContent, onChange, onMappedFieldsDetected, className }, ref) => {
+    ({ initialContent, onChange, className, showFieldHighlight = true, showAgentHighlight = true }, ref) => {
         const editor = useEditor({
             extensions: [
                 StarterKit.configure({
@@ -440,16 +441,6 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             onUpdate: ({ editor }) => {
                 onChange?.(editor.getHTML())
 
-                // Check for mapped fields in the current document
-                let hasMappedFields = false
-                editor.state.doc.descendants((node: any) => {
-                    if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
-                        hasMappedFields = true
-                        return false
-                    }
-                })
-                onMappedFieldsDetected?.(hasMappedFields)
-
                 // Skip if currently syncing
                 if (isSyncing) return
 
@@ -492,9 +483,18 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 })
 
                 // 2. Sync same-fieldId nodes (if we're in a dataField)
-                if (sourceFieldId && sourceContent !== null) {
+                if (sourceFieldId && sourceContent !== null && sourcePos !== null) {
                     const isPlaceholder = sourceContent === '' || sourceContent === `[${sourceFieldId}]`
                     const targetValue = isPlaceholder ? `[${sourceFieldId}]` : sourceContent
+
+                    // Set source to 'user' for the field being edited (if not placeholder)
+                    if (!isPlaceholder) {
+                        const sourceNode = doc.nodeAt(sourcePos)
+                        if (sourceNode && sourceNode.attrs.source !== 'user' && sourceNode.attrs.source !== 'agent') {
+                            tr.setNodeMarkup(sourcePos, undefined, { ...sourceNode.attrs, source: 'user' })
+                            modified = true
+                        }
+                    }
 
                     // Collect nodes to sync (from current state, accounting for any placeholder restorations)
                     const nodesToSync: { pos: number; node: any }[] = []
@@ -512,6 +512,11 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                     nodesToSync.sort((a, b) => b.pos - a.pos)
                     for (const { pos, node } of nodesToSync) {
                         tr.replaceWith(pos + 1, pos + node.nodeSize - 1, state.schema.text(targetValue))
+                        // Set source to 'mapped' for synced fields (or null for placeholder)
+                        tr.setNodeMarkup(pos, undefined, {
+                            ...node.attrs,
+                            source: isPlaceholder ? null : 'mapped'
+                        })
                         modified = true
                     }
                 }
@@ -537,121 +542,6 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             },
             replaceSelection: (content: string) => {
                 editor?.commands.insertContent(content)
-            },
-            confirmMappedData: () => {
-                if (!editor) return;
-
-                const { state, view } = editor;
-                const tr = state.tr;
-                let modified = false;
-
-                // Find all mapped fields and remove highlight (set source to null)
-                state.doc.descendants((node: any, pos: number) => {
-                    if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
-                        tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
-                        modified = true;
-
-                        // Also remove any temporary highlight styles
-                        const domNode = editor.view.nodeDOM(pos);
-                        if (domNode && domNode instanceof HTMLElement) {
-                            domNode.style.boxShadow = '';
-                            domNode.style.transform = '';
-                            domNode.style.transition = '';
-                        }
-                    }
-                });
-
-                if (modified) {
-                    view.dispatch(tr);
-
-                    // Force a re-render to ensure HTML attributes are updated
-                    setTimeout(() => {
-                        const content = editor.getHTML();
-                        // Remove data-source="mapped" from HTML
-                        const updatedContent = content.replace(/data-source="mapped"/g, '');
-                        if (content !== updatedContent) {
-                            editor.commands.setContent(updatedContent);
-                        }
-                    }, 50);
-                }
-            },
-            reviewMappedFields: async () => {
-                if (!editor) return;
-
-                const { state } = editor;
-                const mappedFieldPositions: { pos: number; fieldId: string; top: number }[] = [];
-
-                // Collect all mapped field positions with their Y coordinates
-                state.doc.descendants((node: any, pos: number) => {
-                    if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
-                        const domNode = editor.view.nodeDOM(pos);
-                        if (domNode && domNode instanceof HTMLElement) {
-                            const rect = domNode.getBoundingClientRect();
-                            mappedFieldPositions.push({
-                                pos,
-                                fieldId: node.attrs.fieldId,
-                                top: rect.top + window.scrollY
-                            });
-                        }
-                    }
-                });
-
-                if (mappedFieldPositions.length === 0) return;
-
-                // Sort by vertical position
-                mappedFieldPositions.sort((a, b) => a.top - b.top);
-
-                // Group fields by screen/viewport (within 300px vertical distance)
-                const VIEWPORT_THRESHOLD = 150;
-                const groups: typeof mappedFieldPositions[] = [];
-                let currentGroup: typeof mappedFieldPositions = [mappedFieldPositions[0]];
-
-                for (let i = 1; i < mappedFieldPositions.length; i++) {
-                    const prevField = mappedFieldPositions[i - 1];
-                    const currentField = mappedFieldPositions[i];
-
-                    // If fields are close together (same screen), add to current group
-                    if (Math.abs(currentField.top - prevField.top) < VIEWPORT_THRESHOLD) {
-                        currentGroup.push(currentField);
-                    } else {
-                        // Start a new group
-                        groups.push(currentGroup);
-                        currentGroup = [currentField];
-                    }
-                }
-                groups.push(currentGroup); // Add last group
-
-                // Sequentially show each group
-                for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-                    const group = groups[groupIndex];
-
-                    // Scroll to the first field in the group
-                    const firstField = group[0];
-                    const firstDomNode = editor.view.nodeDOM(firstField.pos);
-
-                    if (firstDomNode && firstDomNode instanceof HTMLElement) {
-                        firstDomNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                        // Wait for scroll to complete
-                        await new Promise(resolve => setTimeout(resolve, 500));
-
-                        // Highlight all fields in this group
-                        for (const field of group) {
-                            const domNode = editor.view.nodeDOM(field.pos);
-                            if (domNode && domNode instanceof HTMLElement) {
-                                domNode.style.transition = 'all 0.3s ease';
-                                domNode.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.5)';
-                                domNode.style.transform = 'scale(1.05)';
-                            }
-                        }
-
-                        // Wait 1.5 seconds before moving to next group
-                        await new Promise(resolve => setTimeout(resolve, 1500));
-                    }
-                }
-
-                // Keep highlights until user confirms
-                // Highlights will be removed when user clicks confirm button
             },
         }))
 
@@ -687,7 +577,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
         }
 
         return (
-            <div className={`contract-editor flex flex-col h-full ${className || ''}`}>
+            <div className={`contract-editor flex flex-col h-full ${showFieldHighlight ? 'show-field-highlight' : ''} ${showAgentHighlight ? 'show-agent-highlight' : ''} ${className || ''}`}>
                 <EditorToolbar editor={editor} />
                 <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0">
                     <EditorContent editor={editor} className="h-full" />

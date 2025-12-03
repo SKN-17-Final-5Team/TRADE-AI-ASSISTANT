@@ -30,7 +30,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PageType, DocumentData } from '../App';
 import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
-import { MappedDataConfirmBanner } from './MappedDataConfirmBanner';
 import { ShootingStarIntro } from './ShootingStarIntro';
 import { offerSheetTemplateHTML } from '../templates/offerSheet';
 
@@ -40,7 +39,7 @@ import { saleContractTemplateHTML } from '../templates/saleContract';
 import { commercialInvoiceTemplateHTML } from '../templates/commercialInvoice';
 
 import VersionHistorySidebar, { Version } from './VersionHistorySidebar';
-import { Clock } from 'lucide-react';
+import { Clock, Eye, EyeOff } from 'lucide-react';
 
 interface DocumentCreationPageProps {
   currentStep: number;
@@ -96,9 +95,6 @@ export default function DocumentCreationPage({
   const [sharedData, setSharedData] = useState<Record<string, string>>({});
   const [shippingOrder, setShippingOrder] = useState<('CI' | 'PL')[] | null>(null);
   const [activeShippingDoc, setActiveShippingDoc] = useState<'CI' | 'PL' | null>(initialActiveShippingDoc || null);
-  const [hasMappedFields, setHasMappedFields] = useState(false);
-  const [showConfirmBanner, setShowConfirmBanner] = useState(false);
-  const [reviewCompleted, setReviewCompleted] = useState(false);
 
   // New state for Upload vs Manual
   const [stepModes, setStepModes] = useState<Record<number, 'manual' | 'upload' | 'skip' | null>>({});
@@ -117,6 +113,8 @@ export default function DocumentCreationPage({
   const [hasShownIntro, setHasShownIntro] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showFieldHighlight, setShowFieldHighlight] = useState(true);
+  const [showAgentHighlight, setShowAgentHighlight] = useState(true);
   const chatButtonRef = useRef<HTMLButtonElement>(null);
 
   // Calculate visibility for chatbot button
@@ -449,62 +447,6 @@ export default function DocumentCreationPage({
       editorRef.current.setContent(syncedContent);
     }
   };
-
-  const handleMappedFieldsDetected = (hasMapped: boolean) => {
-    setHasMappedFields(hasMapped);
-    if (hasMapped && !showConfirmBanner) {
-      setShowConfirmBanner(true);
-    }
-  };
-
-  const handleConfirmMapped = async () => {
-    if (reviewCompleted) {
-      // If already reviewed, this is the final confirmation
-      handleFinalConfirm();
-    } else {
-      // First click: review all mapped fields (scroll through groups)
-      editorRef.current?.reviewMappedFields();
-      setReviewCompleted(true);
-    }
-  };
-
-  const handleFinalConfirm = () => {
-    // Remove all highlights when user confirms
-    editorRef.current?.confirmMappedData();
-
-    setShowConfirmBanner(false);
-    setHasMappedFields(false);
-    setReviewCompleted(false);
-  };
-
-  const handleDismissBanner = () => {
-    setShowConfirmBanner(false);
-    setReviewCompleted(false);
-  };
-
-  // Check for mapped fields on document entry
-  useEffect(() => {
-    if (!editorRef.current) return;
-
-    // Check if current document has mapped fields
-    const checkForMappedFields = () => {
-      const content = editorRef.current?.getContent();
-      if (!content) return;
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(content, 'text/html');
-      const mappedFields = doc.querySelectorAll('span[data-field-id][data-source="mapped"]');
-
-      if (mappedFields.length > 0) {
-        setHasMappedFields(true);
-        setShowConfirmBanner(true);
-      }
-    };
-
-    // Small delay to ensure editor is fully loaded
-    const timer = setTimeout(checkForMappedFields, 300);
-    return () => clearTimeout(timer);
-  }, [currentStep, activeShippingDoc]);
 
   const handleDownload = () => {
     // 1. Sync current editor content to documentData before opening modal
@@ -1108,9 +1050,10 @@ export default function DocumentCreationPage({
     // 4. Default Editor (Manual Entry)
     return (
       <div className="flex flex-col h-full">
-        {/* Back to Selection Button (Only for Step 1 & 3 in Manual Mode) */}
-        {(currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'manual' && (
-          <div className="mb-4 flex-shrink-0">
+        {/* Top Bar: Back Button (left) + Field Highlight Toggle (right) */}
+        <div className="mb-4 flex-shrink-0 flex items-center justify-between">
+          {/* Back to Selection Button (Only for Step 1 & 3 in Manual Mode) */}
+          {(currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'manual' ? (
             <button
               onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: null }))}
               className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
@@ -1118,8 +1061,39 @@ export default function DocumentCreationPage({
               <ArrowLeft className="w-4 h-4" />
               <span className="font-medium">작성 방식 다시 선택하기</span>
             </button>
+          ) : (
+            <div /> // Spacer for justify-between
+          )}
+
+          {/* Highlight Toggles */}
+          <div className="flex items-center gap-2">
+            {/* Common Field Highlight Toggle */}
+            <button
+              onClick={() => setShowFieldHighlight(prev => !prev)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                showFieldHighlight
+                  ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              {showFieldHighlight ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              <span>공통 필드</span>
+            </button>
+
+            {/* Agent Highlight Toggle */}
+            <button
+              onClick={() => setShowAgentHighlight(prev => !prev)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                showAgentHighlight
+                  ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>AI 답변</span>
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Quick Switcher for Shipping Documents (Step 4) */}
         {currentStep === 4 && activeShippingDoc && (
@@ -1186,7 +1160,8 @@ export default function DocumentCreationPage({
               setIsDirty(true);
             }
           }}
-          onMappedFieldsDetected={handleMappedFieldsDetected}
+          showFieldHighlight={showFieldHighlight}
+          showAgentHighlight={showAgentHighlight}
         />
       </div>
     );
@@ -1194,17 +1169,6 @@ export default function DocumentCreationPage({
 
   return (
     <div className="h-screen flex flex-col">
-      {/* Mapped Data Confirmation Banner */}
-      {showConfirmBanner && hasMappedFields && (
-        <MappedDataConfirmBanner
-          onConfirm={handleConfirmMapped}
-          onDismiss={handleDismissBanner}
-          isChatOpen={isChatOpen}
-          chatWidth={chatWidth}
-          reviewCompleted={reviewCompleted}
-        />
-      )}
-
       {/* Version History Sidebar */}
       <VersionHistorySidebar
         isOpen={showVersionHistory}
