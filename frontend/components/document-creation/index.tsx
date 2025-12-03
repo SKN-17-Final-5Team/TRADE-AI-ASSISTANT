@@ -51,8 +51,7 @@ import { commercialInvoiceTemplateHTML } from '../../templates/commercialInvoice
 // Utils
 import { checkStepCompletion } from '../../utils/documentUtils';
 import { DocumentData } from '../../App';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+
 
 export default function DocumentCreationPage({
   currentStep,
@@ -234,9 +233,30 @@ export default function DocumentCreationPage({
     // Close modal first
     setShowDownloadModal(false);
 
-    for (const stepIndex of selectedSteps) {
+    // Create a hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    // Get iframe document
+    const iframeDoc = iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      document.body.removeChild(iframe);
+      return;
+    }
+
+    // Collect content
+    let combinedContent = '';
+    const stepsToPrint = Array.from(selectedSteps).sort((a, b) => a - b);
+
+    stepsToPrint.forEach((stepIndex, index) => {
       const content = documentData[stepIndex];
-      if (!content) continue;
+      if (!content) return;
 
       // Clean content (remove marks)
       const tempDiv = document.createElement('div');
@@ -248,75 +268,78 @@ export default function DocumentCreationPage({
         mark.parentNode?.replaceChild(span, mark);
       });
 
-      // Create a container for PDF rendering with A4 dimensions
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.left = '-9999px';
-      container.style.top = '0';
-      container.style.width = '210mm';
-      container.style.padding = '20mm';
-      container.style.backgroundColor = 'white';
-      container.style.color = 'black';
-      container.style.fontFamily = 'sans-serif';
-      container.style.fontSize = '12pt';
-      container.style.lineHeight = '1.5';
-
-      // Add styles for tables
-      const style = document.createElement('style');
-      style.textContent = `
-        table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
-        th, td { border: 1px solid black; padding: 8px; text-align: left; font-size: 10pt; }
-        h1, h2, h3 { margin-top: 0; }
-        .contract-table { width: 100%; }
-        img { max-width: 100%; }
-      `;
-      container.appendChild(style);
-
-      const contentWrapper = document.createElement('div');
-      contentWrapper.innerHTML = tempDiv.innerHTML;
-      container.appendChild(contentWrapper);
-
-      document.body.appendChild(container);
-
-      try {
-        const canvas = await html2canvas(container, {
-          scale: 2,
-          useCORS: true,
-          logging: false
-        });
-
-        const imgData = canvas.toDataURL('image/png');
-        const imgWidth = 210;
-        const pageHeight = 297;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        let heightLeft = imgHeight;
-        let position = 0;
-
-        // Add first page
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-
-        // Add extra pages if content is long
-        while (heightLeft >= 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-          heightLeft -= pageHeight;
-        }
-
-        const docName = STEP_SHORT_NAMES[stepIndex - 1] || `Document_${stepIndex}`;
-        const fileName = `${documentData.title || 'Document'}_${docName}.pdf`;
-        pdf.save(fileName);
-
-      } catch (error) {
-        console.error('PDF Generation Error:', error);
-        alert('PDF 생성 중 오류가 발생했습니다.');
-      } finally {
-        document.body.removeChild(container);
+      // Add page break for subsequent pages
+      if (index > 0) {
+        combinedContent += '<div style="page-break-before: always;"></div>';
       }
-    }
+
+      combinedContent += `<div class="document-page">${tempDiv.innerHTML}</div>`;
+    });
+
+    // Write content to iframe
+    iframeDoc.open();
+    iframeDoc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${documentData.title || 'Trade_Documents'}</title>
+          <style>
+            @page {
+              size: A4;
+              margin: 0;
+            }
+            body {
+              font-family: sans-serif;
+              font-size: 11pt;
+              line-height: 1.5;
+              color: black;
+              background: white;
+              margin: 0;
+              padding: 20mm;
+            }
+            table {
+              border-collapse: collapse;
+              width: 100%;
+              margin-bottom: 1em;
+            }
+            th, td {
+              border: 1px solid black;
+              padding: 6px 8px;
+              text-align: left;
+              font-size: 10pt;
+            }
+            .contract-table { width: 100%; }
+            img { max-width: 100%; }
+            
+            span[data-field-id] {
+              background-color: transparent !important;
+            }
+            
+            * {
+              color: black !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+          </style>
+        </head>
+        <body>
+          ${combinedContent}
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    iframeDoc.close();
+
+    // Remove iframe after a delay
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 2000);
   };
 
   const handleChatApply = (changes: FieldChange[], step: number) => {
