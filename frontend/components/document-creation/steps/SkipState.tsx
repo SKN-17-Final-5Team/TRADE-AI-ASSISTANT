@@ -2,22 +2,12 @@
 import { motion } from 'framer-motion';
 import { Ban, ArrowLeft } from 'lucide-react';
 
-interface SkipStateProps {
-  onBack: () => void;
-}
+interface SkipStateProps { }
 
-export default function SkipState({ onBack }: SkipStateProps) {
+export default function SkipState({ }: SkipStateProps) {
   return (
     <div className="h-full flex flex-col p-4">
-      <div className="mb-4 flex-shrink-0">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span className="font-medium">다시 선택하기</span>
-        </button>
-      </div>
+
 
       <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
         <motion.div

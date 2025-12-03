@@ -38,7 +38,12 @@ export function useDocumentState(
     return new Set(initialSteps);
   });
 
-  const [stepModes, setStepModes] = useState<Record<number, StepMode>>({});
+  const [stepModes, setStepModes] = useState<Record<number, StepMode>>(() => {
+    if (initialDocumentData.stepModes) {
+      return initialDocumentData.stepModes as Record<number, StepMode>;
+    }
+    return {};
+  });
   const [isDirty, setIsDirty] = useState(false);
   const [shippingOrder, setShippingOrder] = useState<ShippingDocType[] | null>(null);
   const [activeShippingDoc, setActiveShippingDoc] = useState<ShippingDocType | null>(

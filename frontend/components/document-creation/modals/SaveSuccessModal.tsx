@@ -55,12 +55,21 @@ export default function SaveSuccessModal({
             </div>
 
             <div className="space-y-2 relative z-10">
-              {savedSteps.map((stepIndex) => (
-                <div key={stepIndex} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/50 transition-colors">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                  <span className="text-sm text-gray-700 font-medium">{STEP_SHORT_NAMES[stepIndex - 1]}</span>
-                </div>
-              ))}
+              {savedSteps.map((stepIndex) => {
+                const documentNames: Record<number, string> = {
+                  1: 'Offer Sheet',
+                  2: 'Proforma Invoice (PI)',
+                  3: 'Sales Contract',
+                  4: 'Commercial Invoice',
+                  5: 'Packing List'
+                };
+                return (
+                  <div key={stepIndex} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/50 transition-colors">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                    <span className="text-sm text-gray-700 font-medium">{documentNames[stepIndex] || `Document ${stepIndex}`}</span>
+                  </div>
+                );
+              })}
               {savedSteps.length === 0 && (
                 <p className="text-sm text-gray-400 italic text-center py-2">저장된 내용이 없습니다.</p>
               )}

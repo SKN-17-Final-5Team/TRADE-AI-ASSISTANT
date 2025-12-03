@@ -5,6 +5,7 @@ import type { UploadStatus } from '../types';
 
 interface UseFileUploadReturn {
   uploadedFiles: Record<number, File | null>;
+  uploadedFileNames: Record<number, string>;
   uploadStatus: Record<number, UploadStatus>;
   uploadError: Record<number, string | null>;
   uploadedDocumentIds: Record<number, number | null>;
@@ -14,8 +15,9 @@ interface UseFileUploadReturn {
   retryUpload: (step: number) => void;
 }
 
-export function useFileUpload(): UseFileUploadReturn {
+export function useFileUpload(initialUploadedFileNames: Record<number, string> = {}): UseFileUploadReturn {
   const [uploadedFiles, setUploadedFiles] = useState<Record<number, File | null>>({});
+  const [uploadedFileNames, setUploadedFileNames] = useState<Record<number, string>>(initialUploadedFileNames);
   const [uploadedDocumentIds, setUploadedDocumentIds] = useState<Record<number, number | null>>({});
   const [uploadedDocumentUrls, setUploadedDocumentUrls] = useState<Record<number, string | null>>({});
   const [uploadStatus, setUploadStatus] = useState<Record<number, UploadStatus>>({});
@@ -25,6 +27,7 @@ export function useFileUpload(): UseFileUploadReturn {
   const handleFileUpload = useCallback(async (step: number, file: File) => {
     // 파일 저장
     setUploadedFiles(prev => ({ ...prev, [step]: file }));
+    setUploadedFileNames(prev => ({ ...prev, [step]: file.name }));
     setUploadStatus(prev => ({ ...prev, [step]: 'uploading' }));
     setUploadError(prev => ({ ...prev, [step]: null }));
 
@@ -78,6 +81,11 @@ export function useFileUpload(): UseFileUploadReturn {
       delete newFiles[step];
       return newFiles;
     });
+    setUploadedFileNames(prev => {
+      const newNames = { ...prev };
+      delete newNames[step];
+      return newNames;
+    });
     setUploadedDocumentIds(prev => ({ ...prev, [step]: null }));
     setUploadedDocumentUrls(prev => ({ ...prev, [step]: null }));
     setUploadStatus(prev => ({ ...prev, [step]: 'idle' }));
@@ -93,6 +101,7 @@ export function useFileUpload(): UseFileUploadReturn {
 
   return {
     uploadedFiles,
+    uploadedFileNames,
     uploadStatus,
     uploadError,
     uploadedDocumentIds,

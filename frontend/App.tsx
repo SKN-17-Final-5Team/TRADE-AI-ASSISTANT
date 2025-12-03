@@ -149,8 +149,9 @@ function App() {
     }
 
     // Normalize step to visual step (1-4), not docKey (1-5)
-    // If step is 5 (PL docKey), it should be saved as step 4
+    // However, for version history, we want to distinguish PL (5) from CI (4)
     const visualStep = step > 4 ? 4 : step;
+    const versionStep = activeShippingDoc === 'PL' ? 5 : step;
 
     const completedStepsCount = Object.keys(data)
       .filter(k => k !== 'title')
@@ -172,7 +173,7 @@ function App() {
       id: now.toString(),
       timestamp: now,
       data: { ...data },
-      step: visualStep  // Use visualStep for version history
+      step: versionStep  // Use versionStep for version history
     };
 
     setSavedDocuments(prev => {

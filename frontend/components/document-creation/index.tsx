@@ -72,6 +72,7 @@ export default function DocumentCreationPage({
   // Custom Hooks
   const {
     uploadedFiles,
+    uploadedFileNames,
     uploadStatus,
     uploadError,
     uploadedDocumentIds,
@@ -79,7 +80,7 @@ export default function DocumentCreationPage({
     handleFileUpload,
     removeUploadedFile,
     retryUpload
-  } = useFileUpload();
+  } = useFileUpload(documentData.uploadedFileNames as Record<number, string>);
 
   const {
     sharedData,
@@ -133,6 +134,16 @@ export default function DocumentCreationPage({
     (currentStep === 4 && activeShippingDoc)
   );
 
+  // Cleanup invalid document keys (fix for "Document -1" issue)
+  useEffect(() => {
+    if (documentData['-1' as any] || documentData[-1]) {
+      const newDocData = { ...documentData };
+      delete (newDocData as any)['-1'];
+      delete (newDocData as any)[-1];
+      setDocumentData(newDocData);
+    }
+  }, [documentData, setDocumentData]);
+
   // Trigger Intro Animation
   useEffect(() => {
     if (shouldShowChatButton && !hasShownIntro && !showIntro) {
@@ -154,11 +165,11 @@ export default function DocumentCreationPage({
 
   // Helper to check completion status for a specific step
   const getStepCompletionStatus = (stepNumber: number): boolean => {
-    if (uploadedFiles[stepNumber]) return true;
+    if (uploadedFiles[stepNumber] || uploadedFileNames[stepNumber]) return true;
     if (stepModes[stepNumber] === 'skip') return true;
 
     if (stepNumber <= 3) {
-      if (stepModes[stepNumber] === 'upload' && !uploadedFiles[stepNumber]) return false;
+      if (stepModes[stepNumber] === 'upload' && !uploadedFiles[stepNumber] && !uploadedFileNames[stepNumber]) return false;
       const stepContent = documentData[stepNumber] || hydrateTemplate(getTemplateForStep(stepNumber));
       return checkStepCompletion(stepContent);
     } else {
@@ -204,11 +215,45 @@ export default function DocumentCreationPage({
       if (currentStep <= 3) saveKey = currentStep;
       else if (shippingOrder) saveKey = getDocKeyForStep(currentStep);
 
-      const newDocData = { ...documentData, [saveKey]: content };
+      const newDocData = {
+        ...documentData,
+        stepModes: stepModes,
+        uploadedFileNames: uploadedFileNames
+      };
+
+      if (saveKey !== -1) {
+        (newDocData as any)[saveKey] = content;
+      }
+
+      // Propagate shared data changes to other documents
+      // This ensures that if a mapped field (e.g., Buyer Name) is changed,
+      // other documents using that field are also updated and saved.
+      // However, if only unmapped content is changed, other documents are NOT touched.
+      extractData(content); // Update sharedData state
+
+      Object.keys(newDocData).forEach(key => {
+        const docKey = Number(key);
+        if (isNaN(docKey) || key === 'title' || docKey === saveKey) return;
+
+        const originalContent = (newDocData as any)[key];
+        if (typeof originalContent === 'string') {
+          const newContent = updateContentWithSharedData(originalContent);
+          // Only update if content ACTUALLY changed (mapped field update)
+          if (newContent !== originalContent) {
+            (newDocData as any)[key] = newContent;
+          }
+        }
+      });
+
       setDocumentData(newDocData);
       onSave(newDocData, currentStep, activeShippingDoc);
     } else {
-      onSave(documentData, currentStep, activeShippingDoc);
+      const newDocData = {
+        ...documentData,
+        stepModes: stepModes,
+        uploadedFileNames: uploadedFileNames
+      };
+      onSave(newDocData, currentStep, activeShippingDoc);
     }
     setIsDirty(false);
     setShowSaveSuccessModal(true);
@@ -428,79 +473,95 @@ export default function DocumentCreationPage({
   };
 
   const renderStepHeaderControls = () => {
-    // Back to Selection Button (Only for Step 1 & 3 in Manual Mode)
-    if ((currentStep === 1 || currentStep === 3) && stepModes[currentStep] === 'manual') {
-      return (
-        <div className="px-8 pb-4 flex-shrink-0 flex items-center justify-between">
-          <button
-            onClick={() => setStepModes(prev => ({ ...prev, [currentStep]: null }))}
-            className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="font-medium">작성 방식 다시 선택하기</span>
-          </button>
-
-          {/* Highlight Toggles */}
-          <div className="flex items-center gap-2">
-            {/* Common Field Highlight Toggle */}
-            <button
-              onClick={() => setShowFieldHighlight(prev => !prev)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showFieldHighlight
-                ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}
-            >
-              {showFieldHighlight ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-              <span>공통 필드</span>
-            </button>
-
-            {/* Agent Highlight Toggle */}
-            <button
-              onClick={() => setShowAgentHighlight(prev => !prev)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showAgentHighlight
-                ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>AI 답변</span>
-            </button>
-          </div>
-        </div>
+    // 1. Left Side Content (Back Button)
+    let leftContent = null;
+    // Show back button if any mode is selected for Step 1 or 3
+    if ((currentStep === 1 || currentStep === 3) && stepModes[currentStep]) {
+      leftContent = (
+        <button
+          onClick={() => {
+            if (stepModes[currentStep] === 'upload') {
+              removeUploadedFile(currentStep);
+            }
+            setStepModes(prev => ({ ...prev, [currentStep]: null }));
+          }}
+          className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="font-medium">작성 방식 다시 선택하기</span>
+        </button>
       );
     }
 
-    // Quick Switcher for Shipping Documents (Step 4)
+    // 2. Center Content (Quick Switcher)
+    let centerContent = null;
     if (currentStep === 4 && activeShippingDoc) {
-      return (
-        <div className="px-8 pb-4 flex justify-center">
-          <div className="bg-gray-100 p-1.5 rounded-full flex items-center shadow-inner gap-1">
-            <button
-              onClick={() => setActiveShippingDoc('CI')}
-              className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'CI'
-                ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                }`}
-            >
-              <FileText className="w-4 h-4" />
-              Commercial Invoice
-            </button>
-            <button
-              onClick={() => setActiveShippingDoc('PL')}
-              className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'PL'
-                ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                }`}
-            >
-              <Package className="w-4 h-4" />
-              Packing List
-            </button>
-          </div>
+      centerContent = (
+        <div className="bg-gray-100 p-1.5 rounded-full flex items-center shadow-inner gap-1">
+          <button
+            onClick={() => setActiveShippingDoc('CI')}
+            className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'CI'
+              ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+              }`}
+          >
+            <FileText className="w-4 h-4" />
+            Commercial Invoice
+          </button>
+          <button
+            onClick={() => setActiveShippingDoc('PL')}
+            className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'PL'
+              ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+              }`}
+          >
+            <Package className="w-4 h-4" />
+            Packing List
+          </button>
         </div>
       );
     }
 
-    return null;
+    // 3. Right Side Content (Toggles)
+    // Hide toggles if in Upload or Skip mode for Step 1 & 3
+    const shouldShowToggles = !((currentStep === 1 || currentStep === 3) && stepModes[currentStep] !== 'manual');
+
+    const rightContent = shouldShowToggles ? (
+      <div className="flex items-center gap-2">
+        {/* Common Field Highlight Toggle */}
+        <button
+          onClick={() => setShowFieldHighlight(prev => !prev)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showFieldHighlight
+            ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+        >
+          {showFieldHighlight ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          <span>공통 필드</span>
+        </button>
+
+        {/* Agent Highlight Toggle */}
+        <button
+          onClick={() => setShowAgentHighlight(prev => !prev)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showAgentHighlight
+            ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
+            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>AI 답변</span>
+        </button>
+      </div>
+    ) : null;
+
+    // 4. Return Grid Container
+    return (
+      <div className="px-8 pb-4 grid grid-cols-3 items-center min-h-[76px]">
+        <div className="justify-self-start">{leftContent}</div>
+        <div className="justify-self-center">{centerContent}</div>
+        <div className="justify-self-end">{rightContent}</div>
+      </div>
+    );
   };
 
   // Render step content
@@ -523,9 +584,7 @@ export default function DocumentCreationPage({
     // Skip State
     if (stepModes[currentStep] === 'skip') {
       return (
-        <SkipState
-          onBack={() => setStepModes(prev => ({ ...prev, [currentStep]: null }))}
-        />
+        <SkipState />
       );
     }
 
@@ -534,13 +593,10 @@ export default function DocumentCreationPage({
       return (
         <FileUploadView
           file={uploadedFiles[currentStep] || null}
+          fileName={uploadedFileNames[currentStep]}
           status={uploadStatus[currentStep] || 'idle'}
           documentUrl={uploadedDocumentUrls[currentStep] || null}
           error={uploadError[currentStep] || null}
-          onBack={() => {
-            removeUploadedFile(currentStep);
-            setStepModes(prev => ({ ...prev, [currentStep]: null }));
-          }}
           onUpload={(file) => handleFileUpload(currentStep, file)}
           onRetry={() => retryUpload(currentStep)}
         />

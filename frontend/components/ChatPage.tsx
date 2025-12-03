@@ -40,12 +40,12 @@ const getToolIcon = (iconName: string) => {
 const suggestedQuestions = [
   {
     icon: FileText,
-    title: 'LC란 무엇인가요?',
+    title: 'L/C란 무엇인가요?',
     description: '신용장의 개념과 종류'
   },
   {
     icon: MessageCircle,
-    title: 'BL 작성 방법이 궁금해요',
+    title: 'B/L 작성 방법이 궁금해요',
     description: '선하증권 작성 가이드'
   },
   {

@@ -1,25 +1,26 @@
+
 // FileUploadView.tsx - 파일 업로드 뷰
 import { motion } from 'framer-motion';
-import { ArrowLeft, Upload, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Upload, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 import PdfViewer from '../../PdfViewer';
 import type { UploadStatus } from '../types';
 
 interface FileUploadViewProps {
   file: File | null;
+  fileName?: string;
   status: UploadStatus;
   documentUrl: string | null;
   error: string | null;
-  onBack: () => void;
   onUpload: (file: File) => void;
   onRetry: () => void;
 }
 
 export default function FileUploadView({
   file,
+  fileName,
   status,
   documentUrl,
   error,
-  onBack,
   onUpload,
   onRetry
 }: FileUploadViewProps) {
@@ -27,17 +28,10 @@ export default function FileUploadView({
   if (status === 'ready' && documentUrl) {
     return (
       <div className="h-full flex flex-col">
-        <div className="mb-4 flex-shrink-0 flex items-center justify-between px-4">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="font-medium">다시 업로드하기</span>
-          </button>
+        <div className="mb-4 flex-shrink-0 flex items-center justify-end px-4">
           <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-full">
             <CheckCircle className="w-4 h-4" />
-            <span className="text-sm font-medium">{file?.name}</span>
+            <span className="text-sm font-medium">{file?.name || fileName}</span>
           </div>
         </div>
         <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
@@ -51,15 +45,6 @@ export default function FileUploadView({
   if (status === 'uploading' || status === 'processing') {
     return (
       <div className="h-full flex flex-col p-4">
-        <div className="mb-4 flex-shrink-0">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="font-medium">취소하기</span>
-          </button>
-        </div>
         <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -72,7 +57,7 @@ export default function FileUploadView({
             <h3 className="text-xl font-bold text-gray-800 mb-2">
               {status === 'uploading' ? '파일 업로드 중...' : 'PDF 분석 중...'}
             </h3>
-            <p className="text-gray-500 mb-2">{file?.name}</p>
+            <p className="text-gray-500 mb-2">{file?.name || fileName}</p>
             <p className="text-sm text-gray-400">
               {status === 'uploading' ? 'S3에 파일을 업로드하고 있습니다' : '문서 내용을 분석하고 있습니다'}
             </p>
@@ -86,15 +71,6 @@ export default function FileUploadView({
   if (status === 'error') {
     return (
       <div className="h-full flex flex-col p-4">
-        <div className="mb-4 flex-shrink-0">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="font-medium">다시 선택하기</span>
-          </button>
-        </div>
         <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -122,16 +98,6 @@ export default function FileUploadView({
   // idle 상태: 파일 선택 UI
   return (
     <div className="h-full flex flex-col p-4">
-      <div className="mb-4 flex-shrink-0">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span className="font-medium">다시 선택하기</span>
-        </button>
-      </div>
-
       <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
         <div className="w-full max-w-2xl">
           <label className="flex flex-col items-center justify-center w-full h-96 border-3 border-dashed border-gray-300 rounded-3xl cursor-pointer bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition-all group relative overflow-hidden">
@@ -162,3 +128,4 @@ export default function FileUploadView({
     </div>
   );
 }
+

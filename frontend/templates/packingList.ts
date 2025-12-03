@@ -3,45 +3,45 @@ export const packingListTemplateHTML = `
     <h1>PACKING LIST</h1>
     <div class="title-underline"></div>
 
-    <table class="header-table" style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 20px;">
+    <table class="header-table" style="width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid #000; margin-bottom: 20px;">
         <colgroup>
             <col style="width: 50%;">
             <col style="width: 50%;">
         </colgroup>
         <!-- Row 1 -->
         <tr>
-            <td style="width: 50%; border: 1px solid #000; padding: 5px;" rowspan="2">
+            <td style="width: 50%; border: 1px solid #000; padding: 5px; word-break: break-all;" rowspan="2">
                 Date: <mark>[pl_date]</mark><br>
                 Invoice No.: <mark>[invoice_no]</mark><br>
                 Ref No.: <mark>[ref_no]</mark>
             </td>
-            <td style="width: 50%; border: 1px solid #000; padding: 5px;">
+            <td style="width: 50%; border: 1px solid #000; padding: 5px; word-break: break-all;">
                 <span class="label" style="display: block; font-size: 0.8em; color: #666;">No. & Date of Invoice</span>
                 <mark>[pl_no]</mark> / <mark>[pl_date]</mark>
             </td>
         </tr>
         <!-- Row 2 -->
         <tr>
-            <td style="border: 1px solid #000; padding: 5px;">
+            <td style="border: 1px solid #000; padding: 5px; word-break: break-all;">
                 <span class="label" style="display: block; font-size: 0.8em; color: #666;">No. & Date of L/C</span>
                 <mark>[l/c_no]</mark> / <mark>[l/c_date]</mark>
             </td>
         </tr>
         <!-- Row 3 -->
         <tr>
-            <td style="height: 50px; border: 1px solid #000; padding: 5px;">
+            <td style="height: 50px; border: 1px solid #000; padding: 5px; word-break: break-all;">
                 <span class="label" style="display: block; font-size: 0.8em; color: #666;">For Account & Risk of Messrs.</span>
                 <mark>[buyer_name]</mark><br>
                 <mark>[buyer_address]</mark>
             </td>
-            <td style="border: 1px solid #000; padding: 5px;">
+            <td style="border: 1px solid #000; padding: 5px; word-break: break-all;">
                 <span class="label" style="display: block; font-size: 0.8em; color: #666;">Remarks</span>
                 <mark>[remarks]</mark>
             </td>
         </tr>
         <!-- Row 4 -->
         <tr>
-            <td style="height: 50px; border: 1px solid #000; padding: 5px;">
+            <td style="height: 50px; border: 1px solid #000; padding: 5px; word-break: break-all;">
                 <span class="label" style="display: block; font-size: 0.8em; color: #666;">Notify party</span>
                 <mark>[pl_notify_party]</mark><br>
                 <mark>[pl_notify_party_address]</mark>
@@ -51,17 +51,17 @@ export const packingListTemplateHTML = `
         <!-- Row 5: Split Left Column -->
         <tr>
             <td style="padding: 0; height: 50px; border: 1px solid #000;">
-                <table style="width: 100%; height: 100%; border: none; border-collapse: collapse;">
+                <table style="width: 100%; height: 100%; table-layout: fixed; border: none; border-collapse: collapse;">
                     <colgroup>
                         <col style="width: 50%;">
                         <col style="width: 50%;">
                     </colgroup>
                     <tr>
-                        <td style="width: 50%; border: none; border-right: 1px solid #000; padding: 5px;">
+                        <td style="width: 50%; border: none; border-right: 1px solid #000; padding: 5px; word-break: break-all;">
                             <span class="label" style="display: block; font-size: 0.8em; color: #666;">Port of loading</span>
                             <mark>[pol]</mark>
                         </td>
-                        <td style="width: 50%; border: none; padding: 5px;">
+                        <td style="width: 50%; border: none; padding: 5px; word-break: break-all;">
                             Port of Loading: <mark>[port_of_loading]</mark><br>
                             Final Destination: <mark>[final_destination]</mark><br>
                             Carrier: <mark>[carrier]</mark><br>
@@ -74,17 +74,17 @@ export const packingListTemplateHTML = `
         <!-- Row 6: Split Left Column -->
         <tr>
             <td style="padding: 0; height: 50px; border: 1px solid #000;">
-                <table style="width: 100%; height: 100%; border: none; border-collapse: collapse;">
+                <table style="width: 100%; height: 100%; table-layout: fixed; border: none; border-collapse: collapse;">
                     <colgroup>
                         <col style="width: 50%;">
                         <col style="width: 50%;">
                     </colgroup>
                     <tr>
-                        <td style="width: 50%; border: none; border-right: 1px solid #000; padding: 5px;">
+                        <td style="width: 50%; border: none; border-right: 1px solid #000; padding: 5px; word-break: break-all;">
                             <span class="label" style="display: block; font-size: 0.8em; color: #666;">Carrier</span>
                             <mark>[carrier]</mark>
                         </td>
-                        <td style="width: 50%; border: none; padding: 5px;">
+                        <td style="width: 50%; border: none; padding: 5px; word-break: break-all;">
                             <span class="label" style="display: block; font-size: 0.8em; color: #666;">Sailing on or about</span>
                             <mark>[shipment_deadline]</mark>
                         </td>
@@ -94,7 +94,7 @@ export const packingListTemplateHTML = `
         </tr>
     </table>
 
-    <table class="items-table" style="width: 100%; border-collapse: collapse;">
+    <table class="items-table" style="width: 100%; table-layout: fixed; border-collapse: collapse;">
         <colgroup>
             <col style="width: 30%;">
             <col style="width: 35%;">

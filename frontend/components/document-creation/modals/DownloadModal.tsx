@@ -111,45 +111,54 @@ export default function DownloadModal({
           </div>
 
           <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
-            {availableSteps.map((stepIndex) => (
-              <div
-                key={stepIndex}
-                onClick={() => toggleStep(stepIndex)}
-                className={`
+            {availableSteps.map((stepIndex) => {
+              const documentNames: Record<number, string> = {
+                1: 'Offer Sheet',
+                2: 'Proforma Invoice (PI)',
+                3: 'Sales Contract',
+                4: 'Commercial Invoice',
+                5: 'Packing List'
+              };
+              return (
+                <div
+                  key={stepIndex}
+                  onClick={() => toggleStep(stepIndex)}
+                  className={`
                   flex items-center p-3.5 rounded-xl border cursor-pointer transition-all duration-200 group relative overflow-hidden
                   ${selectedSteps.has(stepIndex)
-                    ? 'bg-blue-50/50 border-blue-200 shadow-sm'
-                    : 'bg-white/60 border-gray-200 hover:border-blue-300 hover:bg-white/80 hover:shadow-md'}
+                      ? 'bg-blue-50/50 border-blue-200 shadow-sm'
+                      : 'bg-white/60 border-gray-200 hover:border-blue-300 hover:bg-white/80 hover:shadow-md'}
                 `}
-              >
-                <div className={`
+                >
+                  <div className={`
                   w-5 h-5 rounded-md border flex items-center justify-center mr-3.5 transition-all duration-200 relative z-10
                   ${selectedSteps.has(stepIndex)
-                    ? 'bg-blue-600 border-blue-600 shadow-sm scale-110'
-                    : 'border-gray-300 bg-white group-hover:border-blue-400'}
+                      ? 'bg-blue-600 border-blue-600 shadow-sm scale-110'
+                      : 'border-gray-300 bg-white group-hover:border-blue-400'}
                 `}>
-                  {selectedSteps.has(stepIndex) && <Check className="w-3.5 h-3.5 text-white" />}
-                </div>
-                <div className="flex-1 relative z-10">
-                  <p className={`text-sm font-semibold transition-colors ${selectedSteps.has(stepIndex) ? 'text-blue-900' : 'text-gray-700 group-hover:text-gray-900'}`}>
-                    {STEP_SHORT_NAMES[stepIndex - 1] || `Step ${stepIndex}`}
-                  </p>
-                </div>
-                <div className={`
+                    {selectedSteps.has(stepIndex) && <Check className="w-3.5 h-3.5 text-white" />}
+                  </div>
+                  <div className="flex-1 relative z-10">
+                    <p className={`text-sm font-semibold transition-colors ${selectedSteps.has(stepIndex) ? 'text-blue-900' : 'text-gray-700 group-hover:text-gray-900'}`}>
+                      {documentNames[stepIndex] || `Document ${stepIndex}`}
+                    </p>
+                  </div>
+                  <div className={`
                   w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-200 relative z-10
                   ${selectedSteps.has(stepIndex)
-                    ? 'bg-white border-blue-100 text-blue-600 shadow-sm'
-                    : 'bg-gray-50 border-gray-100 text-gray-400 group-hover:bg-white group-hover:border-blue-100 group-hover:text-blue-500'}
+                      ? 'bg-white border-blue-100 text-blue-600 shadow-sm'
+                      : 'bg-gray-50 border-gray-100 text-gray-400 group-hover:bg-white group-hover:border-blue-100 group-hover:text-blue-500'}
                 `}>
-                  <FileText className="w-4 h-4" />
-                </div>
+                    <FileText className="w-4 h-4" />
+                  </div>
 
-                {/* Selection Highlight */}
-                {selectedSteps.has(stepIndex) && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 pointer-events-none" />
-                )}
-              </div>
-            ))}
+                  {/* Selection Highlight */}
+                  {selectedSteps.has(stepIndex) && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 pointer-events-none" />
+                  )}
+                </div>
+              );
+            })}
 
             {availableSteps.length === 0 && (
               <div className="text-center py-12">
