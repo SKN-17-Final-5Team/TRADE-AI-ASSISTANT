@@ -2,14 +2,12 @@ import { useEditor, EditorContent, Node, mergeAttributes, ReactNodeViewRenderer,
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import Placeholder from '@tiptap/extension-placeholder'
-// import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
 import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { saleContractTemplateHTML } from '../../templates/saleContract'
 import EditorToolbar from './EditorToolbar'
 import './editor.css'
-import { NodeSelection } from '@tiptap/pm/state'
 
 const DataField = Node.create({
     name: 'dataField',
@@ -50,6 +48,64 @@ const DataField = Node.create({
         return ['span', mergeAttributes(HTMLAttributes, { class: 'data-field' }), 0]
     },
 
+    // Prevent node deletion - restore placeholder when field would become empty
+    addKeyboardShortcuts() {
+        const handleDelete = (editor: any) => {
+            const { state } = editor
+            const { selection } = state
+            const $from = selection.$from
+
+            for (let d = $from.depth; d > 0; d--) {
+                const node = $from.node(d)
+                if (node.type.name === 'dataField') {
+                    const text = node.textContent
+                    const fieldId = node.attrs.fieldId
+                    const placeholder = `[${fieldId}]`
+                    const pos = $from.before(d)
+
+                    // Already placeholder - prevent any deletion
+                    if (text === placeholder) {
+                        return true
+                    }
+
+                    // Calculate remaining length after delete
+                    let remainingLength: number
+                    if (!selection.empty) {
+                        // Selection delete
+                        const nodeStart = pos + 1
+                        const nodeEnd = nodeStart + text.length
+                        const selStart = Math.max(selection.from, nodeStart)
+                        const selEnd = Math.min(selection.to, nodeEnd)
+                        remainingLength = text.length - (selEnd - selStart)
+                    } else {
+                        // Single char delete
+                        remainingLength = text.length - 1
+                    }
+
+                    // If would become empty, restore placeholder instead
+                    if (remainingLength <= 0) {
+                        editor.chain()
+                            .command(({ tr }: any) => {
+                                tr.replaceWith(pos + 1, pos + node.nodeSize - 1, state.schema.text(placeholder))
+                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
+                                return true
+                            })
+                            .setTextSelection(pos + 1)
+                            .run()
+                        return true
+                    }
+                    break
+                }
+            }
+            return false
+        }
+
+        return {
+            'Backspace': ({ editor }) => handleDelete(editor),
+            'Delete': ({ editor }) => handleDelete(editor),
+        }
+    },
+
     addNodeView() {
         return ReactNodeViewRenderer(({ node, getPos, editor }) => {
             const isPlaceholder = node.textContent === `[${node.attrs.fieldId}]`;
@@ -59,16 +115,15 @@ const DataField = Node.create({
             if (isPlaceholder) {
                 bgClass = 'text-transparent bg-gray-50 hover:bg-gray-100 select-none';
             } else if (source === 'agent') {
-                bgClass = 'bg-yellow-100'; // Agent generated
+                bgClass = 'bg-yellow-100';
             } else if (source === 'mapped') {
-                bgClass = 'bg-green-100'; // Mapped data
+                bgClass = 'bg-green-100';
             } else {
-                bgClass = 'bg-transparent'; // No highlight for user input or confirmed data
+                bgClass = 'bg-transparent';
             }
 
-            const handleClick = (e: React.MouseEvent) => {
+            const handleClick = () => {
                 if (isPlaceholder && typeof getPos === 'function') {
-                    // Select the entire text content of the node
                     const pos = getPos();
                     if (typeof pos === 'number') {
                         editor.commands.setTextSelection({
@@ -93,6 +148,9 @@ const DataField = Node.create({
         })
     },
 })
+
+// Sync flag to prevent recursive updates
+let isSyncing = false
 
 const Div = Node.create({
     name: 'div',
@@ -382,162 +440,86 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             onUpdate: ({ editor }) => {
                 onChange?.(editor.getHTML())
 
-                // Check for mapped fields IN THE CURRENT DOCUMENT ONLY
-                let hasMappedFields = false;
+                // Check for mapped fields in the current document
+                let hasMappedFields = false
                 editor.state.doc.descendants((node: any) => {
                     if (node.type.name === 'dataField' && node.attrs.source === 'mapped') {
-                        hasMappedFields = true;
-                        return false; // Stop iteration
+                        hasMappedFields = true
+                        return false
                     }
-                });
+                })
+                onMappedFieldsDetected?.(hasMappedFields)
 
-                // Only notify if there are mapped fields in the current document
-                onMappedFieldsDetected?.(hasMappedFields);
+                // Skip if currently syncing
+                if (isSyncing) return
 
-                // Same-Doc Sync Logic
-                const { state, view } = editor;
-                const { selection, doc } = state;
-                const { from } = selection;
+                const { state, view } = editor
+                const { selection, doc } = state
+                const $from = selection.$from
 
-                // 0. Auto-Cleaning & Restoring Logic
-                const tr = state.tr;
-                let cleaningModified = false;
+                // Find the dataField at current selection
+                let sourceFieldId: string | null = null
+                let sourceContent: string | null = null
+                let sourcePos: number | null = null
 
-                // Robust "Subtraction" Cleaning Logic
-                // This handles cases where user types inside the placeholder (e.g. "[tag]A" or "[taAg]")
+                for (let d = $from.depth; d > 0; d--) {
+                    const node = $from.node(d)
+                    if (node.type.name === 'dataField') {
+                        sourceFieldId = node.attrs.fieldId
+                        sourceContent = node.textContent
+                        sourcePos = $from.before(d)
+                        break
+                    }
+                }
+
+                // Build transaction for sync and placeholder restoration
+                const tr = state.tr
+                let modified = false
+
+                // 1. Auto-restore empty fields to placeholder
                 doc.descendants((node: any, pos: number) => {
                     if (node.type.name === 'dataField') {
-                        const fieldId = node.attrs.fieldId;
-                        const placeholder = `[${fieldId}]`;
-                        const text = node.textContent;
+                        const fieldId = node.attrs.fieldId
+                        const placeholder = `[${fieldId}]`
+                        const text = node.textContent
 
-                        // Case 1: Dirty Placeholder (contains [ and ])
-                        // If the text is NOT exactly the placeholder, but contains brackets, it's likely a mixed state.
-                        if (text !== placeholder && text.includes('[') && text.includes(']')) {
-                            // Attempt to extract user input by removing placeholder characters
-                            let cleanText = text;
-                            // Remove first [ and last ] (or just first ])
-                            cleanText = cleanText.replace('[', '').replace(']', '');
-
-                            // Remove fieldId characters sequentially
-                            const chars = fieldId.split('');
-                            for (const char of chars) {
-                                cleanText = cleanText.replace(char, '');
-                            }
-
-                            // If cleanText is empty (e.g. user deleted a char from placeholder), restore placeholder
-                            // If cleanText is not empty (user typed something), use it.
-
-                            if (cleanText.trim() === '') {
-                                // Restore placeholder
-                                if (!cleaningModified) {
-                                    tr.insertText(placeholder, pos + 1, pos + node.nodeSize - 1);
-                                    tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
-                                    cleaningModified = true;
-                                }
-                            } else {
-                                // Use the cleaned text
-                                if (!cleaningModified) {
-                                    tr.insertText(cleanText, pos + 1, pos + node.nodeSize - 1);
-                                    cleaningModified = true;
-                                }
-                            }
-                        }
-                        // Case 2: Empty Content -> Restore Placeholder
-                        else if (text === '') {
-                            if (!cleaningModified) {
-                                tr.insertText(placeholder, pos + 1, pos + 1);
-                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null });
-                                cleaningModified = true;
-                            }
+                        if (text === '') {
+                            tr.insertText(placeholder, pos + 1, pos + 1)
+                            tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
+                            modified = true
                         }
                     }
-                });
+                })
 
-                if (cleaningModified) {
-                    view.dispatch(tr);
-                    return; // Exit to let the next update cycle handle the rest
-                }
+                // 2. Sync same-fieldId nodes (if we're in a dataField)
+                if (sourceFieldId && sourceContent !== null) {
+                    const isPlaceholder = sourceContent === '' || sourceContent === `[${sourceFieldId}]`
+                    const targetValue = isPlaceholder ? `[${sourceFieldId}]` : sourceContent
 
-                // 1. Identify the "active" field (the one being edited)
-                let activeFieldId: string | null = null;
-                let activeContent: string | null = null;
-
-                // Check for NodeSelection (when user clicks the field wrapper)
-                if (selection instanceof NodeSelection && selection.node.type.name === 'dataField') {
-                    activeFieldId = selection.node.attrs.fieldId;
-                    activeContent = selection.node.textContent;
-                } else {
-                    // Resolve position to find parent nodes (TextSelection)
-                    const $pos = doc.resolve(from);
-
-                    // Walk up the depth to find 'dataField'
-                    for (let d = $pos.depth; d > 0; d--) {
-                        const node = $pos.node(d);
-                        if (node.type.name === 'dataField') {
-                            activeFieldId = node.attrs.fieldId;
-                            activeContent = node.textContent;
-                            break;
+                    // Collect nodes to sync (from current state, accounting for any placeholder restorations)
+                    const nodesToSync: { pos: number; node: any }[] = []
+                    doc.descendants((node: any, pos: number) => {
+                        if (node.type.name === 'dataField' &&
+                            node.attrs.fieldId === sourceFieldId &&
+                            pos !== sourcePos &&
+                            node.textContent !== targetValue &&
+                            node.textContent !== '') { // Skip empty (will be placeholder-restored)
+                            nodesToSync.push({ pos, node })
                         }
+                    })
+
+                    // Sort by position descending and apply
+                    nodesToSync.sort((a, b) => b.pos - a.pos)
+                    for (const { pos, node } of nodesToSync) {
+                        tr.replaceWith(pos + 1, pos + node.nodeSize - 1, state.schema.text(targetValue))
+                        modified = true
                     }
                 }
 
-                // 2. If we are editing a field, sync others to it
-                if (activeFieldId && activeContent !== null) {
-                    const tr = state.tr;
-                    let modified = false;
-
-                    doc.descendants((node: any, pos: number) => {
-                        if (node.type.name === 'dataField' && node.attrs.fieldId === activeFieldId) {
-                            // Update if content is different
-                            if (node.textContent !== activeContent) {
-                                // Replace content of this node
-                                tr.insertText(activeContent!, pos + 1, pos + node.nodeSize - 1);
-                                // Set source to 'mapped' for other fields
-                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: 'mapped' });
-                                modified = true;
-                            }
-                        }
-                    });
-
-                    // Set source to 'user' for the active field (if it's not already)
-                    // We need to find the active node position again or just rely on the fact that we are editing it
-                    // Actually, we should update the active node's source to 'user'
-                    // But we can't easily find "the" active node if there are multiple.
-                    // However, the one where selection is, is the user one.
-
-                    // Let's iterate again or optimize.
-                    // Ideally, we update the active node to 'user' and others to 'mapped'.
-
-                    // Optimization: We know the active field ID.
-                    // We can just update ALL fields with that ID.
-                    // But wait, the one the user is typing in IS the user source.
-                    // The others are mapped.
-                    // So we need to distinguish the active node from others.
-
-                    // We can use the selection position to identify the active node.
-                    // But we are inside onUpdate, so selection is current.
-
-                    // Let's refine the logic:
-                    // 1. Find all nodes with activeFieldId.
-                    // 2. If node range includes selection.from, it's the USER node -> set source='user'.
-                    // 3. Else, it's a MAPPED node -> set source='mapped'.
-
-                    doc.descendants((node: any, pos: number) => {
-                        if (node.type.name === 'dataField' && node.attrs.fieldId === activeFieldId) {
-                            const isUserNode = (pos <= from && pos + node.nodeSize >= from);
-                            const newSource = isUserNode ? 'user' : 'mapped';
-
-                            if (node.attrs.source !== newSource) {
-                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: newSource });
-                                modified = true;
-                            }
-                        }
-                    });
-
-                    if (modified) {
-                        view.dispatch(tr);
-                    }
+                if (modified) {
+                    isSyncing = true
+                    view.dispatch(tr)
+                    isSyncing = false
                 }
             },
             immediatelyRender: false,

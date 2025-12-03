@@ -188,8 +188,11 @@ export default function DocumentCreationPage({
       const value = field.textContent;
 
       // Only save if it's not the placeholder itself
+      // Use first non-placeholder value (don't overwrite if already set)
       if (key && value && value !== `[${key}]`) {
-        newData[key] = value;
+        if (!newData[key]) {
+          newData[key] = value;
+        }
       }
     });
 
@@ -216,6 +219,42 @@ export default function DocumentCreationPage({
           field.textContent = sharedData[key];
           // Mark as mapped since it's coming from shared data
           field.setAttribute('data-source', 'mapped');
+          modified = true;
+        }
+      }
+    });
+
+    return modified ? doc.body.innerHTML : content;
+  };
+
+  // Helper to sync same fieldId within a single document (first non-placeholder value wins)
+  const syncFieldsInDocument = (content: string) => {
+    if (!content) return '';
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+    const fields = doc.querySelectorAll('span[data-field-id]');
+
+    // 1. Collect first non-placeholder value for each fieldId
+    const fieldValues: Record<string, string> = {};
+    fields.forEach(field => {
+      const key = field.getAttribute('data-field-id');
+      const value = field.textContent;
+      if (key && value && value !== `[${key}]`) {
+        // Only store the first non-placeholder value
+        if (!fieldValues[key]) {
+          fieldValues[key] = value;
+        }
+      }
+    });
+
+    // 2. Apply the collected values to all fields with same fieldId
+    let modified = false;
+    fields.forEach(field => {
+      const key = field.getAttribute('data-field-id');
+      if (key && fieldValues[key]) {
+        if (field.textContent !== fieldValues[key]) {
+          field.textContent = fieldValues[key];
           modified = true;
         }
       }
@@ -358,13 +397,16 @@ export default function DocumentCreationPage({
 
     const contentWithSource = doc.body.innerHTML;
 
+    // 0. Sync same fieldId within the document (first value wins)
+    const syncedContent = syncFieldsInDocument(contentWithSource);
+
     // 1. Extract data to update sharedData
-    extractData(contentWithSource);
+    extractData(syncedContent);
 
     // 2. Update documentData for the specific step
     setDocumentData((prev: DocumentData) => ({
       ...prev,
-      [step]: contentWithSource
+      [step]: syncedContent
     }));
 
     // 3. Mark as modified
@@ -404,7 +446,7 @@ export default function DocumentCreationPage({
     }
 
     if (editorRef.current) {
-      editorRef.current.setContent(contentWithSource);
+      editorRef.current.setContent(syncedContent);
     }
   };
 
