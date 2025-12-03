@@ -517,7 +517,7 @@ export default function DocumentCreationPage({
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Tabs + Content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden relative">
           {/* Step Navigation */}
           <StepNavigation
             currentStep={currentStep}
