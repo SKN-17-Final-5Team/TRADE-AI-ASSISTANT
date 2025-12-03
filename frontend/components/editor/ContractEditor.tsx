@@ -331,12 +331,18 @@ const Radio = Node.create({
     },
 })
 
+export interface FieldChange {
+    fieldId: string
+    value: string
+}
+
 export interface ContractEditorRef {
     getContent: () => string
     getJSON: () => object
     setContent: (content: string) => void
     insertContent: (content: string) => void
     replaceSelection: (content: string) => void
+    applyFieldChanges: (changes: FieldChange[]) => void
 }
 
 interface ContractEditorProps {
@@ -542,6 +548,58 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             },
             replaceSelection: (content: string) => {
                 editor?.commands.insertContent(content)
+            },
+            applyFieldChanges: (changes: FieldChange[]) => {
+                if (!editor || changes.length === 0) return
+
+                const { state, view } = editor
+                const tr = state.tr
+                let modified = false
+
+                // Build a map of fieldId -> value for quick lookup
+                const changesMap = new Map(changes.map(c => [c.fieldId, c.value]))
+
+                // Collect all nodes to update (in reverse order to avoid position shifts)
+                const nodesToUpdate: { pos: number; node: any; newValue: string }[] = []
+
+                state.doc.descendants((node: any, pos: number) => {
+                    if (node.type.name === 'dataField') {
+                        const fieldId = node.attrs.fieldId
+                        if (changesMap.has(fieldId)) {
+                            const newValue = changesMap.get(fieldId)!
+                            const currentText = node.textContent
+                            const placeholder = `[${fieldId}]`
+
+                            // Only update if value is different and not already the same
+                            if (currentText !== newValue && newValue !== placeholder) {
+                                nodesToUpdate.push({ pos, node, newValue })
+                            }
+                        }
+                    }
+                })
+
+                // Sort by position descending to avoid position shifts
+                nodesToUpdate.sort((a, b) => b.pos - a.pos)
+
+                // Apply updates
+                for (const { pos, node, newValue } of nodesToUpdate) {
+                    // Replace text content
+                    tr.replaceWith(
+                        pos + 1,
+                        pos + node.nodeSize - 1,
+                        state.schema.text(newValue)
+                    )
+                    // Set source to 'agent'
+                    tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: 'agent' })
+                    modified = true
+                }
+
+                if (modified) {
+                    // Use syncing flag to prevent onUpdate sync loop
+                    isSyncing = true
+                    view.dispatch(tr)
+                    isSyncing = false
+                }
             },
         }))
 

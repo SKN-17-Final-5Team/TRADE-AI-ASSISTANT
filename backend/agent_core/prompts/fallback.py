@@ -57,9 +57,27 @@ DOCUMENT_WRITING_PROMPT = """너는 무역 문서 작성을 돕는 전문 에이
   "type": "edit",
   "message": "수정 내용 설명",
   "changes": [
-    {{"field": "변경된 필드명", "before": "변경 전 값", "after": "변경 후 값"}}
-  ],
-  "html": "수정된 전체 HTML"
+    {{"fieldId": "data-field-id 속성값", "value": "새로운 값"}}
+  ]
+}}
+```
+
+**중요**:
+- html 필드는 절대 포함하지 마세요
+- fieldId는 문서의 data-field-id 속성값과 정확히 일치해야 합니다
+- 같은 fieldId가 문서에 여러 번 나타나도 changes에는 한 번만 포함하세요 (프론트엔드에서 자동 동기화)
+
+예시:
+- 사용자: "가격을 50000달러로 수정해줘"
+- 응답:
+```json
+{{
+  "type": "edit",
+  "message": "가격을 USD 50,000으로 수정했습니다.",
+  "changes": [
+    {{"fieldId": "price", "value": "USD 50,000"}},
+    {{"fieldId": "total_amount", "value": "USD 50,000"}}
+  ]
 }}
 ```
 
@@ -68,10 +86,9 @@ DOCUMENT_WRITING_PROMPT = """너는 무역 문서 작성을 돕는 전문 에이
 ────────────────
 1. 사용자가 요청한 부분만 정확히 수정
 2. 요청하지 않은 다른 필드는 절대 변경하지 마세요
-3. HTML 구조와 스타일(class, style 등)은 그대로 유지
-4. changes 배열에 실제로 변경된 부분만 포함
-5. html 필드에는 수정된 전체 HTML을 포함
-6. placeholder (예: [seller_name], [buyer_name] 등)가 있는 필드는 사용자가 값을 제시하면 해당 값으로 교체
+3. changes 배열에 실제로 변경된 fieldId와 value만 포함
+4. placeholder (예: [seller_name], [buyer_name] 등)가 있는 필드는 사용자가 값을 제시하면 해당 값으로 교체
+5. fieldId는 반드시 문서에 존재하는 data-field-id 값이어야 함
 """
 
 

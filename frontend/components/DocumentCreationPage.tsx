@@ -28,7 +28,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageType, DocumentData } from '../App';
-import ContractEditor, { ContractEditorRef } from './editor/ContractEditor';
+import ContractEditor, { ContractEditorRef, FieldChange } from './editor/ContractEditor';
 import ChatAssistant from './ChatAssistant';
 import { ShootingStarIntro } from './ShootingStarIntro';
 import { offerSheetTemplateHTML } from '../templates/offerSheet';
@@ -377,37 +377,28 @@ export default function DocumentCreationPage({
     setShowSaveSuccessModal(true);
   };
 
-  const handleChatApply = (content: string, step: number) => {
-    // Inject data-source="agent" into the content
-    // We parse the content, find all data fields that are NOT placeholders, and add source="agent"
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(content, 'text/html');
-    const fields = doc.querySelectorAll('span[data-field-id]');
+  const handleChatApply = (changes: FieldChange[], step: number) => {
+    // Field-level update: Apply changes directly to the editor without replacing entire HTML
+    if (!editorRef.current || changes.length === 0) return;
 
-    fields.forEach(field => {
-      const key = field.getAttribute('data-field-id');
-      const value = field.textContent;
-      // If it has a value and is not a placeholder
-      if (key && value && value !== `[${key}]`) {
-        field.setAttribute('data-source', 'agent');
-      }
+    // 1. Apply field changes to the editor (this sets source='agent' automatically)
+    editorRef.current.applyFieldChanges(changes);
+
+    // 2. Update sharedData with the new values
+    const newSharedData: Record<string, string> = {};
+    changes.forEach(({ fieldId, value }) => {
+      newSharedData[fieldId] = value;
     });
+    setSharedData(prev => ({ ...prev, ...newSharedData }));
 
-    const contentWithSource = doc.body.innerHTML;
-
-    // 0. Sync same fieldId within the document (first value wins)
-    const syncedContent = syncFieldsInDocument(contentWithSource);
-
-    // 1. Extract data to update sharedData
-    extractData(syncedContent);
-
-    // 2. Update documentData for the specific step
+    // 3. Get updated content and save to documentData
+    const updatedContent = editorRef.current.getContent();
     setDocumentData((prev: DocumentData) => ({
       ...prev,
-      [step]: syncedContent
+      [step]: updatedContent
     }));
 
-    // 3. Mark as modified
+    // 4. Mark as modified
     setModifiedSteps(prev => {
       const newSet = new Set(prev);
       newSet.add(step);
@@ -416,35 +407,24 @@ export default function DocumentCreationPage({
 
     setIsDirty(true);
 
-    // 4. Navigation logic for chat apply
-    // If step is 4 (CI) or 5 (PL), we need to handle it
-    // This is tricky with dynamic steps. We might need to force a shippingOrder if not set.
-    // For now, let's assume if user asks for CI, we set order to [CI, PL] if not set.
+    // 5. Navigation logic for chat apply
     if (step === 4 || step === 5) {
       if (!shippingOrder) {
         if (step === 4) setShippingOrder(['CI', 'PL']);
         else setShippingOrder(['PL', 'CI']);
       }
-      // Find which visual step corresponds to this doc key
-      // If shippingOrder is [CI, PL]: CI=4, PL=5. Visual 4->CI, 5->PL.
-      // If shippingOrder is [PL, CI]: PL=5, CI=4. Visual 4->PL, 5->CI.
 
       let targetVisualStep = -1;
       if (shippingOrder) {
         if (shippingOrder[0] === (step === 4 ? 'CI' : 'PL')) targetVisualStep = 4;
         else targetVisualStep = 5;
       } else {
-        // If we just set it, it will be 4
         targetVisualStep = 4;
       }
 
       if (targetVisualStep !== -1) setCurrentStep(targetVisualStep);
     } else {
       if (currentStep !== step) setCurrentStep(step);
-    }
-
-    if (editorRef.current) {
-      editorRef.current.setContent(syncedContent);
     }
   };
 

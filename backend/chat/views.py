@@ -70,6 +70,15 @@ def parse_edit_response(text: str) -> dict | None:
 
     Returns:
         편집 정보 dict 또는 None (일반 텍스트인 경우)
+
+    New format (fieldId/value based):
+    {
+        "type": "edit",
+        "message": "수정 설명",
+        "changes": [
+            {"fieldId": "price", "value": "USD 50,000"}
+        ]
+    }
     """
     # JSON 블록 추출 시도 (```json ... ``` 형식)
     json_match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
@@ -82,11 +91,27 @@ def parse_edit_response(text: str) -> dict | None:
     try:
         parsed = json.loads(json_str)
         if isinstance(parsed, dict) and parsed.get('type') == 'edit':
+            # Normalize changes to new format (fieldId/value)
+            changes = parsed.get('changes', [])
+            normalized_changes = []
+            for change in changes:
+                if 'fieldId' in change and 'value' in change:
+                    # New format
+                    normalized_changes.append({
+                        'fieldId': change['fieldId'],
+                        'value': change['value']
+                    })
+                elif 'field' in change and 'after' in change:
+                    # Legacy format (field/before/after) - convert to new format
+                    normalized_changes.append({
+                        'fieldId': change['field'],
+                        'value': change['after']
+                    })
+
             return {
                 'type': 'edit',
                 'message': parsed.get('message', ''),
-                'html': parsed.get('html', ''),
-                'changes': parsed.get('changes', [])
+                'changes': normalized_changes
             }
     except json.JSONDecodeError:
         pass
@@ -144,7 +169,6 @@ class ChatView(APIView):
                 return Response({
                     'type': 'edit',
                     'message': edit_response['message'],
-                    'html': edit_response['html'],
                     'changes': edit_response['changes'],
                     'tools_used': tools_used
                 })
@@ -152,8 +176,6 @@ class ChatView(APIView):
                 return Response({
                     'type': 'chat',
                     'message': result.final_output,
-                    'html': None,
-                    'changes': [],
                     'tools_used': tools_used
                 })
 
@@ -272,8 +294,8 @@ class ChatStreamView(View):
                 print(f"[DEBUG] edit_response: {edit_response}")
 
                 if edit_response:
-                    # 편집 응답이면 edit 이벤트 전송
-                    yield f"data: {json.dumps({'type': 'edit', 'message': edit_response['message'], 'html': edit_response['html'], 'changes': edit_response['changes']})}\n\n"
+                    # 편집 응답이면 edit 이벤트 전송 (fieldId/value format)
+                    yield f"data: {json.dumps({'type': 'edit', 'message': edit_response['message'], 'changes': edit_response['changes']})}\n\n"
 
                 # 완료 이벤트
                 yield f"data: {json.dumps({'type': 'done', 'tools_used': tools_used})}\n\n"
