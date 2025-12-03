@@ -50,7 +50,7 @@ export default function DocumentHeader({
   const hasVersionsForCurrentStep = versions.filter(v => v.step === currentStep).length > 0;
 
   return (
-    <header className="bg-white/80 backdrop-blur-md shadow-sm flex-shrink-0">
+    <header className="bg-white/80 backdrop-blur-md shadow-sm flex-shrink-0 relative z-40">
       <div className="px-8 py-4 flex items-center justify-between">
         {/* Left: Back button and Title */}
         <div className="flex items-center gap-3 flex-1">

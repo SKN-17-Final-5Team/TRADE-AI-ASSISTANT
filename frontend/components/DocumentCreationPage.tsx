@@ -4,7 +4,6 @@
 export { default } from './document-creation';
 export type {
   DocumentCreationPageProps,
-  StepMode,
   UploadStatus,
   ShippingDocType
 } from './document-creation/types';
