@@ -12,7 +12,7 @@ from django.utils.decorators import method_decorator
 from agents import Runner
 from agents.items import ToolCallItem
 from agent_core import get_trade_agent, get_document_writing_agent
-from .config import PROMPT_VERSION, PROMPT_LABEL, USE_LANGFUSE
+from .config import PROMPT_VERSION, PROMPT_LABEL
 
 
 # 툴 이름 → 표시 정보 매핑
@@ -120,14 +120,12 @@ class ChatView(APIView):
             if document:
                 agent = get_document_writing_agent(
                     document_content=document,
-                    use_langfuse=USE_LANGFUSE,
                     prompt_version=PROMPT_VERSION,
                     prompt_label=PROMPT_LABEL
                 )
                 full_input = message  # 문서는 이미 프롬프트에 포함됨
             else:
                 agent = get_trade_agent(
-                    use_langfuse=USE_LANGFUSE,
                     prompt_version=PROMPT_VERSION,
                     prompt_label=PROMPT_LABEL
                 )
@@ -221,14 +219,12 @@ class ChatStreamView(View):
                 if document:
                     agent = get_document_writing_agent(
                         document_content=document,
-                        use_langfuse=USE_LANGFUSE,
                         prompt_version=PROMPT_VERSION,
                         prompt_label=PROMPT_LABEL
                     )
                     full_input = message
                 else:
                     agent = get_trade_agent(
-                        use_langfuse=USE_LANGFUSE,
                         prompt_version=PROMPT_VERSION,
                         prompt_label=PROMPT_LABEL
                     )

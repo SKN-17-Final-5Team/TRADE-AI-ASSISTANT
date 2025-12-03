@@ -30,7 +30,7 @@ from .serializers import (
 )
 from agent_core.s3_utils import s3_manager
 from agent_core import get_read_document_agent
-from chat.config import PROMPT_VERSION, PROMPT_LABEL, USE_LANGFUSE
+from chat.config import PROMPT_VERSION, PROMPT_LABEL
 
 logger = logging.getLogger(__name__)
 
@@ -357,7 +357,6 @@ class DocumentChatView(APIView):
                 document_id=document.id,
                 document_name=document.original_filename,
                 document_type=document.get_document_type_display(),
-                use_langfuse=USE_LANGFUSE,
                 prompt_version=PROMPT_VERSION,
                 prompt_label=PROMPT_LABEL
             )
@@ -482,7 +481,6 @@ class DocumentChatStreamView(View):
             document_id=document.id,
             document_name=document.original_filename,
             document_type=document.get_document_type_display(),
-            use_langfuse=USE_LANGFUSE,
             prompt_version=PROMPT_VERSION,
             prompt_label=PROMPT_LABEL
         )

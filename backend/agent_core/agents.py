@@ -5,6 +5,8 @@
 - get_trade_agent: 일반 무역 Q&A (Langfuse 지원)
 - get_document_writing_agent: 문서 작성/편집 (Langfuse 지원)
 - get_read_document_agent: 업로드 문서 Q&A (Langfuse 지원)
+
+Langfuse 우선 로드 → 실패 시 로컬 fallback
 """
 
 from agents import Agent
@@ -27,7 +29,6 @@ from agent_core.prompts.fallback import (
 # =====================================================================
 
 def get_trade_agent(
-    use_langfuse: bool = True,
     prompt_version: int | None = None,
     prompt_label: str = "latest"
 ) -> Agent:
@@ -35,16 +36,16 @@ def get_trade_agent(
     무역 전문가 Agent 생성
 
     일반 무역 관련 질의응답을 처리하는 Agent
+    Langfuse 우선 로드, 실패 시 로컬 프롬프트 사용
 
     Args:
-        use_langfuse: Langfuse 사용 여부 (False면 로컬 파일 사용)
         prompt_version: Langfuse 프롬프트 특정 버전 (None이면 label 기준)
         prompt_label: Langfuse 프롬프트 레이블 ("production", "latest" 등)
 
     Returns:
         Agent 인스턴스
     """
-    if use_langfuse and LANGFUSE_ENABLED:
+    if LANGFUSE_ENABLED:
         try:
             instructions = load_prompt_from_langfuse(
                 prompt_name="trade_assistant_v1",
@@ -52,13 +53,10 @@ def get_trade_agent(
                 label=prompt_label
             )
         except Exception as e:
-            print(f"⚠️ Langfuse 로드 실패, 로컬 파일로 대체: {e}")
+            print(f"⚠️ Langfuse 로드 실패, 로컬 프롬프트로 대체: {e}")
             instructions = load_prompt_from_file()
     else:
-        if not use_langfuse:
-            print("📁 로컬 파일에서 프롬프트 로드 (use_langfuse=False)")
-        else:
-            print("📁 로컬 파일에서 프롬프트 로드 (Langfuse 비활성화)")
+        print("📁 Langfuse 비활성화, 로컬 프롬프트 사용")
         instructions = load_prompt_from_file()
 
     return Agent(
@@ -75,7 +73,6 @@ def get_trade_agent(
 
 def get_document_writing_agent(
     document_content: str,
-    use_langfuse: bool = True,
     prompt_version: int | None = None,
     prompt_label: str = "latest"
 ) -> Agent:
@@ -83,23 +80,23 @@ def get_document_writing_agent(
     문서 작성 Agent 생성 (읽기 + 수정 기능)
 
     trade_agent의 모든 기능 + 문서 편집 기능
+    Langfuse 우선 로드, 실패 시 로컬 프롬프트 사용
 
     Args:
         document_content: 현재 에디터의 HTML 내용
-        use_langfuse: Langfuse 사용 여부
         prompt_version: Langfuse 프롬프트 특정 버전
         prompt_label: Langfuse 프롬프트 레이블
 
     Returns:
         Agent 인스턴스
     """
-    if use_langfuse and LANGFUSE_ENABLED:
+    if LANGFUSE_ENABLED:
         try:
             instructions = load_prompt_from_langfuse(
                 prompt_name="writing_assistant_v1",
                 version=prompt_version,
                 label=prompt_label,
-                document_content=document_content  # 템플릿 변수
+                document_content=document_content
             )
         except Exception as e:
             print(f"⚠️ Langfuse 로드 실패, 로컬 프롬프트로 대체: {e}")
@@ -107,10 +104,7 @@ def get_document_writing_agent(
                 document_content=document_content
             )
     else:
-        if not use_langfuse:
-            print("📁 로컬 프롬프트 사용 (use_langfuse=False)")
-        else:
-            print("📁 로컬 프롬프트 사용 (Langfuse 비활성화)")
+        print("📁 Langfuse 비활성화, 로컬 프롬프트 사용")
         instructions = DOCUMENT_WRITING_PROMPT.format(
             document_content=document_content
         )
@@ -131,7 +125,6 @@ def get_read_document_agent(
     document_id: int,
     document_name: str,
     document_type: str = "문서",
-    use_langfuse: bool = True,
     prompt_version: int | None = None,
     prompt_label: str = "latest"
 ) -> Agent:
@@ -139,19 +132,19 @@ def get_read_document_agent(
     업로드 문서 전용 Agent 생성
 
     일반 무역 질의 + 현재 문서 내용 질의를 모두 처리하는 하이브리드 Agent
+    Langfuse 우선 로드, 실패 시 로컬 프롬프트 사용
 
     Args:
         document_id: 현재 문서 ID
         document_name: 문서 파일명 (예: "Sales_Contract_ABC.pdf")
         document_type: 문서 타입 (예: "Offer Sheet", "Sales Contract")
-        use_langfuse: Langfuse 사용 여부
         prompt_version: Langfuse 프롬프트 특정 버전
         prompt_label: Langfuse 프롬프트 레이블
 
     Returns:
         Agent 인스턴스
     """
-    if use_langfuse and LANGFUSE_ENABLED:
+    if LANGFUSE_ENABLED:
         try:
             instructions = load_prompt_from_langfuse(
                 prompt_name="document_assistant_v1",
@@ -169,10 +162,7 @@ def get_read_document_agent(
                 document_type=document_type
             )
     else:
-        if not use_langfuse:
-            print("📁 로컬 프롬프트 사용 (use_langfuse=False)")
-        else:
-            print("📁 로컬 프롬프트 사용 (Langfuse 비활성화)")
+        print("📁 Langfuse 비활성화, 로컬 프롬프트 사용")
         instructions = DOCUMENT_READ_PROMPT.format(
             document_id=document_id,
             document_name=document_name,

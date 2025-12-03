@@ -44,7 +44,7 @@ def get_langfuse_client():
 def load_prompt_from_langfuse(
     prompt_name: str,
     version: int | None = None,
-    label: str = "production",
+    label: str = "latest",
     **variables
 ) -> str:
     """
