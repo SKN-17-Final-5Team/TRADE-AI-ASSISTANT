@@ -1245,7 +1245,6 @@ export default function DocumentCreationPage({
               )}
             </button>
             <div className="w-px h-4 bg-gray-300 mx-2"></div>
-            <span className="text-gray-600 text-sm">{userEmployeeId}</span>
             <button
               onClick={() => setShowMyPageModal(!showMyPageModal)}
               className="text-gray-600 hover:text-gray-900 text-sm transition-colors"

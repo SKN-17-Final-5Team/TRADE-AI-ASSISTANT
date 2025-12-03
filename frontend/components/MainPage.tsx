@@ -112,7 +112,6 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
 
           {/* Right: User Info and Logout */}
           <div className="flex items-center gap-4">
-            <span className="text-gray-600 text-sm">{userEmployeeId}</span>
             <button
               onClick={() => setShowMyPageModal(!showMyPageModal)}
               className="text-gray-600 hover:text-gray-900 text-sm flex items-center gap-1 transition-colors"
