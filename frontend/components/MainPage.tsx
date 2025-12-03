@@ -106,7 +106,9 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
             </button>
             <div>
               <h1 className="text-gray-900 font-bold">Trade Copilot</h1>
-              <p className="text-gray-500 text-sm">일반 채팅을 하려면 로고를 클릭하세요</p>
+              <p className="text-sm animate-text-pulse">
+                일반 채팅을 하려면 로고 아이콘을 클릭하세요
+              </p>
             </div>
           </div>
 
@@ -154,7 +156,11 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
               className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
             >
               <Filter className="w-5 h-5" />
-              <span>상태 필터</span>
+              <span>
+                {statusFilter === 'all' && '전체'}
+                {statusFilter === 'completed' && '완료된 작업'}
+                {statusFilter === 'in-progress' && '진행 중'}
+              </span>
               <ChevronDown className="w-5 h-5" />
             </button>
             {showStatusFilter && (

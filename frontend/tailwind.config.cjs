@@ -48,6 +48,21 @@ module.exports = {
                 md: "calc(var(--radius) - 2px)",
                 sm: "calc(var(--radius) - 4px)",
             },
+            keyframes: {
+                'text-pulse': {
+                    '0%, 100%': {
+                        color: '#6b7280',
+                        textShadow: 'none',
+                    },
+                    '50%': {
+                        color: '#2563eb',
+                        textShadow: '0 0 8px rgba(37, 99, 235, 0.5)',
+                    },
+                },
+            },
+            animation: {
+                'text-pulse': 'text-pulse 2s ease-in-out infinite',
+            },
         },
     },
     plugins: [require('@tailwindcss/typography')],
