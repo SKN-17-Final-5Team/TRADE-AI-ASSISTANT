@@ -679,7 +679,6 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             if ((event.metaKey || event.ctrlKey) && event.key === 's') {
                 event.preventDefault()
                 // Trigger save - implement your save logic here
-                console.log('Save triggered')
             }
         }, [])
 

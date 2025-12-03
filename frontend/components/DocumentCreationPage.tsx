@@ -608,9 +608,8 @@ export default function DocumentCreationPage({
         onProcessingStart: () => {
           setUploadStatus(prev => ({ ...prev, [step]: 'processing' }));
         },
-        onStatus: (status: DocumentStatus) => {
-          // 처리 중 상태 업데이트 (progress 등)
-          console.log(`Document ${status.document_id} status: ${status.status} - ${status.message}`);
+        onStatus: (_status: DocumentStatus) => {
+          // 처리 중 상태 업데이트 (progress 등) - 필요시 구현
         },
         onComplete: (status: DocumentStatus) => {
           setUploadStatus(prev => ({ ...prev, [step]: 'ready' }));
