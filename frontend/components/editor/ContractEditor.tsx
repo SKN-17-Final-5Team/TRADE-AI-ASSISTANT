@@ -5,6 +5,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
 import { TextStyle } from '@tiptap/extension-text-style'
+import { TextSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import FontFamily from '@tiptap/extension-font-family'
 import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { saleContractTemplateHTML } from '../../templates/saleContract'
@@ -98,11 +99,58 @@ const DataField = Node.create({
 
     // Prevent node deletion - restore placeholder when field would become empty
     addKeyboardShortcuts() {
-        const handleDelete = (editor: any) => {
+        const handleDelete = (editor: any, key: string) => { // Added key param
             const { state } = editor
             const { selection } = state
+            const { from, to } = selection
             const $from = selection.$from
 
+            // 0. Boundary Checks: If at start/end of field, let browser handle (delete outside)
+            if (selection.empty) {
+                // If Backspace at start of field (offset 0), we are deleting the char BEFORE the field.
+                // We should NOT trap this.
+                if (key === 'Backspace' && $from.parentOffset === 0) {
+                    return false
+                }
+                // If Delete at end of field, we are deleting the char AFTER the field.
+                if (key === 'Delete' && $from.parent.type.name === 'dataField' && $from.parentOffset === $from.parent.content.size) {
+                    return false
+                }
+            }
+
+            // 1. Check if selection fully covers a dataField (e.g. NodeSelection or full TextSelection)
+            let coveredNode: any = null
+            let coveredPos: number | null = null
+
+            state.doc.nodesBetween(from, to, (node: any, pos: number) => {
+                if (coveredNode) return false
+                if (node.type.name === 'dataField') {
+                    // Check if fully covered (allow for small margin of error in selection or exact match)
+                    if (pos >= from && pos + node.nodeSize <= to) {
+                        coveredNode = node
+                        coveredPos = pos
+                    }
+                }
+            })
+
+            if (coveredNode && coveredPos !== null) {
+                const fieldId = coveredNode.attrs.fieldId
+                const placeholder = `[${fieldId}]`
+                const targetPos = coveredPos as number // Fix TS error
+
+                // If fully selected, restore placeholder
+                editor.chain()
+                    .command(({ tr }: any) => {
+                        tr.replaceWith(targetPos + 1, targetPos + coveredNode.nodeSize - 1, state.schema.text(placeholder))
+                        tr.setNodeMarkup(targetPos, undefined, { ...coveredNode.attrs, source: null })
+                        return true
+                    })
+                    .setTextSelection({ from: targetPos + 1, to: targetPos + 1 + placeholder.length })
+                    .run()
+                return true
+            }
+
+            // 2. Check if cursor is inside a dataField (Original Logic)
             for (let d = $from.depth; d > 0; d--) {
                 const node = $from.node(d)
                 if (node.type.name === 'dataField') {
@@ -113,6 +161,10 @@ const DataField = Node.create({
 
                     // Already placeholder - prevent any deletion
                     if (text === placeholder) {
+                        // Ensure it is selected so next type overwrites it
+                        if (selection.empty) {
+                            editor.commands.setTextSelection({ from: pos + 1, to: pos + 1 + placeholder.length })
+                        }
                         return true
                     }
 
@@ -138,7 +190,7 @@ const DataField = Node.create({
                                 tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
                                 return true
                             })
-                            .setTextSelection(pos + 1)
+                            .setTextSelection({ from: pos + 1, to: pos + 1 + placeholder.length })
                             .run()
                         return true
                     }
@@ -149,8 +201,8 @@ const DataField = Node.create({
         }
 
         return {
-            'Backspace': ({ editor }) => handleDelete(editor),
-            'Delete': ({ editor }) => handleDelete(editor),
+            'Backspace': ({ editor }) => handleDelete(editor, 'Backspace'),
+            'Delete': ({ editor }) => handleDelete(editor, 'Delete'),
         }
     },
 
@@ -161,13 +213,15 @@ const DataField = Node.create({
 
             let bgClass = '';
             if (isPlaceholder) {
-                bgClass = 'text-transparent bg-gray-50 hover:bg-gray-100 select-none';
+                // [CHANGED] Hide text by default (transparent), show on hover. Keep box visible.
+                bgClass = 'bg-white border border-gray-300 text-transparent hover:text-gray-400 px-1 rounded';
             } else if (source === 'agent') {
-                bgClass = 'bg-yellow-100';
+                bgClass = 'bg-yellow-50 border border-yellow-200 text-yellow-900 px-1 rounded';
             } else if (source === 'mapped') {
-                bgClass = 'bg-green-100';
+                bgClass = 'bg-green-50 border border-green-200 text-green-900 px-1 rounded';
             } else if (source === 'user') {
-                bgClass = 'bg-blue-100';
+                // [CHANGED] User input should be black text, but keep blue bg/border to indicate status
+                bgClass = 'bg-blue-50 border border-blue-200 text-gray-900 px-1 rounded';
             } else {
                 bgClass = 'bg-transparent';
             }
@@ -196,6 +250,44 @@ const DataField = Node.create({
                 </NodeViewWrapper>
             )
         })
+    },
+
+    addProseMirrorPlugins() {
+        return [
+            new Plugin({
+                key: new PluginKey('dataFieldProtection'),
+                appendTransaction: (transactions, oldState, newState) => {
+                    // Check if any transaction modified the document
+                    const docChanged = transactions.some(tr => tr.docChanged)
+                    if (!docChanged) return null
+
+                    const tr = newState.tr
+                    let modified = false
+
+                    newState.doc.descendants((node, pos) => {
+                        if (node.type.name === 'dataField' && node.content.size === 0) {
+                            const fieldId = node.attrs.fieldId
+                            const placeholder = `[${fieldId}]`
+
+                            // Restore placeholder
+                            tr.insertText(placeholder, pos + 1)
+                            tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
+
+                            // Force cursor inside and SELECT the placeholder so typing overwrites it
+                            const sel = newState.selection
+                            // Check if selection is near the node (inside or at boundaries)
+                            if (sel.head >= pos && sel.head <= pos + 1) { // Relaxed check
+                                tr.setSelection(TextSelection.create(tr.doc, pos + 1, pos + 1 + placeholder.length))
+                            }
+
+                            modified = true
+                        }
+                    })
+
+                    return modified ? tr : null
+                }
+            })
+        ]
     },
 })
 
@@ -526,20 +618,9 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 const tr = state.tr
                 let modified = false
 
-                // 1. Auto-restore empty fields to placeholder
-                doc.descendants((node: any, pos: number) => {
-                    if (node.type.name === 'dataField') {
-                        const fieldId = node.attrs.fieldId
-                        const placeholder = `[${fieldId}]`
-                        const text = node.textContent
-
-                        if (text === '') {
-                            tr.insertText(placeholder, pos + 1, pos + 1)
-                            tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
-                            modified = true
-                        }
-                    }
-                })
+                // 1. Auto-restore empty fields to placeholder - REMOVED (Handled by ProseMirror Plugin)
+                // The 'dataFieldProtection' plugin in DataField extension now handles this via appendTransaction
+                // which prevents the cursor from jumping out.
 
                 // 2. Sync same-fieldId nodes (if we're in a dataField)
                 if (sourceFieldId && sourceContent !== null && sourcePos !== null) {
@@ -688,9 +769,17 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
         }
 
         return (
-            <div className={`contract-editor flex flex-col h-full ${showFieldHighlight ? 'show-field-highlight' : ''} ${showAgentHighlight ? 'show-agent-highlight' : ''} ${className || ''}`}>
+            <div
+                className={`contract-editor flex flex-col h-full ${showFieldHighlight ? 'show-field-highlight' : ''} ${showAgentHighlight ? 'show-agent-highlight' : ''} ${className || ''}`}
+                onClick={() => {
+                    // [CHANGED] Immediate focus on container click
+                    if (editor && !editor.isFocused) {
+                        editor.chain().focus().run();
+                    }
+                }}
+            >
                 <EditorToolbar editor={editor} defaultFontFamily={defaultFontFamily} defaultFontSize={defaultFontSize} />
-                <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0">
+                <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0 cursor-text">
                     <EditorContent editor={editor} className="h-full" />
                 </div>
             </div>
