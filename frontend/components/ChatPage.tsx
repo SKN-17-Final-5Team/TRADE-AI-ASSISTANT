@@ -59,6 +59,7 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [genChatId, setGenChatId] = useState<number | null>(null);  // 채팅 세션 ID (메모리 추적용)
   const [showMyPageModal, setShowMyPageModal] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -133,11 +134,15 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
     setIsLoading(true);
 
     try {
-      // Django 스트리밍 API 호출
+      // Django 스트리밍 API 호출 (user_id, gen_chat_id 포함하여 메모리 추적)
       const response = await fetch(`${DJANGO_API_URL}/api/chat/stream/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: messageToSend })
+        body: JSON.stringify({
+          message: messageToSend,
+          user_id: userEmployeeId,  // 메모리 저장을 위한 사용자 ID
+          gen_chat_id: genChatId    // 기존 채팅 세션 ID (없으면 새로 생성됨)
+        })
       });
 
       if (!response.ok) {
@@ -175,7 +180,12 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
             try {
               const data = JSON.parse(line.slice(6));
 
-              if (data.type === 'text') {
+              if (data.type === 'init') {
+                // 서버에서 보내준 gen_chat_id를 저장하여 다음 요청에 사용
+                if (data.gen_chat_id) {
+                  setGenChatId(data.gen_chat_id);
+                }
+              } else if (data.type === 'text') {
                 accumulatedContent += data.content;
                 setMessages(prev => prev.map(msg =>
                   msg.id === aiMessageId

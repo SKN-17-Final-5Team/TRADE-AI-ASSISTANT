@@ -46,6 +46,32 @@ from agent_core.s3_utils import s3_manager
 logger = logging.getLogger(__name__)
 
 
+def get_user_by_id_or_emp_no(user_id):
+    """
+    user_id(숫자) 또는 emp_no(사원번호)로 사용자 조회
+
+    프론트엔드에서 emp_no(사원번호)를 user_id로 전달할 수 있으므로,
+    먼저 emp_no로 조회하고, 없으면 user_id(정수)로 조회합니다.
+    """
+    if user_id is None:
+        return None
+    try:
+        # 먼저 emp_no로 조회 시도 (사원번호가 숫자로만 되어 있어도 emp_no로 먼저 찾기)
+        try:
+            return User.objects.get(emp_no=str(user_id))
+        except User.DoesNotExist:
+            pass
+
+        # emp_no로 못 찾으면 user_id(정수)로 조회
+        if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
+            return User.objects.get(user_id=int(user_id))
+
+        return None
+    except User.DoesNotExist:
+        logger.warning(f"User not found: user_id={user_id}")
+        return None
+
+
 # =============================================================================
 # Auth Views
 # =============================================================================
@@ -437,11 +463,12 @@ TOOL_DISPLAY_INFO = {
 
 class DocumentChatView(APIView):
     """
-    문서 기반 채팅 API
+    문서 기반 채팅 API (Mem0 메모리 통합)
 
     POST /api/documents/{doc_id}/chat/
     {
-        "message": "이 계약서의 가격은?"
+        "message": "이 계약서의 가격은?",
+        "user_id": 1  # 선택: 메모리 기능에 사용
     }
     """
 
@@ -450,14 +477,17 @@ class DocumentChatView(APIView):
         from agents.items import ToolCallItem
         from agent_core import get_read_document_agent
         from chat.config import PROMPT_VERSION, PROMPT_LABEL
+        from chat.memory_service import get_memory_service
 
         serializer = ChatRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         message = serializer.validated_data['message']
+        user_id = request.data.get('user_id')  # 메모리용 user_id
 
         try:
             document = Document.objects.get(doc_id=doc_id)
+            trade_id = document.trade_id
 
             if document.doc_mode == 'upload' and document.upload_status != 'ready':
                 return Response(
@@ -472,6 +502,30 @@ class DocumentChatView(APIView):
                 content=message
             )
 
+            # Mem0 컨텍스트 로드
+            mem_service = get_memory_service()
+            context = {}
+            numeric_user_id = None
+
+            if user_id:
+                # get_user_by_id_or_emp_no 함수로 사용자 조회 (emp_no 우선)
+                user_obj = get_user_by_id_or_emp_no(user_id)
+                if user_obj:
+                    numeric_user_id = user_obj.user_id
+                    logger.info(f"User found: emp_no/user_id={user_id} -> user_id={numeric_user_id}")
+
+            if numeric_user_id:
+                sibling_doc_ids = list(
+                    Document.objects.filter(trade_id=trade_id).values_list('doc_id', flat=True)
+                )
+                context = mem_service.build_context(
+                    doc_id=doc_id,
+                    user_id=numeric_user_id,
+                    current_query=message,
+                    trade_id=trade_id,
+                    sibling_doc_ids=sibling_doc_ids
+                )
+
             # Agent 생성 및 실행
             agent = get_read_document_agent(
                 document_id=document.doc_id,
@@ -481,7 +535,18 @@ class DocumentChatView(APIView):
                 prompt_label=PROMPT_LABEL
             )
 
-            result = asyncio.run(Runner.run(agent, input=message))
+            # 컨텍스트 추가
+            enhanced_input = message
+            if context.get('context_summary'):
+                context_parts = []
+                if context.get('doc_memories'):
+                    context_parts.append(f"[이전 대화 참조: {len(context['doc_memories'])}개]")
+                if context.get('trade_memories'):
+                    context_parts.append(f"[관련 문서 대화: {len(context['trade_memories'])}개]")
+                if context_parts:
+                    enhanced_input = f"{' '.join(context_parts)}\n\n{message}"
+
+            result = asyncio.run(Runner.run(agent, input=enhanced_input))
 
             # 사용된 툴 추출
             tools_used = []
@@ -509,9 +574,29 @@ class DocumentChatView(APIView):
                 metadata={'tools_used': [tool['id'] for tool in tools_used]}
             )
 
+            # Mem0에 대화 메모리 추가
+            if numeric_user_id:
+                try:
+                    mem_service.add_doc_memory(
+                        doc_id=doc_id,
+                        user_id=numeric_user_id,
+                        messages=[
+                            {"role": "user", "content": message},
+                            {"role": "assistant", "content": result.final_output}
+                        ],
+                        metadata={
+                            "trade_id": trade_id,
+                            "doc_type": document.doc_type
+                        }
+                    )
+                    logger.info(f"Mem0 메모리 추가: doc_id={doc_id}, user_id={numeric_user_id}")
+                except Exception as mem_error:
+                    logger.error(f"Mem0 메모리 추가 실패: {mem_error}")
+
             return Response({
                 'message': result.final_output,
-                'tools_used': tools_used
+                'tools_used': tools_used,
+                'context_used': context.get('context_summary', '')
             })
 
         except Document.DoesNotExist:
@@ -521,6 +606,8 @@ class DocumentChatView(APIView):
             )
         except Exception as e:
             logger.error(f"Document chat error: {e}")
+            import traceback
+            traceback.print_exc()
             return Response(
                 {'error': f'채팅 처리 중 오류가 발생했습니다: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(python manage.py check:*)",
+      "Bash(powershell -Command \"cd ''c:\\Users\\mjs\\Desktop\\final\\TRADE-AI-ASSISTANT\\backend''; python manage.py check\")",
+      "Bash(powershell -Command \"python -m py_compile ''c:\\Users\\mjs\\Desktop\\final\\TRADE-AI-ASSISTANT\\backend\\chat\\trade_views.py''\")",
+      "Bash(powershell -Command \"python -m py_compile ''c:\\Users\\mjs\\Desktop\\final\\TRADE-AI-ASSISTANT\\backend\\chat\\memory_service.py''\")",
+      "Bash(powershell -Command \"& { cd ''c:\\Users\\mjs\\Desktop\\final\\TRADE-AI-ASSISTANT\\backend''; python -c ''import chat.trade_views; print(\"\"OK\"\")'' 2>&1 }\")",
+      "Bash(cmd /c \"cd /d c:\\Users\\mjs\\Desktop\\final\\TRADE-AI-ASSISTANT\\backend && python -c \"\"import chat.trade_views; print(''OK'')\"\"\")",
+      "Bash(python:*)",
+      "Bash(py -3:*)",
+      "Bash(curl:*)",
+      "Bash(find:*)",
+      "Bash(set DJANGO_SETTINGS_MODULE=config.settings:*)",
+      "Bash(timeout /t 3 /nobreak)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

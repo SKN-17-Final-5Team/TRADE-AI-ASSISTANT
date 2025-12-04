@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, RefObject } from 'react';
+import React, { useState, useRef, useEffect, useMemo, RefObject } from 'react';
 import { Sparkles, Send, X, Wand2, Eye, Undo2, Check, XCircle, Globe, Database, Wrench } from 'lucide-react';
 import { ContractEditorRef } from './editor/ContractEditor';
 import ReactMarkdown from 'react-markdown';
@@ -52,9 +52,12 @@ interface ChatAssistantProps {
   editorRef: RefObject<ContractEditorRef>;
   onApply: (changes: Change[], step: number) => void;  // Now takes changes array instead of full HTML
   documentId?: number | null; // Optional document ID for document-specific chat
+  tradeId?: number | null; // 백엔드 TradeFlow.trade_id (정수)
+  docIds?: Record<string, number> | null; // step별 Document.doc_id 맵핑 {"1": 10, "2": 11, ...}
+  userEmployeeId?: string; // 사용자 사원번호 (세션 관리용)
 }
 
-export default function ChatAssistant({ currentStep, onClose, editorRef, onApply, documentId }: ChatAssistantProps) {
+export default function ChatAssistant({ currentStep, onClose, editorRef, onApply, documentId, tradeId, docIds, userEmployeeId }: ChatAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -72,9 +75,83 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
   const [isConnected, setIsConnected] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 이전 step 및 tradeId 추적 (변경 감지용)
+  const prevStepRef = useRef<number>(currentStep);
+  const prevTradeIdRef = useRef<number | null | undefined>(tradeId);
+
+  // Step 번호 → doc_type 매핑
+  const STEP_TO_DOC_TYPE: Record<number, string> = {
+    1: 'offer',
+    2: 'pi',
+    3: 'contract',
+    4: 'ci',
+    5: 'pl'
+  };
+
+  // 현재 step에 해당하는 doc_id 가져오기 (useMemo로 최적화)
+  const currentDocId = useMemo(() => {
+    if (!docIds) return null;
+    // currentStep 1~5 -> doc_type ('offer', 'pi', ...) -> docIds[doc_type]
+    const docType = STEP_TO_DOC_TYPE[currentStep];
+    return docType ? (docIds[docType] || null) : null;
+  }, [docIds, currentStep, tradeId]);
+
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
   const USE_DJANGO = import.meta.env.VITE_USE_DJANGO === 'true';
   const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
+
+  // 채팅 초기화 함수
+  const resetChat = () => {
+    setMessages([
+      {
+        id: '1',
+        type: 'ai',
+        content: '안녕하세요! 문서 작성을 도와드리겠습니다. 문서 수정을 원하시면 "~로 수정해줘"라고 말씀해주세요.'
+      }
+    ]);
+  };
+
+  // 대화 히스토리 로드 함수 (doc_id 기반)
+  const loadChatHistory = async (docId: number) => {
+    if (!USE_DJANGO || !docId) {
+      resetChat();
+      return;
+    }
+
+    try {
+      const response = await fetch(`${DJANGO_API_URL}/api/documents/${docId}/chat/history/`);
+      if (!response.ok) {
+        resetChat();
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.messages && data.messages.length > 0) {
+        const loadedMessages: Message[] = data.messages.map((msg: { sender_type: string; content: string }, index: number) => ({
+          id: `loaded_${index}_${Date.now()}`,
+          type: msg.sender_type === 'U' ? 'user' : 'ai',
+          content: msg.content,
+          step: currentStep
+        }));
+
+        setMessages([
+          {
+            id: '1',
+            type: 'ai',
+            content: '안녕하세요! 문서 작성을 도와드리겠습니다. 문서 수정을 원하시면 "~로 수정해줘"라고 말씀해주세요.'
+          },
+          ...loadedMessages
+        ]);
+      } else {
+        // 히스토리가 없으면 새 채팅으로 시작
+        resetChat();
+      }
+    } catch (error) {
+      console.error('대화 히스토리 로드 실패:', error);
+      resetChat();
+    }
+  };
 
   // OpenAI API 직접 호출 (테스트용)
   const callOpenAI = async (userMessage: string, documentContent: string): Promise<{
@@ -200,6 +277,34 @@ ${documentContent}
     scrollToBottom();
   }, [messages]);
 
+  // currentStep 또는 tradeId 변경 감지: 문서가 바뀌면 새 채팅 시작
+  useEffect(() => {
+    const stepChanged = prevStepRef.current !== currentStep;
+    const tradeChanged = prevTradeIdRef.current !== tradeId;
+
+    if (stepChanged || tradeChanged) {
+      prevStepRef.current = currentStep;
+      prevTradeIdRef.current = tradeId;
+
+      // doc_id가 있으면 히스토리 로드, 없으면 리셋
+      const docType = STEP_TO_DOC_TYPE[currentStep];
+      const docId = docType ? docIds?.[docType] : null;
+      if (docId) {
+        loadChatHistory(docId);
+      } else {
+        resetChat();
+      }
+    }
+  }, [currentStep, tradeId, docIds]);
+
+  // 컴포넌트 마운트 시 현재 step의 대화 히스토리 로드
+  useEffect(() => {
+    if (currentDocId) {
+      loadChatHistory(currentDocId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 연결 상태 체크
   useEffect(() => {
     const checkConnection = async () => {
@@ -271,55 +376,44 @@ ${documentContent}
 
     // Django 스트리밍 사용 여부
     if (USE_DJANGO) {
-      // Document-specific chat (non-streaming JSON response)
-      if (documentId) {
-        try {
-          const response = await fetch(`${DJANGO_API_URL}/api/documents/${documentId}/chat/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              message: currentInput
-            })
-          });
+      // doc_id 기반 채팅 (currentDocId 사용)
+      // documentId가 있으면 우선 사용 (업로드된 문서), 없으면 docIds에서 현재 step의 doc_id 사용
+      const effectiveDocId = documentId || currentDocId;
 
-          if (!response.ok) {
-            throw new Error(`API 오류: ${response.status}`);
-          }
+      // 디버깅 로그
+      console.log('🔍 Chat API 호출 정보:', {
+        documentId,
+        currentDocId,
+        effectiveDocId,
+        docIds,
+        currentStep,
+        tradeId,
+        userEmployeeId
+      });
 
-          const data = await response.json();
-
-          // AI 메시지 추가
-          setMessages(prev => [...prev, {
-            id: aiMessageId,
-            type: 'ai',
-            content: data.message || '',
-            step: requestStep,
-            toolsUsed: data.tools_used || []
-          }]);
-
-        } catch (error) {
-          console.error('Document chat API 오류:', error);
-          const errorContent = `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`;
-
-          setMessages(prev => [...prev, {
-            id: aiMessageId,
-            type: 'ai' as const,
-            content: errorContent,
-            step: requestStep
-          }]);
-        }
+      if (!effectiveDocId) {
+        // doc_id가 없으면 오류 표시
+        setMessages(prev => [...prev, {
+          id: aiMessageId,
+          type: 'ai' as const,
+          content: '문서 ID가 없습니다. 페이지를 새로고침하거나 문서를 다시 생성해주세요.',
+          step: requestStep
+        }]);
+        setIsLoading(false);
+        return;
       }
-      // General document editing chat (streaming)
-      else {
-        try {
-          const response = await fetch(`${DJANGO_API_URL}/api/chat/stream/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              message: currentInput,
-              document: documentContent
-            })
-          });
+
+      try {
+        const response = await fetch(`${DJANGO_API_URL}/api/documents/chat/stream/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            doc_id: effectiveDocId,
+            message: currentInput,
+            user_id: userEmployeeId,
+            document_content: documentContent  // 현재 작성 중인 문서 내용 전달
+          })
+        });
 
         if (!response.ok) {
           throw new Error(`API 오류: ${response.status}`);
@@ -356,7 +450,11 @@ ${documentContent}
               try {
                 const data = JSON.parse(line.slice(6));
 
-                if (data.type === 'text') {
+                if (data.type === 'init') {
+                  // doc_id, trade_id 초기화 정보 (무시)
+                } else if (data.type === 'context') {
+                  // 컨텍스트 정보 수신 (Mem0 메모리)
+                } else if (data.type === 'text') {
                   accumulatedContent += data.content;
                   setMessages(prev => prev.map(msg =>
                     msg.id === aiMessageId
@@ -425,7 +523,6 @@ ${documentContent}
             }];
           }
         });
-      }
       }
     } else {
       // 비스트리밍 (OpenAI 직접 호출)

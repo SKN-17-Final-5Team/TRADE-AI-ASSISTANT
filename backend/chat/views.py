@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -13,6 +14,47 @@ from agents import Runner
 from agents.items import ToolCallItem
 from agent_core import get_trade_agent, get_document_writing_agent
 from .config import PROMPT_VERSION, PROMPT_LABEL
+from .models import User, GenChat, GenMessage, Department
+from .memory_service import get_memory_service
+
+logger = logging.getLogger(__name__)
+
+
+def get_or_create_user(user_id):
+    """user_id(숫자) 또는 emp_no(사원번호)로 사용자 조회 또는 생성"""
+    if user_id is None:
+        return None
+    try:
+        # 먼저 emp_no로 조회 시도
+        try:
+            return User.objects.get(emp_no=str(user_id))
+        except User.DoesNotExist:
+            pass
+
+        # emp_no로 못 찾으면 user_id(정수)로 조회
+        if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
+            try:
+                return User.objects.get(user_id=int(user_id))
+            except User.DoesNotExist:
+                pass
+
+        # 사용자가 없으면 자동 생성 (개발/테스트용)
+        default_dept, _ = Department.objects.get_or_create(
+            dept_name="Default",
+            defaults={"dept_name": "Default"}
+        )
+        user = User.objects.create(
+            emp_no=str(user_id),
+            name=f"User_{user_id}",
+            password="temp_password",
+            dept=default_dept
+        )
+        logger.info(f"새 사용자 자동 생성: emp_no={user_id}, user_id={user.user_id}")
+        return user
+
+    except Exception as e:
+        logger.error(f"사용자 조회/생성 실패: {e}")
+        return None
 
 
 # 툴 이름 → 표시 정보 매핑
@@ -191,12 +233,14 @@ class ChatView(APIView):
 @method_decorator(csrf_exempt, name='dispatch')
 class ChatStreamView(View):
     """
-    스트리밍 채팅 API 엔드포인트 (Server-Sent Events)
+    스트리밍 채팅 API 엔드포인트 (Server-Sent Events) - Mem0 메모리 통합
 
     POST /api/chat/stream/
     {
         "message": "사용자 메시지",
-        "document": "문서 내용 (선택)"
+        "document": "문서 내용 (선택)",
+        "user_id": "emp001",     # 선택: 메모리 기능에 사용
+        "gen_chat_id": 1         # 선택: 기존 채팅 세션 ID
     }
 
     문서가 있으면 document_writing_agent 사용 (수정 기능 포함)
@@ -207,6 +251,8 @@ class ChatStreamView(View):
             data = json.loads(request.body)
             message = data.get('message')
             document = data.get('document', '')
+            user_id = data.get('user_id')
+            gen_chat_id = data.get('gen_chat_id')
         except json.JSONDecodeError:
             return StreamingHttpResponse(
                 f"data: {json.dumps({'type': 'error', 'error': 'Invalid JSON'})}\n\n",
@@ -220,21 +266,109 @@ class ChatStreamView(View):
             )
 
         response = StreamingHttpResponse(
-            self.stream_response(message, document),
+            self.stream_response(message, document, user_id, gen_chat_id),
             content_type='text/event-stream'
         )
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'
         return response
 
-    def stream_response(self, message: str, document: str):
+    def stream_response(self, message: str, document: str, user_id=None, gen_chat_id=None):
         """
-        Agent 스트리밍 응답 생성기
+        Agent 스트리밍 응답 생성기 (Mem0 메모리 통합)
         """
+        # 1. 사용자 및 채팅 세션 관리
+        user = None
+        gen_chat = None
+        user_msg = None
+        is_first_message = False
+
+        if user_id:
+            user = get_or_create_user(user_id)
+            if user:
+                # 기존 채팅 세션 조회 또는 새로 생성
+                if gen_chat_id:
+                    try:
+                        gen_chat = GenChat.objects.get(gen_chat_id=gen_chat_id, user=user)
+                    except GenChat.DoesNotExist:
+                        gen_chat = GenChat.objects.create(user=user, title="일반 채팅")
+                        is_first_message = True
+                else:
+                    # gen_chat_id가 없으면 새 채팅방 생성
+                    gen_chat = GenChat.objects.create(user=user, title="일반 채팅")
+                    is_first_message = True
+
+                # 사용자 메시지 저장
+                user_msg = GenMessage.objects.create(
+                    gen_chat=gen_chat,
+                    sender_type='U',
+                    content=message
+                )
+                logger.info(f"✅ GenMessage 저장: gen_chat_id={gen_chat.gen_chat_id}, user_msg_id={user_msg.gen_message_id}, first={is_first_message}")
+
+        # 2. 이전 대화 히스토리 로드 (최근 10개) - RDS
+        message_history = []
+        if gen_chat and user_msg:
+            prev_messages = GenMessage.objects.filter(gen_chat=gen_chat).exclude(
+                gen_message_id=user_msg.gen_message_id
+            ).order_by('created_at')
+            message_count = prev_messages.count()
+            start_index = max(0, message_count - 10)
+            recent_messages = list(prev_messages[start_index:])
+
+            message_history = [
+                {"role": "user" if msg.sender_type == 'U' else "assistant", "content": msg.content}
+                for msg in recent_messages
+            ]
+            logger.info(f"✅ 대화 히스토리 로드 (RDS): {len(message_history)}개 메시지")
+
+        # 3. Mem0 컨텍스트 로드
+        mem0_context = None
+        memory_context_str = ""
+        if gen_chat and user:
+            try:
+                memory_service = get_memory_service()
+                mem0_context = memory_service.build_gen_chat_context(
+                    gen_chat_id=gen_chat.gen_chat_id,
+                    user_id=user.user_id,
+                    current_query=message,
+                    include_user_memory=True,
+                    is_first_message=is_first_message
+                )
+
+                # Mem0 컨텍스트를 문자열로 변환
+                context_parts = []
+                if mem0_context.get("chat_memories"):
+                    memories_text = "\n".join([
+                        f"- {m.get('memory', m.get('content', ''))}"
+                        for m in mem0_context["chat_memories"]
+                    ])
+                    context_parts.append(f"[이전 대화 컨텍스트]\n{memories_text}")
+
+                if mem0_context.get("user_memories"):
+                    user_prefs = "\n".join([
+                        f"- {m.get('memory', m.get('content', ''))}"
+                        for m in mem0_context["user_memories"]
+                    ])
+                    context_parts.append(f"[사용자 선호사항]\n{user_prefs}")
+
+                if context_parts:
+                    memory_context_str = "\n\n".join(context_parts)
+                    logger.info(f"✅ Mem0 컨텍스트 로드: {mem0_context.get('context_summary', '')}")
+            except Exception as e:
+                logger.warning(f"⚠️ Mem0 컨텍스트 로드 실패 (계속 진행): {e}")
+
+        # gen_chat_id 전송 (프론트엔드에서 추적용)
+        gen_chat_id_to_send = gen_chat.gen_chat_id if gen_chat else None
+
         async def run_stream():
             tools_used = []
             seen_tools = set()
             full_response = ""  # 전체 응답 수집 (편집 JSON 파싱용)
+
+            # gen_chat_id 전송
+            if gen_chat_id_to_send:
+                yield f"data: {json.dumps({'type': 'init', 'gen_chat_id': gen_chat_id_to_send})}\n\n"
 
             try:
                 # 문서가 있으면 document_writing_agent, 없으면 trade_agent
@@ -244,15 +378,28 @@ class ChatStreamView(View):
                         prompt_version=PROMPT_VERSION,
                         prompt_label=PROMPT_LABEL
                     )
-                    full_input = message
                 else:
                     agent = get_trade_agent(
                         prompt_version=PROMPT_VERSION,
                         prompt_label=PROMPT_LABEL
                     )
-                    full_input = message
 
-                result = Runner.run_streamed(agent, input=full_input)
+                # 컨텍스트 추가된 입력 생성
+                enhanced_input = message
+                if memory_context_str:
+                    enhanced_input = f"{memory_context_str}\n\n{message}"
+
+                # Agent input 준비 (히스토리 포함)
+                if message_history:
+                    input_items = []
+                    for msg in message_history:
+                        input_items.append({"role": msg["role"], "content": msg["content"]})
+                    input_items.append({"role": "user", "content": enhanced_input})
+                    final_input = input_items
+                else:
+                    final_input = enhanced_input
+
+                result = Runner.run_streamed(agent, input=final_input)
 
                 async for event in result.stream_events():
                     # 텍스트 델타 이벤트 처리
@@ -286,6 +433,34 @@ class ChatStreamView(View):
                                 tool_data = {'id': tool_name, **tool_info}
                                 tools_used.append(tool_data)
                                 yield f"data: {json.dumps({'type': 'tool', 'tool': tool_data})}\n\n"
+
+                # 4. AI 응답 저장 (GenMessage)
+                if gen_chat:
+                    try:
+                        GenMessage.objects.create(
+                            gen_chat=gen_chat,
+                            sender_type='A',
+                            content=full_response
+                        )
+                        logger.info(f"✅ AI 응답 GenMessage 저장 완료")
+                    except Exception as save_err:
+                        logger.error(f"❌ AI 응답 저장 실패: {save_err}")
+
+                # 5. Mem0에 메모리 추가
+                if gen_chat and user:
+                    try:
+                        memory_service = get_memory_service()
+                        memory_service.add_gen_chat_memory(
+                            gen_chat_id=gen_chat.gen_chat_id,
+                            user_id=user.user_id,
+                            messages=[
+                                {"role": "user", "content": message},
+                                {"role": "assistant", "content": full_response}
+                            ]
+                        )
+                        logger.info(f"✅ Mem0 메모리 추가 완료")
+                    except Exception as mem_err:
+                        logger.error(f"❌ Mem0 메모리 추가 실패: {mem_err}")
 
                 # 스트리밍 완료 후 편집 응답인지 확인
                 print(f"[DEBUG] full_response 길이: {len(full_response)}")

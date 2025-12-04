@@ -26,7 +26,7 @@ def health_check(request):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('chat.urls')),
     path('api/documents/', include('documents.urls')),
+    path('api/', include('chat.urls')),
     path('api/health/', health_check, name='health_check'),
 ]

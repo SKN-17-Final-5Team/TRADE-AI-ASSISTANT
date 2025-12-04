@@ -902,7 +902,12 @@ export default function DocumentCreationPage({
             onClose={() => setIsChatOpen(false)}
             editorRef={editorRef}
             onApply={handleChatApply}
-            documentId={stepModes[currentStep] === 'upload' ? uploadedDocumentIds[currentStep] : null}
+            documentId={
+              stepModes[currentStep] === 'upload'
+                ? uploadedDocumentIds[currentStep]
+                : getDocId?.(currentStep, activeShippingDoc) ?? null
+            }
+            userId={userEmployeeId}
           />
         </div>
       </div>

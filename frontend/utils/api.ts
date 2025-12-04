@@ -403,13 +403,19 @@ class ApiClient {
     message: string,
     onChunk: (chunk: string) => void,
     onComplete: () => void,
-    onError: (error: string) => void
+    onError: (error: string) => void,
+    userId?: string | number,
+    genChatId?: number
   ): Promise<void> {
     try {
       const response = await fetch(`${this.baseUrl}/api/chat/stream/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          user_id: userId,
+          gen_chat_id: genChatId
+        }),
       });
 
       if (!response.ok) {
