@@ -30,3 +30,7 @@ qdrant-client>=1.16.1
 PyMySQL>=1.1.2
 requests>=2.32.5
 python-multipart>=0.0.20
+
+# AWS S3
+boto3>=1.35.0
+django-storages>=1.14.0
