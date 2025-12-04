@@ -1,13 +1,61 @@
-import { useEditor, EditorContent, Node, mergeAttributes, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react'
+import { useEditor, EditorContent, Node, mergeAttributes, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, Extension } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
+import { TextStyle } from '@tiptap/extension-text-style'
+import FontFamily from '@tiptap/extension-font-family'
 import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { saleContractTemplateHTML } from '../../templates/saleContract'
 import EditorToolbar from './EditorToolbar'
 import './editor.css'
+
+// Custom FontSize Extension
+const FontSize = Extension.create({
+    name: 'fontSize',
+    addOptions() {
+        return {
+            types: ['textStyle'],
+        }
+    },
+    addGlobalAttributes() {
+        return [
+            {
+                types: this.options.types,
+                attributes: {
+                    fontSize: {
+                        default: null,
+                        parseHTML: element => element.style.fontSize.replace(/['"]+/g, ''),
+                        renderHTML: attributes => {
+                            if (!attributes.fontSize) {
+                                return {}
+                            }
+                            return {
+                                style: `font-size: ${attributes.fontSize}`,
+                            }
+                        },
+                    },
+                },
+            },
+        ]
+    },
+    addCommands() {
+        return {
+            setFontSize: (fontSize: string) => ({ chain }) => {
+                return chain()
+                    .setMark('textStyle', { fontSize })
+                    .run()
+            },
+            unsetFontSize: () => ({ chain }) => {
+                return chain()
+                    .setMark('textStyle', { fontSize: null })
+                    .removeEmptyTextStyle()
+                    .run()
+            },
+        }
+    },
+})
 
 const DataField = Node.create({
     name: 'dataField',
@@ -351,10 +399,12 @@ interface ContractEditorProps {
     className?: string
     showFieldHighlight?: boolean
     showAgentHighlight?: boolean
+    defaultFontFamily?: string
+    defaultFontSize?: string
 }
 
 const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
-    ({ initialContent, onChange, className, showFieldHighlight = true, showAgentHighlight = true }, ref) => {
+    ({ initialContent, onChange, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
         const editor = useEditor({
             extensions: [
                 StarterKit.configure({
@@ -433,6 +483,9 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 Highlight.configure({
                     multicolor: true,
                 }),
+                TextStyle,
+                FontFamily,
+                FontSize,
                 Div,
                 Checkbox,
                 Radio,
@@ -636,7 +689,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
 
         return (
             <div className={`contract-editor flex flex-col h-full ${showFieldHighlight ? 'show-field-highlight' : ''} ${showAgentHighlight ? 'show-agent-highlight' : ''} ${className || ''}`}>
-                <EditorToolbar editor={editor} />
+                <EditorToolbar editor={editor} defaultFontFamily={defaultFontFamily} defaultFontSize={defaultFontSize} />
                 <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0">
                     <EditorContent editor={editor} className="h-full" />
                 </div>

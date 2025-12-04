@@ -19,10 +19,15 @@ import {
     Redo,
     Highlighter,
     Minus,
+    Plus,
+    ArrowDown,
+    ArrowRight,
 } from 'lucide-react'
 
 interface EditorToolbarProps {
     editor: Editor
+    defaultFontFamily?: string
+    defaultFontSize?: string
 }
 
 interface ToolbarButtonProps {
@@ -51,7 +56,7 @@ function ToolbarDivider() {
     return <div className="w-px h-6 bg-gray-300 mx-1" />
 }
 
-export default function EditorToolbar({ editor }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, defaultFontFamily = 'Arial', defaultFontSize = '16px' }: EditorToolbarProps) {
     const [, setForceUpdate] = useState(0)
 
     useEffect(() => {
@@ -116,6 +121,46 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
             >
                 <Heading3 size={18} />
             </ToolbarButton>
+
+            <ToolbarDivider />
+
+            {/* Font Family */}
+            <select
+                className="h-8 text-sm border border-gray-300 rounded px-2 text-gray-700 focus:outline-none focus:border-blue-500"
+                onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
+                value={editor.getAttributes('textStyle').fontFamily || defaultFontFamily}
+            >
+                <option value="" disabled>Font</option>
+                <option value="Inter">Inter</option>
+                <option value="Arial">Arial</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Courier New">Courier New</option>
+            </select>
+
+            {/* Font Size */}
+            <select
+                className="h-8 text-sm border border-gray-300 rounded px-2 text-gray-700 focus:outline-none focus:border-blue-500 w-20"
+                onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) {
+                        editor.chain().focus().setFontSize(value).run();
+                    } else {
+                        editor.chain().focus().unsetFontSize().run();
+                    }
+                }}
+                value={editor.getAttributes('textStyle').fontSize || defaultFontSize}
+            >
+                <option value="" disabled>Size</option>
+                <option value="12px">12px</option>
+                <option value="14px">14px</option>
+                <option value="16px">16px</option>
+                <option value="18px">18px</option>
+                <option value="20px">20px</option>
+                <option value="24px">24px</option>
+                <option value="30px">30px</option>
+            </select>
 
             <ToolbarDivider />
 
@@ -215,6 +260,52 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
             >
                 <Table size={18} />
             </ToolbarButton>
+
+            {editor.isActive('table') && (
+                <>
+                    <ToolbarDivider />
+                    <ToolbarButton
+                        onClick={() => editor.chain().focus().addRowAfter().run()}
+                        title="Add Row After"
+                    >
+                        <div className="flex items-center relative">
+                            <Table size={18} className="opacity-50" />
+                            <Plus size={10} className="absolute -bottom-1 -right-1 bg-green-100 rounded-full text-green-600" />
+                            <ArrowDown size={10} className="absolute -bottom-1 -left-1 bg-blue-100 rounded-full text-blue-600" />
+                        </div>
+                    </ToolbarButton>
+                    <ToolbarButton
+                        onClick={() => editor.chain().focus().deleteRow().run()}
+                        title="Delete Row"
+                    >
+                        <div className="flex items-center relative">
+                            <Table size={18} className="opacity-50" />
+                            <Minus size={10} className="absolute -bottom-1 -right-1 bg-red-100 rounded-full text-red-600" />
+                            <ArrowDown size={10} className="absolute -bottom-1 -left-1 bg-blue-100 rounded-full text-blue-600" />
+                        </div>
+                    </ToolbarButton>
+                    <ToolbarButton
+                        onClick={() => editor.chain().focus().addColumnAfter().run()}
+                        title="Add Column After"
+                    >
+                        <div className="flex items-center relative">
+                            <Table size={18} className="opacity-50" />
+                            <Plus size={10} className="absolute -bottom-1 -right-1 bg-green-100 rounded-full text-green-600" />
+                            <ArrowRight size={10} className="absolute -top-1 -right-1 bg-blue-100 rounded-full text-blue-600" />
+                        </div>
+                    </ToolbarButton>
+                    <ToolbarButton
+                        onClick={() => editor.chain().focus().deleteColumn().run()}
+                        title="Delete Column"
+                    >
+                        <div className="flex items-center relative">
+                            <Table size={18} className="opacity-50" />
+                            <Minus size={10} className="absolute -bottom-1 -right-1 bg-red-100 rounded-full text-red-600" />
+                            <ArrowRight size={10} className="absolute -top-1 -right-1 bg-blue-100 rounded-full text-blue-600" />
+                        </div>
+                    </ToolbarButton>
+                </>
+            )}
 
             {/* Horizontal Rule */}
             <ToolbarButton

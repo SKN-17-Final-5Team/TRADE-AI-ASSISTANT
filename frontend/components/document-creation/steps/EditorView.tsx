@@ -30,6 +30,9 @@ export default function EditorView({
   showFieldHighlight: boolean;
   showAgentHighlight: boolean;
 }) {
+  const defaultFontFamily = currentStep === 2 ? 'Times New Roman' : 'Arial';
+  const defaultFontSize = '16px';
+
   return (
     <div className="flex flex-col h-full">
       <ContractEditor
@@ -40,6 +43,8 @@ export default function EditorView({
         onChange={onChange}
         showFieldHighlight={showFieldHighlight}
         showAgentHighlight={showAgentHighlight}
+        defaultFontFamily={defaultFontFamily}
+        defaultFontSize={defaultFontSize}
       />
     </div>
   );
