@@ -1,5 +1,5 @@
 // useFileUpload.ts - 파일 업로드 상태 관리 훅
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { uploadDocumentFlow, DocumentStatus } from '../../../utils/documentApi';
 import type { UploadStatus } from '../types';
 
@@ -10,7 +10,7 @@ interface UseFileUploadReturn {
   uploadError: Record<number, string | null>;
   uploadedDocumentIds: Record<number, number | null>;
   uploadedDocumentUrls: Record<number, string | null>;
-  handleFileUpload: (step: number, file: File) => Promise<void>;
+  handleFileUpload: (step: number, file: File, docId: number) => Promise<void>;
   removeUploadedFile: (step: number) => void;
   retryUpload: (step: number) => void;
 }
@@ -24,17 +24,19 @@ export function useFileUpload(initialUploadedFileNames: Record<number, string> =
   const [uploadError, setUploadError] = useState<Record<number, string | null>>({});
   const [uploadUnsubscribe, setUploadUnsubscribe] = useState<Record<number, (() => void) | null>>({});
 
-  const handleFileUpload = useCallback(async (step: number, file: File) => {
-    // 파일 저장
+  // 재시도를 위해 docId 저장
+  const docIdRef = useRef<Record<number, number>>({});
+
+  const handleFileUpload = useCallback(async (step: number, file: File, docId: number) => {
+    // 파일 및 docId 저장
     setUploadedFiles(prev => ({ ...prev, [step]: file }));
     setUploadedFileNames(prev => ({ ...prev, [step]: file.name }));
     setUploadStatus(prev => ({ ...prev, [step]: 'uploading' }));
     setUploadError(prev => ({ ...prev, [step]: null }));
-
-    const documentType = step === 1 ? 'offer_sheet' : 'sales_contract';
+    docIdRef.current[step] = docId;
 
     try {
-      const unsubscribe = await uploadDocumentFlow(file, documentType, {
+      const unsubscribe = await uploadDocumentFlow(file, docId, {
         onPresignedUrl: (data) => {
           setUploadedDocumentIds(prev => ({ ...prev, [step]: data.document_id }));
         },
@@ -94,8 +96,9 @@ export function useFileUpload(initialUploadedFileNames: Record<number, string> =
 
   const retryUpload = useCallback((step: number) => {
     const file = uploadedFiles[step];
-    if (file) {
-      handleFileUpload(step, file);
+    const docId = docIdRef.current[step];
+    if (file && docId) {
+      handleFileUpload(step, file, docId);
     }
   }, [uploadedFiles, handleFileUpload]);
 

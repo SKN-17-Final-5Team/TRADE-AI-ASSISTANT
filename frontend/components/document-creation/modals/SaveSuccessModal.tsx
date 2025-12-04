@@ -19,9 +19,9 @@ export default function SaveSuccessModal({
   if (!isOpen) return null;
 
   const savedSteps = Object.keys(documentData)
-    .filter(k => k !== 'title')
+    .filter(k => k !== 'title' && k !== 'stepModes')
     .map(Number)
-    .filter(stepIndex => modifiedSteps.has(stepIndex))
+    .filter(stepIndex => !isNaN(stepIndex) && stepIndex >= 1 && stepIndex <= 5 && modifiedSteps.has(stepIndex))
     .sort((a, b) => a - b);
 
   return (

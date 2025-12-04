@@ -69,6 +69,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5174",  # Vite dev server (alternative port)
     "http://127.0.0.1:5174",
 ]
+
+# Add production frontend URL from environment variable
+FRONTEND_URL = os.getenv('FRONTEND_URL')
+if FRONTEND_URL:
+    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -167,6 +172,9 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Custom User Model
+AUTH_USER_MODEL = 'documents.User'
 
 # =====================================================================
 # AWS S3 Storage Configuration

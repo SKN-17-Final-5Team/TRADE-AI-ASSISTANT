@@ -9,7 +9,7 @@ const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:
 // ===== Types =====
 
 export interface PresignedUrlRequest {
-  document_type: 'offer_sheet' | 'sales_contract';
+  doc_id: number;
   filename: string;
   file_size: number;
   mime_type: string;
@@ -46,10 +46,11 @@ export interface StatusStreamCallbacks {
  * Presigned URL 요청
  */
 export async function requestPresignedUrl(data: PresignedUrlRequest): Promise<PresignedUrlResponse> {
-  const response = await fetch(`${DJANGO_API_URL}/api/documents/upload/request/`, {
+  const { doc_id, filename, file_size, mime_type } = data;
+  const response = await fetch(`${DJANGO_API_URL}/api/documents/documents/${doc_id}/upload_request/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
+    body: JSON.stringify({ filename, file_size, mime_type })
   });
 
   if (!response.ok) {
@@ -81,13 +82,10 @@ export async function uploadToS3(uploadUrl: string, file: File): Promise<void> {
  * 업로드 완료 알림
  */
 export async function notifyUploadComplete(documentId: number, s3Key: string): Promise<void> {
-  const response = await fetch(`${DJANGO_API_URL}/api/documents/upload/complete/`, {
+  const response = await fetch(`${DJANGO_API_URL}/api/documents/documents/${documentId}/upload_complete/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      document_id: documentId,
-      s3_key: s3Key
-    })
+    body: JSON.stringify({ s3_key: s3Key })
   });
 
   if (!response.ok) {
@@ -188,7 +186,7 @@ export async function refreshDocumentUrl(documentId: number): Promise<string> {
  */
 export async function uploadDocumentFlow(
   file: File,
-  documentType: 'offer_sheet' | 'sales_contract',
+  docId: number,
   callbacks: {
     onPresignedUrl: (data: PresignedUrlResponse) => void;
     onS3UploadComplete: () => void;
@@ -201,7 +199,7 @@ export async function uploadDocumentFlow(
   try {
     // 1. Presigned URL 요청
     const presignedData = await requestPresignedUrl({
-      document_type: documentType,
+      doc_id: docId,
       filename: file.name,
       file_size: file.size,
       mime_type: file.type || 'application/pdf'

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Lock, IdCard } from 'lucide-react';
 import backgroundVideo from '../background.mp4';
+import { api, User } from '../utils/api';
 
 interface LoginPageProps {
-  onLogin: (employeeId: string) => void;
+  onLogin: (employeeId: string, user?: User) => void;
 }
 
 // 타이핑 효과 컴포넌트
@@ -98,32 +99,29 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const INITIAL_PASSWORD = 'a123456!';
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    // 간단한 유효성 검사
+    // 유효성 검사
     if (!employeeId || !password) {
       setError('사원번호와 비밀번호를 모두 입력해주세요.');
       setIsLoading(false);
       return;
     }
 
-    // 비밀번호 확인
-    if (password !== INITIAL_PASSWORD) {
-      setError('비밀번호가 올바르지 않습니다.');
+    try {
+      // 백엔드 API 로그인
+      const user = await api.login(employeeId, password);
+      onLogin(user.emp_no, user);
+    } catch (err) {
+      // 에러 처리
+      const message = err instanceof Error ? err.message : '로그인에 실패했습니다.';
+      setError(message);
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    // Mock 로그인 처리 (프론트엔드 전용)
-    setTimeout(() => {
-      onLogin(employeeId);
-      setIsLoading(false);
-    }, 800);
   };
 
   const videoRef = useRef<HTMLVideoElement>(null);

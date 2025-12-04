@@ -25,6 +25,7 @@ export interface DocumentCreationPageProps {
   versions?: Version[];
   onRestore?: (version: Version) => void;
   initialActiveShippingDoc?: ShippingDocType | null;
+  getDocId?: (step: number, shippingDoc?: ShippingDocType | null) => number | null;
 }
 
 // Step 이름 상수

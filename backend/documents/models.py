@@ -1,189 +1,316 @@
 from django.db import models
-from django.core.validators import FileExtensionValidator
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 
 
-class UserDocument(models.Model):
+class CustomUserManager(BaseUserManager):
     """
-    사용자가 업로드한 문서 메타데이터
-
-    실제 파일은 S3에 저장되고, 이 모델은 메타데이터만 관리합니다.
+    emp_no를 USERNAME_FIELD로 사용하는 커스텀 UserManager
     """
+    def create_user(self, emp_no, name, password=None, **extra_fields):
+        if not emp_no:
+            raise ValueError('사원번호(emp_no)는 필수입니다')
+        user = self.model(emp_no=emp_no, name=name, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
 
-    DOCUMENT_TYPE_CHOICES = [
-        ('offer_sheet', 'Offer Sheet'),
-        ('sales_contract', 'Sales Contract'),
-    ]
+    def create_superuser(self, emp_no, name, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('user_role', 'admin')
 
-    STATUS_CHOICES = [
-        ('uploading', 'Uploading'),  # S3 업로드 대기 중
-        ('processing', 'Processing'),  # 임베딩 생성 중
-        ('ready', 'Ready'),  # 사용 가능
-        ('error', 'Error'),  # 오류 발생
-    ]
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
 
-    # 기본 정보
-    document_type = models.CharField(
+        return self.create_user(emp_no, name, password, **extra_fields)
+
+
+class Department(models.Model):
+    """
+    부서 정보
+    """
+    dept_id = models.BigAutoField(primary_key=True)
+    dept_name = models.CharField(max_length=100, help_text="부서명")
+
+    class Meta:
+        db_table = 'department'
+
+    def __str__(self):
+        return self.dept_name
+
+
+class User(AbstractUser):
+    """
+    사용자 정보
+
+    Django AbstractUser를 확장하여 사원번호, 부서 등 추가 필드 포함
+    """
+    user_id = models.BigAutoField(primary_key=True)
+
+    # username 필드를 emp_no로 대체 (AbstractUser의 username 비활성화)
+    username = None
+    emp_no = models.CharField(
         max_length=50,
-        choices=DOCUMENT_TYPE_CHOICES,
-        help_text="문서 타입 (Offer Sheet or Sales Contract)"
+        unique=True,
+        help_text="사원번호"
     )
-    original_filename = models.CharField(
-        max_length=255,
-        help_text="원본 파일명"
+    name = models.CharField(max_length=100, help_text="이름")
+    dept = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users',
+        help_text="부서"
+    )
+    activation = models.BooleanField(default=True, help_text="활성 상태")
+
+    USER_ROLE_CHOICES = [
+        ('user', 'User'),
+        ('admin', 'Admin'),
+    ]
+    user_role = models.CharField(
+        max_length=20,
+        choices=USER_ROLE_CHOICES,
+        default='user',
+        help_text="사용자 역할"
     )
 
-    # S3 관련
+    # emp_no를 로그인 ID로 사용
+    USERNAME_FIELD = 'emp_no'
+    REQUIRED_FIELDS = ['name']
+
+    # 커스텀 UserManager 사용
+    objects = CustomUserManager()
+
+    class Meta:
+        db_table = 'user'
+
+    def __str__(self):
+        return f"{self.emp_no} - {self.name}"
+
+
+class TradeFlow(models.Model):
+    """
+    거래 플로우
+
+    하나의 거래(Trade)에 여러 문서가 포함됨
+    """
+    STATUS_CHOICES = [
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
+
+    trade_id = models.BigAutoField(primary_key=True)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='trade_flows',
+        help_text="생성한 사용자"
+    )
+    title = models.CharField(max_length=255, help_text="거래 제목")
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='in_progress',
+        help_text="진행 상태"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'trade_flow'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_status_display()})"
+
+
+class Document(models.Model):
+    """
+    문서 정보
+
+    기존 user_documents 테이블 역할을 완전히 흡수
+    """
+    DOC_TYPE_CHOICES = [
+        ('offer', 'Offer Sheet'),
+        ('pi', 'Proforma Invoice'),
+        ('contract', 'Sales Contract'),
+        ('ci', 'Commercial Invoice'),
+        ('pl', 'Packing List'),
+    ]
+
+    DOC_MODE_CHOICES = [
+        ('manual', 'Manual'),
+        ('upload', 'Upload'),
+        ('skip', 'Skip'),
+    ]
+
+    UPLOAD_STATUS_CHOICES = [
+        ('uploading', 'Uploading'),
+        ('processing', 'Processing'),
+        ('ready', 'Ready'),
+        ('error', 'Error'),
+    ]
+
+    doc_id = models.BigAutoField(primary_key=True)
+    trade = models.ForeignKey(
+        TradeFlow,
+        on_delete=models.CASCADE,
+        related_name='documents',
+        help_text="거래 플로우"
+    )
+    doc_type = models.CharField(
+        max_length=20,
+        choices=DOC_TYPE_CHOICES,
+        help_text="문서 유형"
+    )
+    doc_mode = models.CharField(
+        max_length=20,
+        choices=DOC_MODE_CHOICES,
+        default='manual',
+        help_text="작성 모드"
+    )
+
+    # S3 관련 필드 (upload 모드일 때 사용)
     s3_key = models.CharField(
         max_length=500,
-        unique=True,
-        help_text="S3에 저장된 파일의 고유 키"
+        null=True,
+        blank=True,
+        help_text="S3 저장 경로"
     )
     s3_url = models.URLField(
         max_length=1000,
-        blank=True,
         null=True,
-        help_text="S3 파일 접근 URL (presigned URL)"
+        blank=True,
+        help_text="S3 URL"
     )
-
-    # 파일 메타데이터
+    original_filename = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="원본 파일명"
+    )
     file_size = models.BigIntegerField(
+        null=True,
+        blank=True,
         help_text="파일 크기 (bytes)"
     )
     mime_type = models.CharField(
         max_length=100,
-        default='application/pdf'
+        null=True,
+        blank=True,
+        help_text="MIME 타입"
     )
 
-    # 처리 상태
-    status = models.CharField(
+    # 업로드 상태 (upload 모드일 때 사용)
+    upload_status = models.CharField(
         max_length=20,
-        choices=STATUS_CHOICES,
-        default='uploading',
-        help_text="문서 처리 상태"
+        choices=UPLOAD_STATUS_CHOICES,
+        null=True,
+        blank=True,
+        help_text="업로드 처리 상태"
     )
     error_message = models.TextField(
-        blank=True,
         null=True,
-        help_text="오류 발생 시 메시지"
+        blank=True,
+        help_text="에러 메시지"
     )
 
-    # Qdrant 관련
+    # RAG용 벡터 ID
     qdrant_point_ids = models.JSONField(
         default=list,
         blank=True,
-        help_text="Qdrant에 저장된 벡터 포인트 ID 목록"
+        help_text="RAG용 벡터 ID 목록"
     )
 
-    # 타임스탬프
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # 사용자 정보 (향후 확장용)
-    # user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    class Meta:
+        db_table = 'document'
+        ordering = ['doc_type']
+        indexes = [
+            models.Index(fields=['trade', 'doc_type']),
+            models.Index(fields=['upload_status']),
+        ]
+        # 하나의 trade에 같은 doc_type은 하나만 존재
+        unique_together = ['trade', 'doc_type']
+
+    def __str__(self):
+        return f"{self.trade.title} - {self.get_doc_type_display()}"
+
+
+class DocVersion(models.Model):
+    """
+    문서 버전
+
+    저장할 때마다 새 버전 생성
+    """
+    version_id = models.BigAutoField(primary_key=True)
+    doc = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='versions',
+        help_text="문서"
+    )
+    content = models.JSONField(help_text="문서 내용")
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'user_documents'
+        db_table = 'doc_version'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['document_type']),
-            models.Index(fields=['status']),
-            models.Index(fields=['-created_at']),
+            models.Index(fields=['doc', '-created_at']),
         ]
 
     def __str__(self):
-        return f"{self.get_document_type_display()} - {self.original_filename}"
-
-    def get_total_chunks(self):
-        """임베딩된 청크 개수 반환"""
-        return len(self.qdrant_point_ids)
+        return f"{self.doc} - Version {self.version_id}"
 
 
-class DocumentChatSession(models.Model):
-    """
-    문서 기반 채팅 세션
-
-    각 업로드된 문서마다 하나의 채팅 세션이 연결됩니다.
-    """
-
-    document = models.ForeignKey(
-        UserDocument,
-        on_delete=models.CASCADE,
-        related_name='chat_sessions',
-        help_text="연결된 문서"
-    )
-
-    title = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="세션 제목 (첫 메시지나 문서명 기반)"
-    )
-
-    # 타임스탬프
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'document_chat_sessions'
-        ordering = ['-updated_at']
-        indexes = [
-            models.Index(fields=['document', '-updated_at']),
-        ]
-
-    def __str__(self):
-        return f"Session for {self.document.original_filename}"
-
-    def save(self, *args, **kwargs):
-        # 제목이 없으면 문서 파일명으로 설정
-        if not self.title:
-            self.title = f"Chat: {self.document.original_filename}"
-        super().save(*args, **kwargs)
-
-
-class DocumentChatMessage(models.Model):
+class DocMessage(models.Model):
     """
     문서 채팅 메시지
 
-    사용자와 AI 간의 대화 내용을 저장합니다.
+    화면에 채팅 기록 표시용
+    LLM 메모리 관리는 Mem0가 user_id + doc_id로 처리
     """
-
     ROLE_CHOICES = [
         ('user', 'User'),
-        ('assistant', 'Assistant'),
-        ('system', 'System'),
+        ('agent', 'Agent'),
     ]
 
-    session = models.ForeignKey(
-        DocumentChatSession,
+    doc_message_id = models.BigAutoField(primary_key=True)
+    doc = models.ForeignKey(
+        Document,
         on_delete=models.CASCADE,
         related_name='messages',
-        help_text="속한 채팅 세션"
+        help_text="문서"
     )
-
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        help_text="메시지 발신자 역할"
+        help_text="발신자 역할"
     )
-
-    content = models.TextField(
-        help_text="메시지 내용"
-    )
-
-    # 메타데이터 (툴 사용, 검색 결과 등)
+    content = models.TextField(help_text="메시지 내용")
     metadata = models.JSONField(
         default=dict,
         blank=True,
-        help_text="추가 메타데이터 (tool calls, search results 등)"
+        help_text="도구 사용 결과, 검색 결과 등"
     )
-
-    # 타임스탬프
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'document_chat_messages'
+        db_table = 'doc_message'
         ordering = ['created_at']
         indexes = [
-            models.Index(fields=['session', 'created_at']),
+            models.Index(fields=['doc', 'created_at']),
         ]
 
     def __str__(self):

@@ -15,7 +15,7 @@ from django.conf import settings
 
 from agent_core.pdf_parser import production_pdf_pipeline
 
-from .models import UserDocument
+from .models import Document
 from agent_core.config import (
     qdrant_client,
     openai_client,
@@ -190,16 +190,16 @@ def process_uploaded_document(document_id: int):
     2. PDF 파싱 (페이지별)
     3. 임베딩 생성
     4. Qdrant 저장
-    5. UserDocument 상태 업데이트
+    5. Document 상태 업데이트
 
     Args:
-        document_id: UserDocument ID
+        document_id: Document ID (doc_id)
     """
     temp_pdf_path = None
 
     try:
         # 1. 문서 조회
-        document = UserDocument.objects.get(id=document_id)
+        document = Document.objects.get(doc_id=document_id)
         logger.info(f"Processing document {document_id}: {document.original_filename}")
 
         # 2. S3에서 다운로드
@@ -218,9 +218,9 @@ def process_uploaded_document(document_id: int):
         # 5. Qdrant 저장
         point_ids = store_chunks_in_qdrant(document_id, chunks, embeddings)
 
-        # 6. UserDocument 업데이트: ready
+        # 6. Document 업데이트: ready
         document.qdrant_point_ids = point_ids
-        document.status = 'ready'
+        document.upload_status = 'ready'
         document.error_message = None
         document.save()
 
@@ -234,8 +234,8 @@ def process_uploaded_document(document_id: int):
 
         # 상태 업데이트: error
         try:
-            document = UserDocument.objects.get(id=document_id)
-            document.status = 'error'
+            document = Document.objects.get(doc_id=document_id)
+            document.upload_status = 'error'
             document.error_message = str(e)
             document.save()
         except Exception as update_error:

@@ -64,7 +64,8 @@ export default function DocumentCreationPage({
   onSave,
   versions = [],
   onRestore,
-  initialActiveShippingDoc
+  initialActiveShippingDoc,
+  getDocId
 }: DocumentCreationPageProps) {
   const editorRef = useRef<ContractEditorRef>(null);
   const chatButtonRef = useRef<HTMLButtonElement>(null);
@@ -111,6 +112,7 @@ export default function DocumentCreationPage({
   const [isStepIndicatorVisible, setIsStepIndicatorVisible] = useState(true);
   const [showFieldHighlight, setShowFieldHighlight] = useState(true);
   const [showAgentHighlight, setShowAgentHighlight] = useState(true);
+  const [editorKey, setEditorKey] = useState(0); // 에디터 강제 리마운트용
 
   // Modal State
   const [showMyPageModal, setShowMyPageModal] = useState(false);
@@ -450,9 +452,13 @@ export default function DocumentCreationPage({
 
   const handleVersionRestore = (version: Version) => {
     if (onRestore) {
+      // 먼저 documentData 업데이트 (App.tsx에서 처리)
       onRestore(version);
       setShowVersionHistory(false);
+
       const step = version.step;
+
+      // step 설정
       if (step <= 3) {
         setCurrentStep(step);
         setStepModes(prev => ({ ...prev, [step]: 'manual' }));
@@ -461,6 +467,11 @@ export default function DocumentCreationPage({
         if (step === 4) setActiveShippingDoc('CI');
         if (step === 5) setActiveShippingDoc('PL');
       }
+
+      // documentData 상태 업데이트 후 에디터 리마운트 (React 상태 업데이트는 비동기)
+      setTimeout(() => {
+        setEditorKey(prev => prev + 1);
+      }, 50);
     }
   };
 
@@ -590,6 +601,7 @@ export default function DocumentCreationPage({
 
     // Upload Mode
     if (stepModes[currentStep] === 'upload') {
+      const docId = getDocId?.(currentStep, null);
       return (
         <FileUploadView
           file={uploadedFiles[currentStep] || null}
@@ -597,7 +609,13 @@ export default function DocumentCreationPage({
           status={uploadStatus[currentStep] || 'idle'}
           documentUrl={uploadedDocumentUrls[currentStep] || null}
           error={uploadError[currentStep] || null}
-          onUpload={(file) => handleFileUpload(currentStep, file)}
+          onUpload={(file) => {
+            if (docId) {
+              handleFileUpload(currentStep, file, docId);
+            } else {
+              console.error('Document ID not found for step', currentStep);
+            }
+          }}
           onRetry={() => retryUpload(currentStep)}
         />
       );
@@ -618,6 +636,7 @@ export default function DocumentCreationPage({
     // Editor View (Manual mode or Step 2/4 with doc selected)
     return (
       <EditorView
+        key={`editor-${currentStep}-${activeShippingDoc || 'default'}-${editorKey}`}
         currentStep={currentStep}
         stepModes={stepModes}
         activeShippingDoc={activeShippingDoc}
