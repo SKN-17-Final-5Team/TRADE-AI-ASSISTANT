@@ -38,7 +38,7 @@ export function useFileUpload(initialUploadedFileNames: Record<number, string> =
     try {
       const unsubscribe = await uploadDocumentFlow(file, docId, {
         onPresignedUrl: (data) => {
-          setUploadedDocumentIds(prev => ({ ...prev, [step]: data.document_id }));
+          setUploadedDocumentIds(prev => ({ ...prev, [step]: data.doc_id }));
         },
         onS3UploadComplete: () => {
           // S3 업로드 완료

@@ -16,7 +16,7 @@ export interface PresignedUrlRequest {
 }
 
 export interface PresignedUrlResponse {
-  document_id: number;
+  doc_id: number;
   upload_url: string;
   s3_key: string;
   expires_in: number;
@@ -104,7 +104,7 @@ export function subscribeToDocumentStatus(
   callbacks: StatusStreamCallbacks
 ): () => void {
   const eventSource = new EventSource(
-    `${DJANGO_API_URL}/api/documents/${documentId}/status/stream/`
+    `${DJANGO_API_URL}/api/documents/documents/${documentId}/status/stream/`
   );
 
   eventSource.onmessage = (event) => {
@@ -151,7 +151,7 @@ export async function getDocument(documentId: number): Promise<{
   file_size: number;
   created_at: string;
 }> {
-  const response = await fetch(`${DJANGO_API_URL}/api/documents/${documentId}/`);
+  const response = await fetch(`${DJANGO_API_URL}/api/documents/documents/${documentId}/`);
 
   if (!response.ok) {
     throw new Error('문서 조회 실패');
@@ -164,7 +164,7 @@ export async function getDocument(documentId: number): Promise<{
  * S3 Presigned URL 갱신
  */
 export async function refreshDocumentUrl(documentId: number): Promise<string> {
-  const response = await fetch(`${DJANGO_API_URL}/api/documents/${documentId}/refresh_url/`);
+  const response = await fetch(`${DJANGO_API_URL}/api/documents/documents/${documentId}/refresh_url/`);
 
   if (!response.ok) {
     throw new Error('URL 갱신 실패');
@@ -211,11 +211,11 @@ export async function uploadDocumentFlow(
     callbacks.onS3UploadComplete();
 
     // 3. 업로드 완료 알림
-    await notifyUploadComplete(presignedData.document_id, presignedData.s3_key);
+    await notifyUploadComplete(presignedData.doc_id, presignedData.s3_key);
     callbacks.onProcessingStart();
 
     // 4. SSE 상태 구독
-    const unsubscribe = subscribeToDocumentStatus(presignedData.document_id, {
+    const unsubscribe = subscribeToDocumentStatus(presignedData.doc_id, {
       onStatus: callbacks.onStatus,
       onComplete: callbacks.onComplete,
       onError: callbacks.onError,
