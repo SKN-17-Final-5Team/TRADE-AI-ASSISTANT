@@ -504,7 +504,198 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                         levels: [1, 2, 3, 4],
                     },
                 }),
-                Table.configure({
+                Table.extend({
+                    addCommands() {
+                        const parentCommands = this.parent?.() || {}
+                        return {
+                            ...parentCommands,
+                            addRowAfter: () => (props: any) => {
+                                console.log('🔵 Custom addRowAfter called')
+                                // Call parent addRowAfter first
+                                const parentAddRowAfter = parentCommands.addRowAfter
+                                if (!parentAddRowAfter) {
+                                    console.log('❌ No parent addRowAfter found')
+                                    return false
+                                }
+
+                                console.log('🔵 Calling parent addRowAfter')
+                                const success = parentAddRowAfter()(props)
+                                if (!success) {
+                                    console.log('❌ Parent addRowAfter failed')
+                                    return false
+                                }
+
+                                console.log('✅ Parent addRowAfter succeeded, scheduling field population')
+                                // Use setTimeout to allow the row to be added first, then populate it
+                                setTimeout(() => {
+                                    console.log('🔵 Starting field population')
+                                    const { editor } = props
+                                    const { state: newState } = editor
+                                    const { selection } = newState
+                                    const { $from } = selection
+
+                                    // Find the table
+                                    let tableDepth = -1
+                                    for (let d = $from.depth; d > 0; d--) {
+                                        if ($from.node(d).type.name === 'table') {
+                                            tableDepth = d
+                                            break
+                                        }
+                                    }
+
+                                    if (tableDepth === -1) {
+                                        console.log('❌ Not in a table')
+                                        return
+                                    }
+                                    console.log('✅ Found table at depth:', tableDepth)
+
+                                    const tableNode = $from.node(tableDepth)
+                                    const tablePos = $from.before(tableDepth)
+
+                                    // Find first data row with field tags
+                                    let firstDataRow: any = null
+
+                                    tableNode.forEach((row: any) => {
+                                        if (row.type.name === 'tableRow' && !firstDataRow) {
+                                            let hasDataFields = false
+                                            row.descendants((node: any) => {
+                                                if (node.type.name === 'dataField') {
+                                                    hasDataFields = true
+                                                }
+                                            })
+
+                                            if (hasDataFields) {
+                                                firstDataRow = row
+                                            }
+                                        }
+                                    })
+
+                                    if (!firstDataRow) {
+                                        console.log('❌ No first data row with fields found')
+                                        return
+                                    }
+                                    console.log('✅ Found first data row with fields')
+
+                                    // Find current row (where cursor is - this is the newly added row)
+                                    const currentRowIndex = $from.index(tableDepth)
+                                    const currentRow = tableNode.child(currentRowIndex)
+
+                                    console.log('📍 Current row index:', currentRowIndex)
+                                    console.log('📍 Current row:', currentRow)
+
+                                    // Collect all existing field IDs to determine next increment
+                                    const existingFieldIds = new Set<string>()
+                                    tableNode.descendants((node: any) => {
+                                        if (node.type.name === 'dataField') {
+                                            existingFieldIds.add(node.attrs.fieldId)
+                                        }
+                                    })
+
+                                    // Get next incremented field ID
+                                    const getIncrementedFieldId = (baseFieldId: string): string => {
+                                        // Remove any existing _N suffix to get the base name
+                                        const baseName = baseFieldId.replace(/_\d+$/, '')
+                                        let counter = 2
+                                        while (existingFieldIds.has(`${baseName}_${counter}`)) {
+                                            counter++
+                                        }
+                                        const newId = `${baseName}_${counter}`
+                                        existingFieldIds.add(newId)
+                                        return newId
+                                    }
+
+                                    // Extract field structure from first data row
+                                    const cellFields: Array<{ cellIndex: number, fieldIds: string[] }> = []
+
+                                    firstDataRow.forEach((cell: any, cellOffset: number, cellIndex: number) => {
+                                        const fieldIds: string[] = []
+                                        cell.descendants((node: any) => {
+                                            if (node.type.name === 'dataField') {
+                                                fieldIds.push(node.attrs.fieldId)
+                                            }
+                                        })
+
+                                        if (fieldIds.length > 0) {
+                                            cellFields.push({ cellIndex, fieldIds })
+                                        }
+                                    })
+
+                                    console.log('📊 Extracted cellFields:', cellFields)
+                                    console.log('📊 Existing field IDs:', Array.from(existingFieldIds))
+                                    if (cellFields.length === 0) {
+                                        console.log('❌ No cell fields extracted')
+                                        return
+                                    }
+                                    console.log('✅ Found', cellFields.length, 'cells with fields')
+
+                                    // Build transaction to replace fields in the current (newly added) row
+                                    const newTr = newState.tr
+
+                                    // Calculate position of current row
+                                    let rowPos = tablePos + 1
+                                    for (let i = 0; i < currentRowIndex; i++) {
+                                        rowPos += tableNode.child(i).nodeSize
+                                    }
+
+                                    console.log('📍 Row position:', rowPos)
+
+                                    // For each cell, replace the existing dataField nodes with incremented ones
+                                    cellFields.forEach(({ cellIndex, fieldIds }) => {
+                                        const cell = currentRow.child(cellIndex)
+
+                                        // Calculate cell position
+                                        let cellPos = rowPos + 1 // +1 for row opening tag
+                                        for (let i = 0; i < cellIndex; i++) {
+                                            cellPos += currentRow.child(i).nodeSize
+                                        }
+
+                                        console.log(`📍 Cell ${cellIndex} position:`, cellPos)
+
+                                        // Find and delete existing dataField nodes in this cell
+                                        const nodesToDelete: Array<{ pos: number, size: number }> = []
+                                        let currentPos = cellPos + 1 // +1 for cell opening tag
+
+                                        cell.descendants((node: any, pos: number) => {
+                                            if (node.type.name === 'dataField') {
+                                                nodesToDelete.push({ pos: currentPos + pos, size: node.nodeSize })
+                                            }
+                                        })
+
+                                        console.log(`🗑️  Nodes to delete in cell ${cellIndex}:`, nodesToDelete)
+
+                                        // Delete in reverse order to maintain positions
+                                        for (let i = nodesToDelete.length - 1; i >= 0; i--) {
+                                            const { pos, size } = nodesToDelete[i]
+                                            newTr.delete(pos, pos + size)
+                                        }
+
+                                        // Insert new incremented fields
+                                        let insertPos = cellPos + 1 // +1 for cell opening tag
+
+                                        fieldIds.forEach((baseFieldId, idx) => {
+                                            const newFieldId = getIncrementedFieldId(baseFieldId)
+                                            const placeholder = `[${newFieldId}]`
+                                            console.log(`🔧 Creating field: ${baseFieldId} → ${newFieldId} at pos ${insertPos}`)
+
+                                            const dataFieldNode = newState.schema.nodes.dataField.create(
+                                                { fieldId: newFieldId, source: null },
+                                                newState.schema.text(placeholder)
+                                            )
+
+                                            newTr.insert(insertPos, dataFieldNode)
+                                            insertPos += dataFieldNode.nodeSize
+                                        })
+                                    })
+
+                                    console.log('✅ Dispatching transaction')
+                                    editor.view.dispatch(newTr)
+                                }, 0)
+
+                                return true
+                            },
+                        }
+                    },
+                }).configure({
                     resizable: true,
                     HTMLAttributes: {
                         class: 'contract-table',
