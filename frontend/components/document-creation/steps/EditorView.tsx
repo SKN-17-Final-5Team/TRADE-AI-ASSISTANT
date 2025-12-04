@@ -37,7 +37,7 @@ export default function EditorView({
     <div className="flex flex-col h-full">
       <ContractEditor
         key={`${currentStep}-${activeShippingDoc || 'default'}`}
-        ref={editorRef}
+        ref={editorRef as RefObject<ContractEditorRef>}
         className="flex-1 min-h-0"
         initialContent={initialContent}
         onChange={onChange}
