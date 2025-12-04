@@ -33,10 +33,10 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='login'),
 
     # 문서 채팅
-    path('documents/<int:doc_id>/chat/', DocumentChatView.as_view(), name='document-chat'),
+    path('<int:doc_id>/chat/', DocumentChatView.as_view(), name='document-chat'),
 
     # 문서 처리 상태 SSE 스트림
-    path('documents/<int:doc_id>/status/stream/', DocumentProcessingStatusView.as_view(), name='document-status-stream'),
+    path('<int:doc_id>/status/stream/', DocumentProcessingStatusView.as_view(), name='document-status-stream'),
 
     # ViewSet routes
     path('', include(router.urls)),

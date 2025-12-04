@@ -134,6 +134,11 @@ class ApiClient {
       throw new Error(errorMessage);
     }
 
+    // 204 No Content 응답은 빈 객체 반환
+    if (response.status === 204) {
+      return {} as T;
+    }
+
     return response.json();
   }
 

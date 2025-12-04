@@ -120,11 +120,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'trade_assistant',
-        'USER': 'root',
-        'PASSWORD': 'hoonsql98',
-        'HOST': '127.0.0.1',
-        'PORT': '3306',
+        'NAME': os.getenv('MYSQL_DATABASE', 'ragodb'),
+        'USER': os.getenv('MYSQL_USER', 'admin'),
+        'PASSWORD': os.getenv('MYSQL_PASSWORD', 'rago-gta-admin'),
+        'HOST': os.getenv('MYSQL_HOST', 'rago-database.c1260o8a6i62.ap-northeast-2.rds.amazonaws.com'),
+        'PORT': os.getenv('MYSQL_PORT', '3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         },
