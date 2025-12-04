@@ -208,14 +208,16 @@ const DataField = Node.create({
 
     addNodeView() {
         return ReactNodeViewRenderer(({ node, getPos, editor }) => {
-            const isPlaceholder = node.textContent === `[${node.attrs.fieldId}]`;
+            const fieldId = node.attrs.fieldId;
             const source = node.attrs.source;
+            const textContent = node.textContent;
+
+            // Always show placeholder format
+            const displayText = `[${fieldId}]`;
+            const isPlaceholder = textContent === displayText;
 
             let bgClass = '';
-            if (isPlaceholder) {
-                // [CHANGED] Hide text by default (transparent), show on hover. Keep box visible.
-                bgClass = 'bg-white border border-gray-300 text-transparent hover:text-gray-400 px-1 rounded';
-            } else if (source === 'agent') {
+            if (source === 'agent') {
                 bgClass = 'bg-yellow-50 border border-yellow-200 text-yellow-900 px-1 rounded';
             } else if (source === 'mapped') {
                 bgClass = 'bg-green-50 border border-green-200 text-green-900 px-1 rounded';
@@ -223,7 +225,8 @@ const DataField = Node.create({
                 // [CHANGED] User input should be black text, but keep blue bg/border to indicate status
                 bgClass = 'bg-blue-50 border border-blue-200 text-gray-900 px-1 rounded';
             } else {
-                bgClass = 'bg-transparent';
+                // Default: show placeholder text always
+                bgClass = 'bg-gray-50 border border-gray-300 text-gray-600 px-1 rounded';
             }
 
             const handleClick = () => {
@@ -245,6 +248,7 @@ const DataField = Node.create({
                     onClick={handleClick}
                     style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
                 >
+                    {/* Always show the text content */}
                     {/* @ts-ignore */}
                     <NodeViewContent as="span" />
                 </NodeViewWrapper>
@@ -509,189 +513,248 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                         const parentCommands = this.parent?.() || {}
                         return {
                             ...parentCommands,
-                            addRowAfter: () => (props: any) => {
-                                console.log('🔵 Custom addRowAfter called')
-                                // Call parent addRowAfter first
+                            addRowAfter: () => ({ chain, state, dispatch }) => {
+                                console.log('🔵 Custom addRowAfter triggered')
+                                const { selection } = state
+                                const { $from } = selection
+
+                                // Find the table
+                                let tableDepth = -1
+                                for (let d = $from.depth; d > 0; d--) {
+                                    if ($from.node(d).type.name === 'table') {
+                                        tableDepth = d
+                                        break
+                                    }
+                                }
+
                                 const parentAddRowAfter = parentCommands.addRowAfter
                                 if (!parentAddRowAfter) {
-                                    console.log('❌ No parent addRowAfter found')
+                                    console.error('❌ Parent addRowAfter not found')
                                     return false
                                 }
 
-                                console.log('🔵 Calling parent addRowAfter')
-                                const success = parentAddRowAfter()(props)
-                                if (!success) {
-                                    console.log('❌ Parent addRowAfter failed')
-                                    return false
+                                if (tableDepth === -1) {
+                                    console.warn('⚠️ Not inside a table')
+                                    return chain().command(parentAddRowAfter()).run()
                                 }
 
-                                console.log('✅ Parent addRowAfter succeeded, scheduling field population')
-                                // Use setTimeout to allow the row to be added first, then populate it
-                                setTimeout(() => {
-                                    console.log('🔵 Starting field population')
-                                    const { editor } = props
-                                    const { state: newState } = editor
-                                    const { selection } = newState
-                                    const { $from } = selection
+                                const tableNode = $from.node(tableDepth)
 
-                                    // Find the table
-                                    let tableDepth = -1
-                                    for (let d = $from.depth; d > 0; d--) {
-                                        if ($from.node(d).type.name === 'table') {
-                                            tableDepth = d
-                                            break
+                                // Find template row (first row with dataField nodes)
+                                let templateRow: any = null
+                                tableNode.forEach((row: any) => {
+                                    if (row.type.name === 'tableRow' && !templateRow) {
+                                        let hasDataFields = false
+                                        row.descendants((node: any) => {
+                                            if (node.type.name === 'dataField') {
+                                                hasDataFields = true
+                                            }
+                                        })
+                                        if (hasDataFields) {
+                                            templateRow = row
                                         }
                                     }
+                                })
 
-                                    if (tableDepth === -1) {
-                                        console.log('❌ Not in a table')
-                                        return
+                                if (!templateRow) {
+                                    console.log('ℹ️ No template row found with data fields')
+                                    return chain().command(parentAddRowAfter()).run()
+                                }
+
+                                // Extract field structure from template row
+                                const cellFields: Array<{ cellIndex: number, fields: Array<{ fieldId: string, marks: any[] }> }> = []
+                                templateRow.forEach((cell: any, cellOffset: number, cellIndex: number) => {
+                                    const fields: Array<{ fieldId: string, marks: any[] }> = []
+                                    cell.descendants((node: any) => {
+                                        if (node.type.name === 'dataField') {
+                                            // Get the marks from the text content inside the dataField
+                                            const marks: any[] = []
+                                            node.content.forEach((textNode: any) => {
+                                                if (textNode.marks) {
+                                                    marks.push(...textNode.marks)
+                                                }
+                                            })
+                                            fields.push({
+                                                fieldId: node.attrs.fieldId,
+                                                marks: marks
+                                            })
+                                        }
+                                    })
+                                    if (fields.length > 0) {
+                                        cellFields.push({ cellIndex, fields })
                                     }
-                                    console.log('✅ Found table at depth:', tableDepth)
+                                })
+                                console.log(`📋 Found ${cellFields.length} cells with fields in template`)
 
-                                    const tableNode = $from.node(tableDepth)
-                                    const tablePos = $from.before(tableDepth)
+                                // Collect all existing field IDs
+                                const existingFieldIds = new Set<string>()
+                                state.doc.descendants((node: any) => {
+                                    if (node.type.name === 'dataField') {
+                                        existingFieldIds.add(node.attrs.fieldId)
+                                    }
+                                })
 
-                                    // Find first data row with field tags
-                                    let firstDataRow: any = null
+                                // Helper to get next incremented field ID
+                                const getIncrementedFieldId = (baseFieldId: string): string => {
+                                    const match = baseFieldId.match(/^(.*)_(\d+)$/)
+                                    let baseName = baseFieldId
+                                    let startCounter = 2
 
-                                    tableNode.forEach((row: any) => {
-                                        if (row.type.name === 'tableRow' && !firstDataRow) {
-                                            let hasDataFields = false
-                                            row.descendants((node: any) => {
+                                    if (match) {
+                                        baseName = match[1]
+                                    }
+
+                                    let counter = startCounter
+                                    let newId = `${baseName}_${counter}`
+                                    while (existingFieldIds.has(newId)) {
+                                        counter++
+                                        newId = `${baseName}_${counter}`
+                                    }
+                                    existingFieldIds.add(newId)
+                                    return newId
+                                }
+
+                                // Instead of using addRowAfter, we'll insert before the last row (Total row)
+                                // Find the position right before the last row
+                                const lastRowIndex = tableNode.childCount - 1
+                                const tableStartPos = $from.start(tableDepth)
+
+                                // Calculate position before the last row
+                                let insertPos = tableStartPos
+                                for (let i = 0; i < lastRowIndex; i++) {
+                                    insertPos += tableNode.child(i).nodeSize
+                                }
+
+                                console.log(`📍 Inserting new row before Total row (index ${lastRowIndex}) at pos ${insertPos}`)
+
+                                // Clone the template row structure completely
+                                // This preserves all cell attributes, paragraph formatting, etc.
+                                const clonedCells: any[] = []
+
+                                templateRow.forEach((templateCell: any, offset: number, cellIndex: number) => {
+                                    // Clone the cell with all its attributes
+                                    const cellContent: any[] = []
+
+                                    // Clone each child of the cell (usually paragraphs)
+                                    templateCell.forEach((child: any) => {
+                                        if (child.type.name === 'paragraph') {
+                                            // Clone paragraph content, replacing dataFields with new ones
+                                            const paragraphContent: any[] = []
+
+                                            child.forEach((node: any) => {
                                                 if (node.type.name === 'dataField') {
-                                                    hasDataFields = true
+                                                    // We'll replace this later, for now just create empty paragraph
+                                                    // Keep the structure but empty content
+                                                } else {
+                                                    // Keep other nodes as-is
+                                                    paragraphContent.push(node)
                                                 }
                                             })
 
-                                            if (hasDataFields) {
-                                                firstDataRow = row
-                                            }
-                                        }
-                                    })
-
-                                    if (!firstDataRow) {
-                                        console.log('❌ No first data row with fields found')
-                                        return
-                                    }
-                                    console.log('✅ Found first data row with fields')
-
-                                    // Find current row (where cursor is - this is the newly added row)
-                                    const currentRowIndex = $from.index(tableDepth)
-                                    const currentRow = tableNode.child(currentRowIndex)
-
-                                    console.log('📍 Current row index:', currentRowIndex)
-                                    console.log('📍 Current row:', currentRow)
-
-                                    // Collect all existing field IDs to determine next increment
-                                    const existingFieldIds = new Set<string>()
-                                    tableNode.descendants((node: any) => {
-                                        if (node.type.name === 'dataField') {
-                                            existingFieldIds.add(node.attrs.fieldId)
-                                        }
-                                    })
-
-                                    // Get next incremented field ID
-                                    const getIncrementedFieldId = (baseFieldId: string): string => {
-                                        // Remove any existing _N suffix to get the base name
-                                        const baseName = baseFieldId.replace(/_\d+$/, '')
-                                        let counter = 2
-                                        while (existingFieldIds.has(`${baseName}_${counter}`)) {
-                                            counter++
-                                        }
-                                        const newId = `${baseName}_${counter}`
-                                        existingFieldIds.add(newId)
-                                        return newId
-                                    }
-
-                                    // Extract field structure from first data row
-                                    const cellFields: Array<{ cellIndex: number, fieldIds: string[] }> = []
-
-                                    firstDataRow.forEach((cell: any, cellOffset: number, cellIndex: number) => {
-                                        const fieldIds: string[] = []
-                                        cell.descendants((node: any) => {
-                                            if (node.type.name === 'dataField') {
-                                                fieldIds.push(node.attrs.fieldId)
-                                            }
-                                        })
-
-                                        if (fieldIds.length > 0) {
-                                            cellFields.push({ cellIndex, fieldIds })
-                                        }
-                                    })
-
-                                    console.log('📊 Extracted cellFields:', cellFields)
-                                    console.log('📊 Existing field IDs:', Array.from(existingFieldIds))
-                                    if (cellFields.length === 0) {
-                                        console.log('❌ No cell fields extracted')
-                                        return
-                                    }
-                                    console.log('✅ Found', cellFields.length, 'cells with fields')
-
-                                    // Build transaction to replace fields in the current (newly added) row
-                                    const newTr = newState.tr
-
-                                    // Calculate position of current row
-                                    let rowPos = tablePos + 1
-                                    for (let i = 0; i < currentRowIndex; i++) {
-                                        rowPos += tableNode.child(i).nodeSize
-                                    }
-
-                                    console.log('📍 Row position:', rowPos)
-
-                                    // For each cell, replace the existing dataField nodes with incremented ones
-                                    cellFields.forEach(({ cellIndex, fieldIds }) => {
-                                        const cell = currentRow.child(cellIndex)
-
-                                        // Calculate cell position
-                                        let cellPos = rowPos + 1 // +1 for row opening tag
-                                        for (let i = 0; i < cellIndex; i++) {
-                                            cellPos += currentRow.child(i).nodeSize
-                                        }
-
-                                        console.log(`📍 Cell ${cellIndex} position:`, cellPos)
-
-                                        // Find and delete existing dataField nodes in this cell
-                                        const nodesToDelete: Array<{ pos: number, size: number }> = []
-                                        let currentPos = cellPos + 1 // +1 for cell opening tag
-
-                                        cell.descendants((node: any, pos: number) => {
-                                            if (node.type.name === 'dataField') {
-                                                nodesToDelete.push({ pos: currentPos + pos, size: node.nodeSize })
-                                            }
-                                        })
-
-                                        console.log(`🗑️  Nodes to delete in cell ${cellIndex}:`, nodesToDelete)
-
-                                        // Delete in reverse order to maintain positions
-                                        for (let i = nodesToDelete.length - 1; i >= 0; i--) {
-                                            const { pos, size } = nodesToDelete[i]
-                                            newTr.delete(pos, pos + size)
-                                        }
-
-                                        // Insert new incremented fields
-                                        let insertPos = cellPos + 1 // +1 for cell opening tag
-
-                                        fieldIds.forEach((baseFieldId, idx) => {
-                                            const newFieldId = getIncrementedFieldId(baseFieldId)
-                                            const placeholder = `[${newFieldId}]`
-                                            console.log(`🔧 Creating field: ${baseFieldId} → ${newFieldId} at pos ${insertPos}`)
-
-                                            const dataFieldNode = newState.schema.nodes.dataField.create(
-                                                { fieldId: newFieldId, source: null },
-                                                newState.schema.text(placeholder)
+                                            // Create paragraph with same attributes but empty content initially
+                                            const clonedParagraph = state.schema.nodes.paragraph.create(
+                                                child.attrs,
+                                                null // We'll add content later
                                             )
-
-                                            newTr.insert(insertPos, dataFieldNode)
-                                            insertPos += dataFieldNode.nodeSize
-                                        })
+                                            cellContent.push(clonedParagraph)
+                                        } else {
+                                            cellContent.push(child)
+                                        }
                                     })
 
-                                    console.log('✅ Dispatching transaction')
-                                    editor.view.dispatch(newTr)
-                                }, 0)
+                                    // Create cell with same attributes
+                                    const clonedCell = state.schema.nodes.tableCell.create(
+                                        templateCell.attrs,
+                                        cellContent.length > 0 ? cellContent : state.schema.nodes.paragraph.create()
+                                    )
+                                    clonedCells.push(clonedCell)
+                                })
 
-                                return true
+                                const newRow = state.schema.nodes.tableRow.create(
+                                    templateRow.attrs,
+                                    clonedCells
+                                )
+
+                                // Execute: Insert row, then populate it
+                                return chain()
+                                    .command(({ tr }) => {
+                                        tr.insert(insertPos, newRow)
+                                        console.log('✅ Inserted new empty row')
+                                        return true
+                                    })
+                                    .command(({ tr, state: newState }) => {
+                                        console.log('🔵 Populating new row with fields')
+
+                                        // The new row is now at index lastRowIndex (pushed the Total row down)
+                                        const { $from: newFrom } = newState.selection
+                                        let newTableDepth = -1
+                                        for (let d = newFrom.depth; d > 0; d--) {
+                                            if (newFrom.node(d).type.name === 'table') {
+                                                newTableDepth = d
+                                                break
+                                            }
+                                        }
+
+                                        if (newTableDepth === -1) return false
+
+                                        const newTable = newFrom.node(newTableDepth)
+                                        const newRowIndex = lastRowIndex // The row we just inserted
+                                        const targetRow = newTable.child(newRowIndex)
+
+                                        // Calculate row position
+                                        const newTableStartPos = newFrom.start(newTableDepth)
+                                        let rowStartPos = newTableStartPos
+                                        for (let i = 0; i < newRowIndex; i++) {
+                                            rowStartPos += newTable.child(i).nodeSize
+                                        }
+
+                                        console.log(`✅ Populating row at index ${newRowIndex}`)
+
+                                        // Insert fields into cells
+                                        // Track total inserted size to adjust positions
+                                        let totalInsertedSize = 0
+
+                                        cellFields.forEach(({ cellIndex, fields }) => {
+                                            const cell = targetRow.child(cellIndex)
+
+                                            // Calculate cell position
+                                            let cellPos = rowStartPos + 1 // +1 for row start
+                                            for (let i = 0; i < cellIndex; i++) {
+                                                cellPos += targetRow.child(i).nodeSize
+                                            }
+
+                                            // Add the offset from previous insertions
+                                            cellPos += totalInsertedSize
+
+                                            // Enter cell and paragraph
+                                            let insertPos = cellPos + 1 // Enter cell
+                                            if (cell.childCount > 0) {
+                                                insertPos += 1 // Enter paragraph
+                                            }
+
+                                            console.log(`   - Cell ${cellIndex}: inserting at pos ${insertPos}`)
+
+                                            fields.forEach(({ fieldId: baseFieldId, marks }) => {
+                                                const newFieldId = getIncrementedFieldId(baseFieldId)
+                                                const placeholder = `[${newFieldId}]`
+
+                                                // Create text node with marks from template
+                                                const textNode = newState.schema.text(placeholder, marks)
+
+                                                const dataFieldNode = newState.schema.nodes.dataField.create(
+                                                    { fieldId: newFieldId, source: null },
+                                                    textNode
+                                                )
+
+                                                tr.insert(insertPos, dataFieldNode)
+                                                insertPos += dataFieldNode.nodeSize
+                                                totalInsertedSize += dataFieldNode.nodeSize
+                                            })
+                                        })
+
+                                        return true
+                                    })
+                                    .run()
                             },
                         }
                     },
@@ -981,3 +1044,4 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
 ContractEditor.displayName = 'ContractEditor'
 
 export default ContractEditor
+
