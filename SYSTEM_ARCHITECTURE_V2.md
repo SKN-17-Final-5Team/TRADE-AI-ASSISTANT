@@ -269,3 +269,4 @@ TRADE-AI-ASSISTANT/
 | Frontend | `https://trade-ai.vercel.app` | Vercel 자동 배포 |
 | Backend | `https://api.trade-ai.com` | AWS EC2 / ECS |
 | AI Server | `https://xxx.runpod.net` | RunPod Serverless |
+
