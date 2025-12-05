@@ -292,11 +292,25 @@ GenUploadFile   # 일반 채팅 첨부 파일
 
 ```python
 get_trade_agent()           # 일반 무역 Q&A
-get_document_writing_agent() # 문서 작성/편집
-get_read_document_agent()    # 업로드 문서 Q&A
+get_document_writing_agent() # 문서 작성/편집 (수동 작성 모드)
+get_read_document_agent()    # 업로드 문서 Q&A (업로드 모드)
 ```
 
-### 6.2 Agent Tools
+### 6.2 doc_mode에 따른 에이전트 자동 선택
+
+채팅 API (`chat/trade_views.py`)에서 `Document.doc_mode`에 따라 적절한 에이전트를 자동 선택:
+
+| doc_mode | upload_status | 선택 에이전트 | 용도 |
+|----------|---------------|--------------|------|
+| `upload` | `ready` | `Document Reader Assistant` | 업로드 문서 내용 검색/질의 |
+| `manual` | - | `Document Writing Assistant` | 문서 편집/작성 지원 |
+| 그 외 | - | `Document Writing Assistant` | 기본값 |
+
+**모드 전환 시 DB 업데이트:**
+- 프론트엔드에서 모드 선택 시 `PATCH /api/documents/documents/{id}/` 호출
+- `doc_mode` 필드 업데이트 → 다음 채팅 시 올바른 에이전트 선택
+
+### 6.3 Agent Tools
 
 | Tool | 파일 | 기능 |
 |------|------|------|
@@ -304,7 +318,7 @@ get_read_document_agent()    # 업로드 문서 Q&A
 | `search_user_document` | `agent_core/tools/search_tool.py` | 업로드 문서 내 검색 |
 | `search_web` | `agent_core/tools/web_search_tool.py` | Tavily 웹 검색 |
 
-### 6.3 RAG 파이프라인 흐름
+### 6.4 RAG 파이프라인 흐름
 
 ```
 사용자 질문
@@ -318,7 +332,7 @@ get_read_document_agent()    # 업로드 문서 Q&A
 [Agent] GPT-4o로 답변 생성
 ```
 
-### 6.4 Qdrant 컬렉션 구조
+### 6.5 Qdrant 컬렉션 구조
 
 | 컬렉션 | 변수명 | 용도 |
 |--------|--------|------|
@@ -332,7 +346,7 @@ EMBEDDING_MODEL = "text-embedding-3-large"
 VECTOR_SIZE = 3072
 ```
 
-### 6.5 Mem0 메모리 서비스 (chat/memory_service.py)
+### 6.6 Mem0 메모리 서비스 (chat/memory_service.py)
 
 ```python
 TradeMemoryService:
@@ -438,9 +452,10 @@ Step 1 (Offer Sheet)
 | GET | `/trades/{id}/` | 거래 상세 | `App.tsx` |
 | GET | `/documents/` | 문서 목록 | - |
 | PUT | `/documents/{id}/` | 문서 수정 | `useSaveDocument.ts` |
-| POST | `/{id}/upload_request/` | S3 업로드 URL | `useUpload.ts` |
-| POST | `/{id}/upload_complete/` | 업로드 완료 | `useUpload.ts` |
-| GET | `/{id}/status/stream/` | 처리 상태 SSE | `useUpload.ts` |
+| PATCH | `/documents/{id}/` | 문서 부분 수정 (doc_mode 등) | `index.tsx` |
+| POST | `/documents/{id}/upload_request/` | S3 업로드 URL | `useFileUpload.ts` |
+| POST | `/documents/{id}/upload_complete/` | 업로드 완료 | `useFileUpload.ts` |
+| GET | `/documents/{id}/status/stream/` | 처리 상태 SSE | `useFileUpload.ts` |
 | GET | `/versions/` | 버전 목록 | `VersionHistorySidebar.tsx` |
 
 ### 8.2 채팅 API (`/api/`)
@@ -460,7 +475,8 @@ Step 1 (Offer Sheet)
 | `frontend/utils/api.ts` | 공통 API 유틸리티 |
 | `frontend/components/ChatAssistant.tsx` | `/api/documents/chat/stream/` |
 | `frontend/components/document-creation/hooks/useSaveDocument.ts` | `/api/documents/{id}/` |
-| `frontend/components/document-creation/hooks/useUpload.ts` | 업로드 관련 API |
+| `frontend/components/document-creation/hooks/useFileUpload.ts` | 업로드 관련 API |
+| `frontend/components/document-creation/index.tsx` | `/api/documents/{id}/` (doc_mode 업데이트) |
 
 ---
 
@@ -770,16 +786,21 @@ python manage.py runserver  # localhost:8000
 ### 14.1 프론트엔드 디버깅
 
 ```javascript
-// ChatAssistant.tsx:384 - API 호출 디버깅
-console.log('🔍 Chat API 호출 정보:', {
-  documentId,
-  currentDocId,
-  effectiveDocId,
-  docIds,
-  currentStep,
-  tradeId,
-  userEmployeeId
-});
+// ChatAssistant.tsx - API 호출 디버깅
+console.log('🔍 Chat API 호출 정보:', { documentId, currentDocId, effectiveDocId, ... });
+
+// ChatAssistant.tsx - 에이전트 정보 (SSE 응답)
+📋 Chat Session 초기화: {doc_id: 81, trade_id: 17}
+🤖 Agent 정보
+   📄 Mode: 업로드 모드 (upload)      // 또는 ✏️ Mode: 작성 모드 (manual)
+   Name: Document Reader Assistant   // 또는 Document Writing Assistant
+   Model: gpt-4o
+   Tools: search_user_document, search_trade_documents, search_web
+-----------------------------------
+🧠 Mem0 컨텍스트: 이전 대화 N개 참조
+
+// index.tsx - 모드 변경 시
+📝 doc_mode 업데이트: doc_id=81, mode=manual
 ```
 
 ### 14.2 백엔드 디버깅
@@ -806,6 +827,8 @@ python manage.py runserver --verbosity=2
 | CORS 에러 | CORS_ALLOWED_ORIGINS 미설정 | settings.py 확인 |
 | 필드 동기화 안됨 | fieldId 불일치 | 템플릿 fieldId 확인 |
 | 스트리밍 끊김 | 네트워크 타임아웃 | 프록시/방화벽 확인 |
+| 잘못된 에이전트 호출 | doc_mode가 DB에 반영 안됨 | 콘솔에서 `📝 doc_mode 업데이트` 로그 확인 |
+| 업로드 후에도 Writing Agent | upload_status가 ready 아님 | Document.upload_status 확인 |
 
 ### 14.4 주의해야 할 파일
 
