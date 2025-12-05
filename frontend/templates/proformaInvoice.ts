@@ -53,7 +53,7 @@ export const proformaInvoiceTemplateHTML = `
                     Tel: <mark>[buyer_number]</mark>
                 </td>
                 <td colspan="3" style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">
-                    Number of pieces: <mark>[quantity]</mark><br>
+                    Number of pieces: <span data-field-id="total_quantity" class="data-field">[total_quantity]</span><br>
                     Total Gross Weight: <mark>[total_gross_weight]</mark><br>
                     Total Net Weight: <mark>[total_net_weight]</mark><br>
                     Carrier: <mark>[carrier]</mark>

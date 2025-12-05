@@ -428,6 +428,111 @@ const createRowDeletionDetector = (onRowDeleted?: (fieldIds: string[]) => void) 
     })
 }
 
+// Auto Calculation Extension for totals
+const AutoCalculation = Extension.create({
+    name: 'autoCalculation',
+
+    addProseMirrorPlugins() {
+        return [
+            new Plugin({
+                key: new PluginKey('autoCalculation'),
+                appendTransaction: (transactions, oldState, newState) => {
+                    // Check if any transaction modified the document
+                    const docChanged = transactions.some(tr => tr.docChanged)
+                    if (!docChanged) return null
+
+                    const tr = newState.tr
+                    let modified = false
+
+                    // Find total_quantity and total_price fields
+                    let totalQuantityPos: number | null = null
+                    let totalPricePos: number | null = null
+                    let totalQuantityNode: any = null
+                    let totalPriceNode: any = null
+
+                    newState.doc.descendants((node, pos) => {
+                        if (node.type.name === 'dataField') {
+                            if (node.attrs.fieldId === 'total_quantity') {
+                                totalQuantityPos = pos
+                                totalQuantityNode = node
+                            } else if (node.attrs.fieldId === 'total_price') {
+                                totalPricePos = pos
+                                totalPriceNode = node
+                            }
+                        }
+                    })
+
+                    // Calculate totals
+                    if (totalQuantityPos !== null || totalPricePos !== null) {
+                        let totalQuantity = 0
+                        let totalPrice = 0
+
+                        // Sum all quantity and sub_total_price fields
+                        newState.doc.descendants((node) => {
+                            if (node.type.name === 'dataField') {
+                                const fieldId = node.attrs.fieldId
+                                const text = node.textContent
+
+                                // Match quantity fields (quantity, quantity_2, quantity_3, etc.)
+                                if (fieldId && fieldId.match(/^quantity(_\d+)?$/)) {
+                                    const value = parseFloat(text.replace(/[^\d.-]/g, ''))
+                                    if (!isNaN(value)) {
+                                        totalQuantity += value
+                                    }
+                                }
+
+                                // Match sub_total_price fields (sub_total_price, sub_total_price_2, etc.)
+                                if (fieldId && fieldId.match(/^sub_total_price(_\d+)?$/)) {
+                                    const value = parseFloat(text.replace(/[^\d.-]/g, ''))
+                                    if (!isNaN(value)) {
+                                        totalPrice += value
+                                    }
+                                }
+                            }
+                        })
+
+                        // Update total_quantity field
+                        if (totalQuantityPos !== null && totalQuantityNode) {
+                            const newText = totalQuantity.toString()
+                            const currentText = totalQuantityNode.textContent
+
+                            if (currentText !== newText) {
+                                const pos = totalQuantityPos as number
+                                // Create a new dataField node with updated text
+                                const newNode = newState.schema.nodes.dataField.create(
+                                    totalQuantityNode.attrs,
+                                    newState.schema.text(newText)
+                                )
+                                tr.replaceWith(pos, pos + totalQuantityNode.nodeSize, newNode)
+                                modified = true
+                            }
+                        }
+
+                        // Update total_price field
+                        if (totalPricePos !== null && totalPriceNode) {
+                            const newText = totalPrice.toFixed(2)
+                            const currentText = totalPriceNode.textContent
+
+                            if (currentText !== newText) {
+                                const pos = totalPricePos as number
+                                // Create a new dataField node with updated text
+                                const newNode = newState.schema.nodes.dataField.create(
+                                    totalPriceNode.attrs,
+                                    newState.schema.text(newText)
+                                )
+                                tr.replaceWith(pos, pos + totalPriceNode.nodeSize, newNode)
+                                modified = true
+                            }
+                        }
+                    }
+
+                    return modified ? tr : null
+                }
+            })
+        ]
+    }
+})
+
 const Checkbox = Node.create({
     name: 'checkbox',
     group: 'inline',

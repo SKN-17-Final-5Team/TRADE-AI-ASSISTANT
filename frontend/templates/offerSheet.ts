@@ -65,10 +65,10 @@ export const offerSheetTemplateHTML = `
                 <tr>
                     <td style="border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
                     <td style="border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
+                    <td style="padding: 8px; border: 1px solid #d1d5db; background-color: #f0f0f0; font-weight: bold;">TOTAL:</td>
+                    <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; background-color: #f0f0f0; font-weight: bold;"><span data-field-id="total_quantity" class="data-field">[total_quantity]</span></td>
                     <td style="border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
-                    <td style="border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
-                    <td class="total-label" style="text-align: center; padding: 8px; border: 1px solid #d1d5db; border-right: none; background-color: #f0f0f0; font-weight: bold;">TOTAL :</td>
-                    <td style="padding: 8px; border: 1px solid #d1d5db; border-left: none; text-align: right; background-color: #f0f0f0; font-weight: bold;"><mark>[total_price]</mark></td>
+                    <td style="padding: 8px; border: 1px solid #d1d5db; text-align: right; background-color: #f0f0f0; font-weight: bold;"><span data-field-id="total_price" class="data-field">[total_price]</span></td>
                 </tr>
             </tfoot>
         </table>
