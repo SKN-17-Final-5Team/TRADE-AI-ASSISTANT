@@ -508,7 +508,27 @@ export default function DocumentCreationPage({
         fieldMap.set(baseName, fieldId);
       });
 
+      // Collect all existing field IDs in the document to avoid duplicates
+      const existingFieldIds = new Set<string>();
+      const allFields = doc.querySelectorAll('[data-field-id]');
+      allFields.forEach((f: Element) => {
+        const id = f.getAttribute('data-field-id');
+        if (id) existingFieldIds.add(id);
+      });
+
       console.log('📊 Field map:', Object.fromEntries(fieldMap));
+
+      // Helper to get next available field ID
+      const getNextFieldId = (baseName: string): string => {
+        let counter = 2;
+        let newId = `${baseName}_${counter}`;
+        while (existingFieldIds.has(newId)) {
+          counter++;
+          newId = `${baseName}_${counter}`;
+        }
+        existingFieldIds.add(newId);
+        return newId;
+      };
 
       // Replace field IDs in the new row based on field name matching
       const dataFields = newRow.querySelectorAll('[data-field-id]');
@@ -519,15 +539,18 @@ export default function DocumentCreationPage({
           const baseName = currentFieldId.replace(/_\d+$/, '');
 
           // Find matching field in the map
-          const newFieldId = fieldMap.get(baseName);
+          let newFieldId = fieldMap.get(baseName);
 
-          if (newFieldId) {
-            field.setAttribute('data-field-id', newFieldId);
-            field.textContent = `[${newFieldId}]`;
-            console.log(`  ✓ Mapped ${currentFieldId} -> ${newFieldId}`);
+          if (!newFieldId) {
+            // No mapping found - auto-increment this field
+            newFieldId = getNextFieldId(baseName);
+            console.log(`  🔄 Auto-incremented ${currentFieldId} -> ${newFieldId}`);
           } else {
-            console.log(`  ⚠️ No mapping found for ${currentFieldId}`);
+            console.log(`  ✓ Mapped ${currentFieldId} -> ${newFieldId}`);
           }
+
+          field.setAttribute('data-field-id', newFieldId);
+          field.textContent = `[${newFieldId}]`;
         }
       });
 
@@ -555,6 +578,83 @@ export default function DocumentCreationPage({
     });
 
     console.log('✅ Row synchronization complete');
+  };
+
+  // Handle row deletion and sync to other documents
+  const handleRowDeleted = (fieldIds: string[]) => {
+    console.log('🗑️ handleRowDeleted called with:', fieldIds);
+
+    // Helper to delete row from a document's HTML content
+    const deleteRowFromDocument = (htmlContent: string, deletedFieldIds: string[]): string => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, 'text/html');
+
+      // Find the table
+      const table = doc.querySelector('table');
+      if (!table) {
+        console.warn('⚠️ No table found in document');
+        return htmlContent;
+      }
+
+      // Find all rows in tbody only
+      const tbody = table.querySelector('tbody');
+      if (!tbody) {
+        console.warn('⚠️ No tbody found in table');
+        return htmlContent;
+      }
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+
+      // Find and delete rows that contain any of the deleted field IDs
+      let deletedCount = 0;
+      rows.forEach((row) => {
+        const rowFieldIds: string[] = [];
+        const dataFields = row.querySelectorAll('[data-field-id]');
+
+        dataFields.forEach((field) => {
+          const fieldId = field.getAttribute('data-field-id');
+          if (fieldId) {
+            rowFieldIds.push(fieldId);
+          }
+        });
+
+        // Check if this row contains any of the deleted field IDs
+        const hasDeletedField = rowFieldIds.some(id => deletedFieldIds.includes(id));
+
+        if (hasDeletedField) {
+          console.log(`  🗑️ Deleting row with fields: [${rowFieldIds.join(', ')}]`);
+          row.remove();
+          deletedCount++;
+        }
+      });
+
+      if (deletedCount > 0) {
+        console.log(`  ✓ Deleted ${deletedCount} row(s)`);
+      } else {
+        console.log('  ℹ️ No matching rows found to delete');
+      }
+
+      return doc.documentElement.outerHTML.replace(/^<html><head><\/head><body>/, '').replace(/<\/body><\/html>$/, '');
+    };
+
+    // Update all other documents
+    setDocumentData((prev: DocumentData) => {
+      const newData = { ...prev };
+
+      // Sync to all documents except the current one
+      const documentsToSync = [1, 2, 3, 4, 5].filter(step => step !== currentStep);
+
+      documentsToSync.forEach(step => {
+        if (prev[step]) {
+          console.log(`📝 Deleting row from document at step ${step}`);
+          newData[step] = deleteRowFromDocument(prev[step], fieldIds);
+        }
+      });
+
+      return newData;
+    });
+
+    console.log('✅ Row deletion synchronization complete');
   };
 
   const handleShippingDocChange = (doc: ShippingDocType) => {
@@ -779,6 +879,7 @@ export default function DocumentCreationPage({
         onShippingDocChange={handleShippingDocChange}
         onChange={handleEditorChange}
         onRowAdded={handleRowAdded}
+        onRowDeleted={handleRowDeleted}
         showFieldHighlight={showFieldHighlight}
         showAgentHighlight={showAgentHighlight}
       />

@@ -14,6 +14,7 @@ interface EditorViewProps {
   onShippingDocChange: (doc: ShippingDocType) => void;
   onChange: (content: string) => void;
   onRowAdded?: (fieldIds: string[]) => void;
+  onRowDeleted?: (fieldIds: string[]) => void;
 }
 
 export default function EditorView({
@@ -26,6 +27,7 @@ export default function EditorView({
   onShippingDocChange,
   onChange,
   onRowAdded,
+  onRowDeleted,
   showFieldHighlight,
   showAgentHighlight
 }: EditorViewProps & {
@@ -44,6 +46,7 @@ export default function EditorView({
         initialContent={initialContent}
         onChange={onChange}
         onRowAdded={onRowAdded}
+        onRowDeleted={onRowDeleted}
         showFieldHighlight={showFieldHighlight}
         showAgentHighlight={showAgentHighlight}
         defaultFontFamily={defaultFontFamily}

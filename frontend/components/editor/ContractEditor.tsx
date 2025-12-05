@@ -336,6 +336,98 @@ const Div = Node.create({
     },
 })
 
+// Row Deletion Detector Extension
+const createRowDeletionDetector = (onRowDeleted?: (fieldIds: string[]) => void) => {
+    return Extension.create({
+        name: 'rowDeletionDetector',
+
+        addProseMirrorPlugins() {
+            return [
+                new Plugin({
+                    key: new PluginKey('rowDeletionDetector'),
+                    appendTransaction: (transactions, oldState, newState) => {
+                        if (!onRowDeleted) return null
+
+                        // Check if any transaction modified the document
+                        const docChanged = transactions.some(tr => tr.docChanged)
+                        if (!docChanged) return null
+
+                        // Count rows and collect field IDs in old and new state
+                        const oldRows: Array<{ fieldIds: string[] }> = []
+                        const newRows: Array<{ fieldIds: string[] }> = []
+
+                        // Collect rows from old state
+                        oldState.doc.descendants((node) => {
+                            if (node.type.name === 'tableRow') {
+                                const fieldIds: string[] = []
+                                node.descendants((childNode) => {
+                                    if (childNode.type.name === 'dataField') {
+                                        const fieldId = childNode.attrs.fieldId
+                                        if (fieldId) {
+                                            fieldIds.push(fieldId)
+                                        }
+                                    }
+                                })
+                                if (fieldIds.length > 0) {
+                                    oldRows.push({ fieldIds })
+                                }
+                            }
+                        })
+
+                        // Collect rows from new state
+                        newState.doc.descendants((node) => {
+                            if (node.type.name === 'tableRow') {
+                                const fieldIds: string[] = []
+                                node.descendants((childNode) => {
+                                    if (childNode.type.name === 'dataField') {
+                                        const fieldId = childNode.attrs.fieldId
+                                        if (fieldId) {
+                                            fieldIds.push(fieldId)
+                                        }
+                                    }
+                                })
+                                if (fieldIds.length > 0) {
+                                    newRows.push({ fieldIds })
+                                }
+                            }
+                        })
+
+                        // Only proceed if row count decreased (deletion)
+                        if (newRows.length >= oldRows.length) {
+                            return null
+                        }
+
+                        // Find which rows were deleted by comparing field IDs
+                        const deletedFieldIds: string[] = []
+                        for (const oldRow of oldRows) {
+                            // Check if this row exists in new state
+                            const rowExists = newRows.some(newRow => {
+                                // Row exists if it has at least one matching field ID
+                                return newRow.fieldIds.some(newId => oldRow.fieldIds.includes(newId))
+                            })
+
+                            if (!rowExists) {
+                                // Row was deleted
+                                deletedFieldIds.push(...oldRow.fieldIds)
+                            }
+                        }
+
+                        if (deletedFieldIds.length > 0) {
+                            console.log(`🗑️ Row deleted with fields: [${deletedFieldIds.join(', ')}]`)
+                            // Call callback asynchronously to avoid transaction conflicts
+                            setTimeout(() => {
+                                onRowDeleted(deletedFieldIds)
+                            }, 0)
+                        }
+
+                        return null
+                    }
+                })
+            ]
+        }
+    })
+}
+
 const Checkbox = Node.create({
     name: 'checkbox',
     group: 'inline',
@@ -493,6 +585,7 @@ interface ContractEditorProps {
     initialContent?: string
     onChange?: (content: string) => void
     onRowAdded?: (fieldIds: string[]) => void  // Callback when a row is added
+    onRowDeleted?: (fieldIds: string[]) => void  // Callback when a row is deleted
     className?: string
     showFieldHighlight?: boolean
     showAgentHighlight?: boolean
@@ -501,7 +594,7 @@ interface ContractEditorProps {
 }
 
 const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
-    ({ initialContent, onChange, onRowAdded, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
+    ({ initialContent, onChange, onRowAdded, onRowDeleted, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
         const editor = useEditor({
             extensions: [
                 StarterKit.configure({
@@ -541,24 +634,48 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
 
                                 const tableNode = $from.node(tableDepth)
 
-                                // Find template row (first row with dataField nodes)
+                                // Find template row (LAST row with 4+ dataField nodes)
+                                // This ensures we get the actual data row (goods section) instead of header sections
                                 let templateRow: any = null
+                                let templateRowFieldCount = 0
+                                const rows: any[] = []
                                 tableNode.forEach((row: any) => {
-                                    if (row.type.name === 'tableRow' && !templateRow) {
-                                        let hasDataFields = false
-                                        row.descendants((node: any) => {
-                                            if (node.type.name === 'dataField') {
-                                                hasDataFields = true
-                                            }
-                                        })
-                                        if (hasDataFields) {
-                                            templateRow = row
-                                        }
+                                    if (row.type.name === 'tableRow') {
+                                        rows.push(row)
                                     }
                                 })
 
+                                // Search in reverse to find the last data row
+                                for (let i = rows.length - 1; i >= 0; i--) {
+                                    const row = rows[i]
+                                    let fieldCount = 0
+                                    row.descendants((node: any) => {
+                                        if (node.type.name === 'dataField') {
+                                            fieldCount++
+                                        }
+                                    })
+
+                                    if (fieldCount >= 4) {
+                                        // Skip if this is the Total row
+                                        let rowText = ''
+                                        row.descendants((node: any) => {
+                                            if (node.isText) {
+                                                rowText += node.text
+                                            }
+                                        })
+                                        if (rowText.toLowerCase().includes('total')) {
+                                            continue
+                                        }
+
+                                        templateRow = row
+                                        templateRowFieldCount = fieldCount
+                                        console.log(`📋 Found template row with ${fieldCount} fields`)
+                                        break
+                                    }
+                                }
+
                                 if (!templateRow) {
-                                    console.log('ℹ️ No template row found with data fields')
+                                    console.log('ℹ️ No template row found with data fields (need at least 4)')
                                     return chain().command(parentAddRowAfter()).run()
                                 }
 
@@ -775,6 +892,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 Checkbox,
                 Radio,
                 DataField,
+                createRowDeletionDetector(onRowDeleted),
             ],
             content: initialContent || saleContractTemplateHTML,
             editorProps: {
