@@ -59,8 +59,13 @@ def get_or_create_user(user_id):
 
 # 툴 이름 → 표시 정보 매핑
 TOOL_DISPLAY_INFO = {
+    'search_user_document': {
+        'name': '업로드 문서 검색',
+        'icon': 'file-search',
+        'description': '업로드한 문서에서 관련 내용을 검색했습니다.'
+    },
     'search_trade_documents': {
-        'name': '문서 검색',
+        'name': '무역 지식 검색',
         'icon': 'document',
         'description': '무역 문서 데이터베이스에서 관련 정보를 검색했습니다.'
     },

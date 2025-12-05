@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, RefObject } from 'react';
-import { Sparkles, Send, X, Wand2, Eye, Undo2, Check, XCircle, Globe, Database, Wrench } from 'lucide-react';
+import { Sparkles, Send, X, Wand2, Eye, Undo2, Check, XCircle, Globe, Database, Wrench, FileSearch } from 'lucide-react';
 import { ContractEditorRef } from './editor/ContractEditor';
 import ReactMarkdown from 'react-markdown';
 
@@ -18,6 +18,8 @@ const getToolIcon = (iconName: string) => {
       return Globe;
     case 'document':
       return Database;
+    case 'file-search':
+      return FileSearch;
     default:
       return Wrench;
   }
@@ -740,8 +742,11 @@ ${documentContent}
             </div>
           </div>
         ))}
-        {/* 스트리밍 중이 아닐 때만 로딩 표시 (마지막 메시지가 user일 때) */}
-        {isLoading && messages.length > 0 && messages[messages.length - 1].type === 'user' && (
+        {/* 스트리밍 중이 아닐 때만 로딩 표시 (마지막 메시지가 user이거나, ai지만 content가 비어있을 때) */}
+        {isLoading && messages.length > 0 && (
+          messages[messages.length - 1].type === 'user' ||
+          (messages[messages.length - 1].type === 'ai' && !messages[messages.length - 1].content)
+        ) && (
           <div className="flex justify-start items-end gap-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-md flex-shrink-0 mb-1">
               <Sparkles className="w-4 h-4 text-white" />

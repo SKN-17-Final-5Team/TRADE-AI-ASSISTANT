@@ -350,8 +350,11 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
                 </div>
               ))}
 
-              {/* 스트리밍 중이 아닐 때만 로딩 표시 (마지막 메시지가 user일 때) */}
-              {isLoading && messages.length > 0 && messages[messages.length - 1].type === 'user' && (
+              {/* 스트리밍 중이 아닐 때만 로딩 표시 (마지막 메시지가 user이거나, ai지만 content가 비어있을 때) */}
+              {isLoading && messages.length > 0 && (
+                messages[messages.length - 1].type === 'user' ||
+                (messages[messages.length - 1].type === 'ai' && !messages[messages.length - 1].content)
+              ) && (
                 <div className="flex justify-start">
                   <div className="bg-white border border-gray-200 rounded-2xl px-6 py-4 shadow-sm">
                     <div className="flex items-center gap-3">
