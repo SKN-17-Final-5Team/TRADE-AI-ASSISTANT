@@ -27,6 +27,12 @@ openpyxl>=3.1.5
 qdrant-client>=1.16.1
 mem0ai>=0.1.0
 
+# AWS
+boto3>=1.35.0
+
+# PDF Processing
+pymupdf>=1.24.0
+
 # Utils (already installed)
 PyMySQL>=1.1.2
 requests>=2.32.5
