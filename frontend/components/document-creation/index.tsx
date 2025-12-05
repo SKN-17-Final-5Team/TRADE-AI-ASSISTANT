@@ -434,9 +434,26 @@ export default function DocumentCreationPage({
     }
   };
 
-  const handleModeSelect = (mode: StepMode) => {
+  const handleModeSelect = async (mode: StepMode) => {
+    // 프론트엔드 상태 업데이트
     setStepModes(prev => ({ ...prev, [currentStep]: mode }));
     if (mode === 'manual') setIsDirty(true);
+
+    // 백엔드 doc_mode 업데이트
+    const docId = getDocId?.(currentStep, null);
+    if (docId && mode) {
+      try {
+        const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
+        await fetch(`${DJANGO_API_URL}/api/documents/documents/${docId}/`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ doc_mode: mode })
+        });
+        console.log(`📝 doc_mode 업데이트: doc_id=${docId}, mode=${mode}`);
+      } catch (error) {
+        console.error('doc_mode 업데이트 실패:', error);
+      }
+    }
   };
 
   const handleShippingDocChange = (doc: ShippingDocType) => {
@@ -491,9 +508,9 @@ export default function DocumentCreationPage({
       leftContent = (
         <button
           onClick={() => {
-            if (stepModes[currentStep] === 'upload') {
-              removeUploadedFile(currentStep);
-            }
+            // 모드 전환 시 업로드 정보는 유지 (삭제하지 않음)
+            // 업로드된 파일은 백엔드 Document에 저장되어 있으므로,
+            // 다시 업로드 모드로 돌아오면 기존 파일을 사용할 수 있음
             setStepModes(prev => ({ ...prev, [currentStep]: null }));
           }}
           className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-100"
