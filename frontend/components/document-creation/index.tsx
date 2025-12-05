@@ -1,5 +1,5 @@
 // DocumentCreationPage - 메인 컴포넌트
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Sparkles, Paperclip, MinusCircle, Check, Lock, Plus, ChevronUp, ChevronDown, Ban, PenTool, ArrowLeft, FileText, Package, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -439,6 +439,124 @@ export default function DocumentCreationPage({
     if (mode === 'manual') setIsDirty(true);
   };
 
+  const handleRowAdded = (fieldIds: string[]) => {
+    console.log('🔄 handleRowAdded called with:', fieldIds, 'from step:', currentStep);
+
+    // Helper to add row to a document's HTML content
+    const addRowToDocument = (htmlContent: string, fieldIds: string[]): string => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, 'text/html');
+
+      // Find the table
+      const table = doc.querySelector('table');
+      if (!table) {
+        console.warn('⚠️ No table found in document');
+        return htmlContent;
+      }
+
+      // Find all rows in tbody only (exclude header/footer)
+      const tbody = table.querySelector('tbody');
+      if (!tbody) {
+        console.warn('⚠️ No tbody found in table');
+        return htmlContent;
+      }
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      if (rows.length < 1) {
+        console.warn('⚠️ Not enough rows in table tbody');
+        return htmlContent;
+      }
+
+      // Find the LAST row with dataField nodes (template row)
+      // This ensures we get the actual data row (goods section) instead of header sections
+      // Require at least 4 fields to avoid matching header rows
+      let templateRow: HTMLElement | null = null;
+      let templateRowIndex = -1;
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const row = rows[i];
+        const dataFields = row.querySelectorAll('[data-field-id]');
+        if (dataFields.length >= 4) {
+          // Skip if this is the Total row (usually has "Total" or "TOTAL" text)
+          const rowText = row.textContent?.toLowerCase() || '';
+          if (rowText.includes('total')) {
+            continue;
+          }
+          templateRow = row as HTMLElement;
+          templateRowIndex = i;
+          console.log(`📋 Found template row at tbody index ${i} with ${dataFields.length} fields`);
+          break;
+        }
+      }
+
+      if (!templateRow) {
+        console.warn('⚠️ No template row found with dataField nodes in tbody (need at least 4 fields)');
+        return htmlContent;
+      }
+
+      // Find the last row (usually Total row)
+      const lastRow = rows[rows.length - 1];
+
+      // Clone the template row
+      const newRow = templateRow.cloneNode(true) as HTMLElement;
+
+      // Create a map of field names to new field IDs
+      // e.g., { "item_no": "item_no_2", "hscode": "hscode_2", ... }
+      const fieldMap = new Map<string, string>();
+      fieldIds.forEach(fieldId => {
+        // Extract base field name (e.g., "item_no_2" -> "item_no")
+        const baseName = fieldId.replace(/_\d+$/, '');
+        fieldMap.set(baseName, fieldId);
+      });
+
+      console.log('📊 Field map:', Object.fromEntries(fieldMap));
+
+      // Replace field IDs in the new row based on field name matching
+      const dataFields = newRow.querySelectorAll('[data-field-id]');
+      dataFields.forEach((field) => {
+        const currentFieldId = field.getAttribute('data-field-id');
+        if (currentFieldId) {
+          // Extract base field name from template (e.g., "description" -> "description")
+          const baseName = currentFieldId.replace(/_\d+$/, '');
+
+          // Find matching field in the map
+          const newFieldId = fieldMap.get(baseName);
+
+          if (newFieldId) {
+            field.setAttribute('data-field-id', newFieldId);
+            field.textContent = `[${newFieldId}]`;
+            console.log(`  ✓ Mapped ${currentFieldId} -> ${newFieldId}`);
+          } else {
+            console.log(`  ⚠️ No mapping found for ${currentFieldId}`);
+          }
+        }
+      });
+
+      // Insert before Total row
+      lastRow.parentNode?.insertBefore(newRow, lastRow);
+
+      return doc.documentElement.outerHTML.replace(/^<html><head><\/head><body>/, '').replace(/<\/body><\/html>$/, '');
+    };
+
+    // Update all other documents
+    setDocumentData((prev: DocumentData) => {
+      const newData = { ...prev };
+
+      // Sync to all documents except the current one
+      const documentsToSync = [1, 2, 3, 4, 5].filter(step => step !== currentStep);
+
+      documentsToSync.forEach(step => {
+        if (prev[step]) {
+          console.log(`📝 Updating document at step ${step}`);
+          newData[step] = addRowToDocument(prev[step], fieldIds);
+        }
+      });
+
+      return newData;
+    });
+
+    console.log('✅ Row synchronization complete');
+  };
+
   const handleShippingDocChange = (doc: ShippingDocType) => {
     // Save current doc content before switching
     if (editorRef.current && activeShippingDoc) {
@@ -475,13 +593,15 @@ export default function DocumentCreationPage({
     }
   };
 
-  // Get initial content for editor
-  const getInitialContent = (): string => {
-    const docKey = getDocKeyForStep(currentStep);
-    if (docKey === -1) return '';
-    const content = documentData[docKey] || hydrateTemplate(getTemplateForStep(docKey));
+  // Calculate doc key for current step
+  const currentDocKey = getDocKeyForStep(currentStep);
+
+  // Get initial content for editor (memoized to prevent unnecessary reloads)
+  const initialContent = useMemo((): string => {
+    if (currentDocKey === -1) return '';
+    const content = documentData[currentDocKey] || hydrateTemplate(getTemplateForStep(currentDocKey));
     return updateContentWithSharedData(content);
-  };
+  }, [currentDocKey, documentData[currentDocKey], sharedData]);
 
   const renderStepHeaderControls = () => {
     // 1. Left Side Content (Back Button)
@@ -641,7 +761,7 @@ export default function DocumentCreationPage({
         stepModes={stepModes}
         activeShippingDoc={activeShippingDoc}
         editorRef={editorRef}
-        initialContent={getInitialContent()}
+        initialContent={initialContent}
         onBack={() => {
           if (currentStep === 4 && activeShippingDoc) {
             // Save before going back to dashboard
@@ -658,6 +778,7 @@ export default function DocumentCreationPage({
         }}
         onShippingDocChange={handleShippingDocChange}
         onChange={handleEditorChange}
+        onRowAdded={handleRowAdded}
         showFieldHighlight={showFieldHighlight}
         showAgentHighlight={showAgentHighlight}
       />

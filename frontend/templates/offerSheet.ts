@@ -40,13 +40,25 @@ export const offerSheetTemplateHTML = `
                 </tr>
             </thead>
             <tbody>
-                <tr style="height: 400px;">
-                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[item_no]</mark></td>
-                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[hscode]</mark></td>
-                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[description]</mark></td>
-                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[quantity]</mark></td>
-                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;"><mark>[unit_price]</mark></td>
-                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;"><mark>[sub_total_price]</mark></td>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;">
+                        <span data-field-id="item_no" class="data-field">[item_no]</span>
+                    </td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;">
+                        <span data-field-id="hscode" class="data-field">[hscode]</span>
+                    </td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">
+                        <span data-field-id="description" class="data-field">[description]</span>
+                    </td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;">
+                        <span data-field-id="quantity" class="data-field">[quantity]</span>
+                    </td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
+                        <span data-field-id="unit_price" class="data-field">[unit_price]</span>
+                    </td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
+                        <span data-field-id="sub_total_price" class="data-field">[sub_total_price]</span>
+                    </td>
                 </tr>
             </tbody>
             <tfoot>

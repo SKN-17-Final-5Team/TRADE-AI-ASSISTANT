@@ -7,7 +7,7 @@ import Highlight from '@tiptap/extension-highlight'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { TextSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import FontFamily from '@tiptap/extension-font-family'
-import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import { saleContractTemplateHTML } from '../../templates/saleContract'
 import EditorToolbar from './EditorToolbar'
 import './editor.css'
@@ -492,6 +492,7 @@ export interface ContractEditorRef {
 interface ContractEditorProps {
     initialContent?: string
     onChange?: (content: string) => void
+    onRowAdded?: (fieldIds: string[]) => void  // Callback when a row is added
     className?: string
     showFieldHighlight?: boolean
     showAgentHighlight?: boolean
@@ -500,7 +501,7 @@ interface ContractEditorProps {
 }
 
 const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
-    ({ initialContent, onChange, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
+    ({ initialContent, onChange, onRowAdded, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
         const editor = useEditor({
             extensions: [
                 StarterKit.configure({
@@ -627,47 +628,43 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
 
                                 console.log(`📍 Inserting new row before Total row (index ${lastRowIndex}) at pos ${insertPos}`)
 
-                                // Clone the template row structure completely
-                                // This preserves all cell attributes, paragraph formatting, etc.
-                                const clonedCells: any[] = []
+                                // Helper to recursively clone nodes and replace dataFields
+                                const cloneNode = (node: any): any => {
+                                    if (node.type.name === 'dataField') {
+                                        // Replace with new incremented dataField
+                                        const oldFieldId = node.attrs.fieldId
+                                        const newFieldId = getIncrementedFieldId(oldFieldId)
+                                        const placeholder = `[${newFieldId}]`
 
-                                templateRow.forEach((templateCell: any, offset: number, cellIndex: number) => {
-                                    // Clone the cell with all its attributes
-                                    const cellContent: any[] = []
-
-                                    // Clone each child of the cell (usually paragraphs)
-                                    templateCell.forEach((child: any) => {
-                                        if (child.type.name === 'paragraph') {
-                                            // Clone paragraph content, replacing dataFields with new ones
-                                            const paragraphContent: any[] = []
-
-                                            child.forEach((node: any) => {
-                                                if (node.type.name === 'dataField') {
-                                                    // We'll replace this later, for now just create empty paragraph
-                                                    // Keep the structure but empty content
-                                                } else {
-                                                    // Keep other nodes as-is
-                                                    paragraphContent.push(node)
-                                                }
-                                            })
-
-                                            // Create paragraph with same attributes but empty content initially
-                                            const clonedParagraph = state.schema.nodes.paragraph.create(
-                                                child.attrs,
-                                                null // We'll add content later
+                                        // Clone text content with all marks
+                                        const newTextContent: any[] = []
+                                        node.content.forEach((textNode: any) => {
+                                            newTextContent.push(
+                                                state.schema.text(placeholder, textNode.marks)
                                             )
-                                            cellContent.push(clonedParagraph)
-                                        } else {
-                                            cellContent.push(child)
-                                        }
-                                    })
+                                        })
 
-                                    // Create cell with same attributes
-                                    const clonedCell = state.schema.nodes.tableCell.create(
-                                        templateCell.attrs,
-                                        cellContent.length > 0 ? cellContent : state.schema.nodes.paragraph.create()
-                                    )
-                                    clonedCells.push(clonedCell)
+                                        return state.schema.nodes.dataField.create(
+                                            { ...node.attrs, fieldId: newFieldId },
+                                            newTextContent
+                                        )
+                                    } else if (node.content && node.content.size > 0) {
+                                        // Recursively clone children
+                                        const children: any[] = []
+                                        node.content.forEach((child: any) => {
+                                            children.push(cloneNode(child))
+                                        })
+                                        return node.type.create(node.attrs, children, node.marks)
+                                    } else {
+                                        // Leaf node - clone as-is
+                                        return node.copy(node.content)
+                                    }
+                                }
+
+                                // Clone entire template row
+                                const clonedCells: any[] = []
+                                templateRow.forEach((cell: any) => {
+                                    clonedCells.push(cloneNode(cell))
                                 })
 
                                 const newRow = state.schema.nodes.tableRow.create(
@@ -675,86 +672,28 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                     clonedCells
                                 )
 
-                                // Execute: Insert row, then populate it
-                                return chain()
+                                // Execute: Insert row, then call callback
+                                const result = chain()
                                     .command(({ tr }) => {
                                         tr.insert(insertPos, newRow)
-                                        console.log('✅ Inserted new empty row')
-                                        return true
-                                    })
-                                    .command(({ tr, state: newState }) => {
-                                        console.log('🔵 Populating new row with fields')
-
-                                        // The new row is now at index lastRowIndex (pushed the Total row down)
-                                        const { $from: newFrom } = newState.selection
-                                        let newTableDepth = -1
-                                        for (let d = newFrom.depth; d > 0; d--) {
-                                            if (newFrom.node(d).type.name === 'table') {
-                                                newTableDepth = d
-                                                break
-                                            }
-                                        }
-
-                                        if (newTableDepth === -1) return false
-
-                                        const newTable = newFrom.node(newTableDepth)
-                                        const newRowIndex = lastRowIndex // The row we just inserted
-                                        const targetRow = newTable.child(newRowIndex)
-
-                                        // Calculate row position
-                                        const newTableStartPos = newFrom.start(newTableDepth)
-                                        let rowStartPos = newTableStartPos
-                                        for (let i = 0; i < newRowIndex; i++) {
-                                            rowStartPos += newTable.child(i).nodeSize
-                                        }
-
-                                        console.log(`✅ Populating row at index ${newRowIndex}`)
-
-                                        // Insert fields into cells
-                                        // Track total inserted size to adjust positions
-                                        let totalInsertedSize = 0
-
-                                        cellFields.forEach(({ cellIndex, fields }) => {
-                                            const cell = targetRow.child(cellIndex)
-
-                                            // Calculate cell position
-                                            let cellPos = rowStartPos + 1 // +1 for row start
-                                            for (let i = 0; i < cellIndex; i++) {
-                                                cellPos += targetRow.child(i).nodeSize
-                                            }
-
-                                            // Add the offset from previous insertions
-                                            cellPos += totalInsertedSize
-
-                                            // Enter cell and paragraph
-                                            let insertPos = cellPos + 1 // Enter cell
-                                            if (cell.childCount > 0) {
-                                                insertPos += 1 // Enter paragraph
-                                            }
-
-                                            console.log(`   - Cell ${cellIndex}: inserting at pos ${insertPos}`)
-
-                                            fields.forEach(({ fieldId: baseFieldId, marks }) => {
-                                                const newFieldId = getIncrementedFieldId(baseFieldId)
-                                                const placeholder = `[${newFieldId}]`
-
-                                                // Create text node with marks from template
-                                                const textNode = newState.schema.text(placeholder, marks)
-
-                                                const dataFieldNode = newState.schema.nodes.dataField.create(
-                                                    { fieldId: newFieldId, source: null },
-                                                    textNode
-                                                )
-
-                                                tr.insert(insertPos, dataFieldNode)
-                                                insertPos += dataFieldNode.nodeSize
-                                                totalInsertedSize += dataFieldNode.nodeSize
-                                            })
-                                        })
-
+                                        console.log('✅ Inserted new row with cloned fields')
                                         return true
                                     })
                                     .run()
+
+                                // Extract new field IDs and call callback
+                                if (result && onRowAdded) {
+                                    const newFieldIds: string[] = []
+                                    newRow.descendants((node: any) => {
+                                        if (node.type.name === 'dataField') {
+                                            newFieldIds.push(node.attrs.fieldId)
+                                        }
+                                    })
+                                    console.log('📢 Calling onRowAdded with fields:', newFieldIds)
+                                    onRowAdded(newFieldIds)
+                                }
+
+                                return result
                             },
                         }
                     },
@@ -1000,10 +939,20 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             }
         }, [])
 
+        const hasInitialized = useRef(false);
+
+        // Reset hasInitialized when editor instance changes
         useEffect(() => {
-            if (editor && initialContent !== undefined && editor.getHTML() !== initialContent) {
-                // Force update content
+            if (editor) {
+                hasInitialized.current = false;
+            }
+        }, [editor]);
+
+        useEffect(() => {
+            if (editor && initialContent !== undefined && !hasInitialized.current) {
+                // Only set content on initial mount of this editor instance
                 editor.commands.setContent(initialContent);
+                hasInitialized.current = true;
             }
         }, [editor, initialContent]);
 
