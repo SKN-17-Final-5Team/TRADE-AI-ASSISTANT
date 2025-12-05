@@ -643,11 +643,6 @@ export default function DocumentCreationPage({
         console.log(`📝 Updating document at step ${step}`);
         const updatedContent = addRowToDocument(content, fieldIds);
         newData[step] = updatedContent;
-
-        // Log row count before and after
-        const beforeRows = content.match(/<tr[^>]*>/g)?.length || 0;
-        const afterRows = updatedContent.match(/<tr[^>]*>/g)?.length || 0;
-        console.log(`  Rows: ${beforeRows} → ${afterRows} (added ${afterRows - beforeRows})`);
       });
 
       return newData;
