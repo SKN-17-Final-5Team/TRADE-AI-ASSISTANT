@@ -657,7 +657,7 @@ ${documentContent}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50/30">
-        {messages.map((message) => (
+        {messages.filter(msg => !(msg.type === 'ai' && !msg.content)).map((message) => (
           <div
             key={message.id}
             className={`flex items-end gap-2 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}

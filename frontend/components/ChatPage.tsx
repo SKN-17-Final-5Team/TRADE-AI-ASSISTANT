@@ -298,7 +298,7 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
         {hasMessages ? (
           <div className="flex-1 overflow-y-auto px-8 py-8">
             <div className="max-w-3xl mx-auto space-y-6">
-              {messages.map((message) => (
+              {messages.filter(msg => !(msg.type === 'ai' && !msg.content)).map((message) => (
                 <div
                   key={message.id}
                   className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
