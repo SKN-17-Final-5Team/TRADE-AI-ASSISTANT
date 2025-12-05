@@ -451,9 +451,24 @@ ${documentContent}
                 const data = JSON.parse(line.slice(6));
 
                 if (data.type === 'init') {
-                  // doc_id, trade_id 초기화 정보 (무시)
+                  // doc_id, trade_id 초기화 정보
+                  console.log('📋 Chat Session 초기화:', {
+                    doc_id: data.doc_id,
+                    trade_id: data.trade_id
+                  });
+                } else if (data.type === 'agent_info') {
+                  // 에이전트 정보 콘솔 출력
+                  const modeEmoji = data.agent.doc_mode === 'upload' ? '📄' : '✏️';
+                  const modeText = data.agent.doc_mode === 'upload' ? '업로드 모드' : '작성 모드';
+                  console.log('%c🤖 Agent 정보', 'color: #6366f1; font-weight: bold; font-size: 14px;');
+                  console.log(`%c   ${modeEmoji} Mode: ${modeText} (${data.agent.doc_mode})`, 'color: #8b5cf6; font-weight: bold;');
+                  console.log('%c   Name: ' + data.agent.name, 'color: #22c55e; font-weight: bold;');
+                  console.log('%c   Model: ' + data.agent.model, 'color: #3b82f6;');
+                  console.log('%c   Tools: ' + data.agent.tools.join(', '), 'color: #f59e0b;');
+                  console.log('-----------------------------------');
                 } else if (data.type === 'context') {
                   // 컨텍스트 정보 수신 (Mem0 메모리)
+                  console.log('🧠 Mem0 컨텍스트:', data.summary);
                 } else if (data.type === 'text') {
                   accumulatedContent += data.content;
                   setMessages(prev => prev.map(msg =>

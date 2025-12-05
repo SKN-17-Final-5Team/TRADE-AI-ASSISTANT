@@ -17,7 +17,7 @@ from django.utils.decorators import method_decorator
 
 from agents import Runner
 from agents.items import ToolCallItem
-from agent_core import get_document_writing_agent
+from agent_core import get_document_writing_agent, get_read_document_agent
 from .config import PROMPT_VERSION, PROMPT_LABEL
 
 from .models import (
@@ -736,12 +736,35 @@ class DocumentChatStreamView(View):
         if context.get('context_summary'):
             yield f"data: {json.dumps({'type': 'context', 'summary': context['context_summary']})}\n\n"
 
-        # 5. Agent 생성 및 컨텍스트 추가
-        agent = get_document_writing_agent(
-            document_content=document_content,
-            prompt_version=PROMPT_VERSION,
-            prompt_label=PROMPT_LABEL
-        )
+        # 5. doc_mode에 따라 적절한 Agent 선택
+        if document.doc_mode == 'upload' and document.upload_status == 'ready':
+            # 업로드 모드: Document Reader Assistant (문서 내용 검색/질의 전용)
+            agent = get_read_document_agent(
+                document_id=document.doc_id,
+                document_name=document.original_filename or f"문서_{document.doc_id}",
+                document_type=document.get_doc_type_display(),
+                prompt_version=PROMPT_VERSION,
+                prompt_label=PROMPT_LABEL
+            )
+            logger.info(f"📄 업로드 모드: Document Reader Assistant 사용 (doc_id={doc_id}, filename={document.original_filename})")
+        else:
+            # 수동 작성 모드: Document Writing Assistant (문서 편집/작성 지원)
+            agent = get_document_writing_agent(
+                document_content=document_content,
+                prompt_version=PROMPT_VERSION,
+                prompt_label=PROMPT_LABEL
+            )
+            logger.info(f"✏️ 작성 모드: Document Writing Assistant 사용 (doc_id={doc_id})")
+
+        # 에이전트 정보 전송 (브라우저 콘솔 디버깅용)
+        agent_info = {
+            'name': agent.name,
+            'model': agent.model,
+            'doc_mode': document.doc_mode,
+            'tools': [tool.__name__ if hasattr(tool, '__name__') else str(tool) for tool in agent.tools]
+        }
+        yield f"data: {json.dumps({'type': 'agent_info', 'agent': agent_info})}\n\n"
+        logger.info(f"🤖 Agent 정보: {agent_info}")
 
         enhanced_input = message
         context_parts = []
