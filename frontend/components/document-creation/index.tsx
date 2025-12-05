@@ -421,81 +421,17 @@ export default function DocumentCreationPage({
   };
 
   const handleEditorChange = (content: string) => {
-    // Auto-calculate totals
-    const updatedContent = calculateTotals(content);
-
     const saveKey = getDocKeyForStep(currentStep);
     if (saveKey !== -1) {
       setDocumentData((prev: DocumentData) => ({
         ...prev,
-        [saveKey]: updatedContent
+        [saveKey]: content
       }));
-
-      // If content changed due to calculation, update editor
-      if (updatedContent !== content && editorRef.current) {
-        // Use setTimeout to avoid infinite loop
-        setTimeout(() => {
-          if (editorRef.current) {
-            editorRef.current.setContent(updatedContent);
-          }
-        }, 0);
-      }
 
       // Mark as modified
       markStepModified(saveKey);
       setIsDirty(true);
     }
-  };
-
-  // Helper function to calculate totals
-  const calculateTotals = (htmlContent: string): string => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlContent, 'text/html');
-
-    // Find total_quantity and total_price fields
-    const totalQuantityField = doc.querySelector('[data-field-id="total_quantity"]');
-    const totalPriceField = doc.querySelector('[data-field-id="total_price"]');
-
-    if (!totalQuantityField && !totalPriceField) {
-      return htmlContent; // No total fields, return as is
-    }
-
-    let totalQuantity = 0;
-    let totalPrice = 0;
-
-    // Sum all quantity fields
-    const quantityFields = doc.querySelectorAll('[data-field-id^="quantity"]');
-    quantityFields.forEach((field) => {
-      const fieldId = field.getAttribute('data-field-id');
-      if (fieldId && fieldId.match(/^quantity(_\d+)?$/)) {
-        const value = parseFloat(field.textContent?.replace(/[^\d.-]/g, '') || '0');
-        if (!isNaN(value)) {
-          totalQuantity += value;
-        }
-      }
-    });
-
-    // Sum all sub_total_price fields
-    const priceFields = doc.querySelectorAll('[data-field-id^="sub_total_price"]');
-    priceFields.forEach((field) => {
-      const fieldId = field.getAttribute('data-field-id');
-      if (fieldId && fieldId.match(/^sub_total_price(_\d+)?$/)) {
-        const value = parseFloat(field.textContent?.replace(/[^\d.-]/g, '') || '0');
-        if (!isNaN(value)) {
-          totalPrice += value;
-        }
-      }
-    });
-
-    // Update total fields
-    if (totalQuantityField) {
-      totalQuantityField.textContent = totalQuantity.toString();
-    }
-    if (totalPriceField) {
-      totalPriceField.textContent = totalPrice.toFixed(2);
-    }
-
-    return doc.documentElement.outerHTML.replace(/^<html><head><\/head><body>/, '').replace(/<\/body><\/html>$/, '');
   };
 
   const handleModeSelect = async (mode: StepMode) => {

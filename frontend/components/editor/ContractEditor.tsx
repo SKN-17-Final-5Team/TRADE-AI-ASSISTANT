@@ -491,38 +491,37 @@ const AutoCalculation = Extension.create({
                             }
                         })
 
-                        // Update total_quantity field
+                        // Collect updates
+                        const updates: { pos: number, node: any, newText: string }[] = []
+
+                        // Check total_quantity
                         if (totalQuantityPos !== null && totalQuantityNode) {
                             const newText = totalQuantity.toString()
                             const currentText = totalQuantityNode.textContent
-
                             if (currentText !== newText) {
-                                const pos = totalQuantityPos as number
-                                // Create a new dataField node with updated text
-                                const newNode = newState.schema.nodes.dataField.create(
-                                    totalQuantityNode.attrs,
-                                    newState.schema.text(newText)
-                                )
-                                tr.replaceWith(pos, pos + totalQuantityNode.nodeSize, newNode)
-                                modified = true
+                                updates.push({ pos: totalQuantityPos, node: totalQuantityNode, newText })
                             }
                         }
 
-                        // Update total_price field
+                        // Check total_price
                         if (totalPricePos !== null && totalPriceNode) {
                             const newText = totalPrice.toFixed(2)
                             const currentText = totalPriceNode.textContent
-
                             if (currentText !== newText) {
-                                const pos = totalPricePos as number
-                                // Create a new dataField node with updated text
-                                const newNode = newState.schema.nodes.dataField.create(
-                                    totalPriceNode.attrs,
-                                    newState.schema.text(newText)
-                                )
-                                tr.replaceWith(pos, pos + totalPriceNode.nodeSize, newNode)
-                                modified = true
+                                updates.push({ pos: totalPricePos, node: totalPriceNode, newText })
                             }
+                        }
+
+                        // Apply updates in reverse order to avoid position shifts
+                        updates.sort((a, b) => b.pos - a.pos)
+
+                        for (const update of updates) {
+                            const newNode = newState.schema.nodes.dataField.create(
+                                update.node.attrs,
+                                newState.schema.text(update.newText)
+                            )
+                            tr.replaceWith(update.pos, update.pos + update.node.nodeSize, newNode)
+                            modified = true
                         }
                     }
 
@@ -998,6 +997,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 Radio,
                 DataField,
                 createRowDeletionDetector(onRowDeleted),
+                AutoCalculation,
             ],
             content: initialContent || saleContractTemplateHTML,
             editorProps: {

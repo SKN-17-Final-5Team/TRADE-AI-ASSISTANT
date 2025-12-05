@@ -54,7 +54,7 @@ export const offerSheetTemplateHTML = `
                         <span data-field-id="quantity" class="data-field">[quantity]</span>
                     </td>
                     <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
-                        <span data-field-id="unit_price" class="data-field">[unit_price]</span>
+                        <span data-field-id="unit_price" class="data-field">[unit_price]</span> / <span data-field-id="currency" class="data-field">[currency]</span>
                     </td>
                     <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
                         <span data-field-id="sub_total_price" class="data-field">[sub_total_price]</span>
