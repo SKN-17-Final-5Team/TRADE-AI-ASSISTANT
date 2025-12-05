@@ -444,75 +444,114 @@ const AutoCalculation = Extension.create({
                     const tr = newState.tr
                     let modified = false
 
-                    // Find total_quantity and total_price fields
+                    // Store row data: suffix -> { quantity, unitPrice, subTotalNode, subTotalPos }
+                    const rowData = new Map<string, {
+                        quantity: number,
+                        unitPrice: number,
+                        subTotalNode: any,
+                        subTotalPos: number
+                    }>()
+
+                    // Store total fields
                     let totalQuantityPos: number | null = null
                     let totalPricePos: number | null = null
                     let totalQuantityNode: any = null
                     let totalPriceNode: any = null
 
+                    // First pass: Collect all relevant nodes
                     newState.doc.descendants((node, pos) => {
                         if (node.type.name === 'dataField') {
-                            if (node.attrs.fieldId === 'total_quantity') {
+                            const fieldId = node.attrs.fieldId
+                            const text = node.textContent
+
+                            // Check for Total fields
+                            if (fieldId === 'total_quantity') {
                                 totalQuantityPos = pos
                                 totalQuantityNode = node
-                            } else if (node.attrs.fieldId === 'total_price') {
+                                return
+                            }
+                            if (fieldId === 'total_price') {
                                 totalPricePos = pos
                                 totalPriceNode = node
+                                return
+                            }
+
+                            // Check for Row fields
+                            // Match quantity(_suffix), unit_price(_suffix), sub_total_price(_suffix)
+                            const quantityMatch = fieldId.match(/^quantity(_\d+)?$/)
+                            const unitPriceMatch = fieldId.match(/^unit_price(_\d+)?$/)
+                            const subTotalMatch = fieldId.match(/^sub_total_price(_\d+)?$/)
+
+                            if (quantityMatch || unitPriceMatch || subTotalMatch) {
+                                const suffix = (quantityMatch?.[1] || unitPriceMatch?.[1] || subTotalMatch?.[1]) || ''
+
+                                if (!rowData.has(suffix)) {
+                                    rowData.set(suffix, { quantity: 0, unitPrice: 0, subTotalNode: null, subTotalPos: -1 })
+                                }
+                                const data = rowData.get(suffix)!
+
+                                const value = parseFloat(text.replace(/[^\d.-]/g, ''))
+
+                                if (quantityMatch) {
+                                    if (!isNaN(value)) data.quantity = value
+                                } else if (unitPriceMatch) {
+                                    if (!isNaN(value)) data.unitPrice = value
+                                } else if (subTotalMatch) {
+                                    data.subTotalNode = node
+                                    data.subTotalPos = pos
+                                }
                             }
                         }
                     })
 
-                    // Calculate totals
-                    if (totalQuantityPos !== null || totalPricePos !== null) {
-                        let totalQuantity = 0
-                        let totalPrice = 0
+                    // Calculate updates
+                    const updates: { pos: number, node: any, newText: string }[] = []
+                    let grandTotalQuantity = 0
+                    let grandTotalPrice = 0
 
-                        // Sum all quantity and sub_total_price fields
-                        newState.doc.descendants((node) => {
-                            if (node.type.name === 'dataField') {
-                                const fieldId = node.attrs.fieldId
-                                const text = node.textContent
+                    // Process each row
+                    for (const [suffix, data] of rowData) {
+                        // Calculate sub_total
+                        const subTotal = data.quantity * data.unitPrice
 
-                                // Match quantity fields (quantity, quantity_2, quantity_3, etc.)
-                                if (fieldId && fieldId.match(/^quantity(_\d+)?$/)) {
-                                    const value = parseFloat(text.replace(/[^\d.-]/g, ''))
-                                    if (!isNaN(value)) {
-                                        totalQuantity += value
-                                    }
-                                }
+                        // Add to grand totals
+                        grandTotalQuantity += data.quantity
+                        grandTotalPrice += subTotal
 
-                                // Match sub_total_price fields (sub_total_price, sub_total_price_2, etc.)
-                                if (fieldId && fieldId.match(/^sub_total_price(_\d+)?$/)) {
-                                    const value = parseFloat(text.replace(/[^\d.-]/g, ''))
-                                    if (!isNaN(value)) {
-                                        totalPrice += value
-                                    }
-                                }
-                            }
-                        })
+                        // Update sub_total_price field if it exists
+                        if (data.subTotalNode && data.subTotalPos !== -1) {
+                            // Format to 2 decimal places
+                            const newText = subTotal.toFixed(2)
+                            const currentText = data.subTotalNode.textContent
 
-                        // Collect updates
-                        const updates: { pos: number, node: any, newText: string }[] = []
-
-                        // Check total_quantity
-                        if (totalQuantityPos !== null && totalQuantityNode) {
-                            const newText = totalQuantity.toString()
-                            const currentText = totalQuantityNode.textContent
+                            // Only update if changed and not a placeholder (unless value is 0, then we might want to show 0.00)
+                            // But if it's a placeholder [sub_total_price], we should definitely update it if we have a value
                             if (currentText !== newText) {
-                                updates.push({ pos: totalQuantityPos, node: totalQuantityNode, newText })
+                                updates.push({ pos: data.subTotalPos, node: data.subTotalNode, newText })
                             }
                         }
+                    }
 
-                        // Check total_price
-                        if (totalPricePos !== null && totalPriceNode) {
-                            const newText = totalPrice.toFixed(2)
-                            const currentText = totalPriceNode.textContent
-                            if (currentText !== newText) {
-                                updates.push({ pos: totalPricePos, node: totalPriceNode, newText })
-                            }
+                    // Update total_quantity
+                    if (totalQuantityPos !== null && totalQuantityNode) {
+                        const newText = grandTotalQuantity.toString()
+                        const currentText = totalQuantityNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalQuantityPos, node: totalQuantityNode, newText })
                         }
+                    }
 
-                        // Apply updates in reverse order to avoid position shifts
+                    // Update total_price
+                    if (totalPricePos !== null && totalPriceNode) {
+                        const newText = grandTotalPrice.toFixed(2)
+                        const currentText = totalPriceNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalPricePos, node: totalPriceNode, newText })
+                        }
+                    }
+
+                    // Apply updates in reverse order to avoid position shifts
+                    if (updates.length > 0) {
                         updates.sort((a, b) => b.pos - a.pos)
 
                         for (const update of updates) {
@@ -852,8 +891,14 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                 // Helper to recursively clone nodes and replace dataFields
                                 const cloneNode = (node: any): any => {
                                     if (node.type.name === 'dataField') {
-                                        // Replace with new incremented dataField
                                         const oldFieldId = node.attrs.fieldId
+
+                                        // Special handling for currency: inherit value from previous row
+                                        if (oldFieldId === 'currency') {
+                                            return node.copy(node.content)
+                                        }
+
+                                        // For other fields: increment ID and reset to placeholder
                                         const newFieldId = getIncrementedFieldId(oldFieldId)
                                         const placeholder = `[${newFieldId}]`
 

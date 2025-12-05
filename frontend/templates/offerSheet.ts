@@ -22,9 +22,10 @@ export const offerSheetTemplateHTML = `
     <div class="items-wrapper">
         <table class="offer-table" style="width: 100%; border-collapse: collapse;">
             <colgroup>
-                <col style="width: 12%;">
-                <col style="width: 18%;">
-                <col style="width: 30%;">
+                <col style="width: 10%;">
+                <col style="width: 14%;">
+                <col style="width: 26%;">
+                <col style="width: 10%;">
                 <col style="width: 10%;">
                 <col style="width: 15%;">
                 <col style="width: 15%;">
@@ -34,6 +35,7 @@ export const offerSheetTemplateHTML = `
                     <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Item No.</th>
                     <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">HS-CODE</th>
                     <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Product</th>
+                    <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">C/O</th>
                     <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Q'ty</th>
                     <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Unit Price</th>
                     <th style="background-color: #f3f4f6; font-weight: bold; padding: 8px; border: 1px solid #d1d5db; text-align: center;">Amount</th>
@@ -51,6 +53,9 @@ export const offerSheetTemplateHTML = `
                         <span data-field-id="description" class="data-field">[description]</span>
                     </td>
                     <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;">
+                        <span data-field-id="coo" class="data-field">[coo]</span>
+                    </td>
+                    <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;">
                         <span data-field-id="quantity" class="data-field">[quantity]</span>
                     </td>
                     <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;">
@@ -66,6 +71,7 @@ export const offerSheetTemplateHTML = `
                     <td style="border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
                     <td style="border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
                     <td style="padding: 8px; border: 1px solid #d1d5db; background-color: #f0f0f0; font-weight: bold;">TOTAL:</td>
+                    <td style="border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
                     <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; background-color: #f0f0f0; font-weight: bold;"><span data-field-id="total_quantity" class="data-field">[total_quantity]</span></td>
                     <td style="border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
                     <td style="padding: 8px; border: 1px solid #d1d5db; text-align: right; background-color: #f0f0f0; font-weight: bold;"><span data-field-id="total_price" class="data-field">[total_price]</span></td>
@@ -76,9 +82,6 @@ export const offerSheetTemplateHTML = `
 
     <!-- 하단 조건들 -->
     <div class="detail-block"><p></p>
-        <div class="detail-row">
-            <span class="detail-label">Country of Origin : </span> <mark>[coo]</mark>
-        </div>
         <div class="detail-row">
             <span class="detail-label">Shipment : </span> <mark>[shipment_term]</mark>
         </div>
