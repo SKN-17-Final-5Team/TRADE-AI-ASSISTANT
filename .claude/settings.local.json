@@ -14,7 +14,8 @@
       "Bash(curl:*)",
       "Bash(find:*)",
       "Bash(set DJANGO_SETTINGS_MODULE=config.settings:*)",
-      "Bash(timeout /t 3 /nobreak)"
+      "Bash(timeout /t 3 /nobreak)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

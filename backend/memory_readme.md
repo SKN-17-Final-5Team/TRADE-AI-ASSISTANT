@@ -336,3 +336,427 @@ await fetch(`/api/documents/${docId}/save_version/`, {
 ```
 
 **이유:** Mem0는 내용을 요약/추출하므로 원본 보존이 안 됨
+
+---
+
+## 10. 메모리 병합 작업 변경사항 (2024-12-05)
+
+이 섹션은 **메모리 기능 병합 작업**으로 인해 변경된 파일들을 정리합니다.
+**다른 기능 담당자**는 자신이 작성한 코드 중 변경된 부분을 확인하세요.
+
+---
+
+### 변경된 파일 목록
+
+| 파일 | 변경 유형 | 담당 기능 |
+|------|----------|----------|
+| `frontend/App.tsx` | **수정** | 전체 앱 라우팅/상태 |
+| `frontend/components/ChatAssistant.tsx` | **수정** | 문서 내 채팅 |
+| `frontend/components/ChatPage.tsx` | 변경 없음 | 일반 채팅 |
+| `frontend/components/document-creation/index.tsx` | **수정** | 문서 작성 페이지 |
+| `backend/chat/views.py` | **수정** | 일반 채팅 API |
+| `backend/chat/trade_views.py` | **수정** | 문서 채팅 API |
+| `backend/chat/memory_service.py` | **수정** | Mem0 서비스 |
+| `backend/agent_core/prompts/fallback.py` | 변경 없음 | Agent 프롬프트 |
+
+---
+
+### 10.1 Frontend 변경사항
+
+#### `App.tsx` 변경
+
+**1. 새 state 추가**
+```typescript
+// 현재 Trade의 doc_ids (직접 저장용 - 새 문서 생성 시 바로 사용)
+const [currentDocIds, setCurrentDocIds] = useState<Record<string, number> | null>(null);
+```
+
+**2. `handleNavigate` 함수 변경 (새 문서 생성 시 Trade 초기화)**
+```typescript
+// 변경 전: 새 문서 생성 시 아무 처리 없음
+const handleNavigate = (page: PageType) => {
+  if (page === 'documents') {
+    if (!currentDocId) {
+      setCurrentStep(1);
+      // ...
+    }
+  }
+};
+
+// 변경 후: Trade 초기화 API 호출
+const handleNavigate = async (page: PageType) => {
+  if (page === 'documents') {
+    if (!currentDocId && currentUser) {
+      // Trade 초기화 API 호출 - 새 Trade와 5개의 Document를 생성
+      const response = await fetch(`${API_URL}/api/trade/init/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser.emp_no,
+          title: '새 무역 거래'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentDocId(data.trade_id.toString());
+        setCurrentDocIds(data.doc_ids);  // doc_ids 저장
+        fetchTrades();
+      }
+    }
+  }
+};
+```
+
+**3. `getDocId` 함수 변경**
+```typescript
+// 변경 전
+const getDocId = useCallback((step, shippingDoc) => {
+  if (!currentDocId) return null;
+  const trade = savedDocuments.find(d => d.id === currentDocId);
+  // savedDocuments에서만 찾음
+}, [currentDocId, savedDocuments]);
+
+// 변경 후
+const getDocId = useCallback((step, shippingDoc) => {
+  const docType = stepToDocType(step, shippingDoc);
+
+  // 1. 먼저 currentDocIds에서 찾기 (새 문서 생성 시 바로 사용)
+  if (currentDocIds && currentDocIds[docType]) {
+    return currentDocIds[docType];
+  }
+
+  // 2. savedDocuments에서 찾기
+  if (!currentDocId) return null;
+  const trade = savedDocuments.find(d => d.id === currentDocId);
+  // ...
+}, [currentDocId, savedDocuments, currentDocIds]);  // currentDocIds 의존성 추가
+```
+
+**4. `handleOpenDocument` 함수 변경**
+```typescript
+// 변경 후: 기존 문서 열 때 doc_ids 로드
+const handleOpenDocument = (doc: SavedDocument) => {
+  // ... 기존 코드 ...
+
+  // 추가된 부분: tradeData에서 doc_ids 추출
+  if (doc.tradeData?.documents) {
+    const docIds: Record<string, number> = {};
+    doc.tradeData.documents.forEach((d) => {
+      docIds[d.doc_type] = d.doc_id;
+    });
+    setCurrentDocIds(docIds);
+  }
+};
+```
+
+**5. 메인으로 돌아갈 때 초기화**
+```typescript
+if (page === 'main') {
+  setCurrentDocId(null);
+  setCurrentDocIds(null);  // 추가
+}
+```
+
+---
+
+#### `ChatAssistant.tsx` 변경
+
+**1. Props 인터페이스 변경**
+```typescript
+// 변경 전
+interface ChatAssistantProps {
+  // ...
+  tradeId?: number | null;
+  docIds?: Record<string, number> | null;
+  userEmployeeId?: string;
+}
+
+// 변경 후
+interface ChatAssistantProps {
+  // ...
+  userEmployeeId?: string;
+  getDocId?: (step: number, shippingDoc?: 'CI' | 'PL' | null) => number | null;
+}
+```
+
+**2. `currentDocId` 계산 로직 변경**
+```typescript
+// 변경 전: STEP_TO_DOC_TYPE 상수 사용
+const STEP_TO_DOC_TYPE: Record<number, string> = { 1: 'offer', 2: 'pi', ... };
+const currentDocId = useMemo(() => {
+  if (!docIds) return null;
+  const docType = STEP_TO_DOC_TYPE[currentStep];
+  return docType ? (docIds[docType] || null) : null;
+}, [docIds, currentStep, tradeId]);
+
+// 변경 후: getDocId 함수 사용
+const currentDocId = useMemo(() => {
+  if (documentId) return documentId;
+  if (getDocId) {
+    const shippingDoc = currentStep === 4 ? 'CI' : currentStep === 5 ? 'PL' : null;
+    return getDocId(currentStep <= 3 ? currentStep : (currentStep === 4 ? 4 : 5), shippingDoc);
+  }
+  return null;
+}, [documentId, getDocId, currentStep]);
+```
+
+**3. 채팅 히스토리 로드 함수 - role 매핑 수정**
+```typescript
+// 변경 전: sender_type 사용
+const loadedMessages = data.messages.map((msg) => ({
+  type: msg.sender_type === 'U' ? 'user' : 'ai',
+  // ...
+}));
+
+// 변경 후: role 사용 (백엔드 응답 형식에 맞춤)
+const loadedMessages = data.messages.map((msg) => ({
+  type: msg.role === 'user' ? 'user' : 'ai',  // 'agent' -> 'ai'
+  // ...
+}));
+```
+
+**4. edit 응답 처리 시 step 정보 추가**
+```typescript
+// 변경 전: step 정보 누락
+} else if (data.type === 'edit') {
+  setMessages(prev => prev.map(msg =>
+    msg.id === aiMessageId
+      ? { ...msg, content: data.message, hasApply: true, changes: data.changes }
+      : msg
+  ));
+
+// 변경 후: step 정보 추가
+} else if (data.type === 'edit') {
+  setMessages(prev => prev.map(msg =>
+    msg.id === aiMessageId
+      ? { ...msg, content: data.message, hasApply: true, changes: data.changes, step: requestStep }
+      : msg
+  ));
+```
+
+---
+
+#### `document-creation/index.tsx` 변경
+
+**ChatAssistant에 전달하는 props 변경**
+```typescript
+// 변경 전
+<ChatAssistant
+  // ...
+  userId={userEmployeeId}
+/>
+
+// 변경 후
+<ChatAssistant
+  // ...
+  userEmployeeId={userEmployeeId}
+  getDocId={getDocId}
+/>
+```
+
+---
+
+### 10.2 Backend 변경사항
+
+#### `views.py` 변경 (일반 채팅 API)
+
+**1. GenChat 조회 로직 변경**
+```python
+# 변경 전: user 필터 포함
+gen_chat = GenChat.objects.get(gen_chat_id=gen_chat_id, user=user)
+
+# 변경 후: gen_chat_id만으로 조회
+gen_chat = GenChat.objects.get(gen_chat_id=gen_chat_id)
+logger.info(f"✅ 기존 GenChat 조회 성공: gen_chat_id={gen_chat_id}")
+```
+
+**2. Mem0 예외 처리 강화**
+```python
+# 변경 전
+memory_service = get_memory_service()
+mem0_context = memory_service.build_gen_chat_context(...)
+
+# 변경 후
+memory_service = get_memory_service()
+if memory_service:  # None 체크 추가
+    mem0_context = memory_service.build_gen_chat_context(...)
+```
+
+**3. 디버깅 로그 추가**
+```python
+logger.info(f"✅ 대화 히스토리 로드 (RDS): {len(message_history)}개 메시지 (총 {message_count}개 중)")
+if message_history:
+    for i, msg in enumerate(message_history[-3:]):
+        logger.info(f"  └ 최근 {i+1}: [{msg['role']}] {msg['content'][:50]}...")
+```
+
+---
+
+#### `trade_views.py` 변경 (문서 채팅 API)
+
+**1. parse_edit_response import 추가**
+```python
+from .views import parse_edit_response
+```
+
+**2. 편집 응답 처리 추가**
+```python
+# 변경 전: 편집 응답 처리 없음
+# AI 응답 저장만 수행
+
+# 변경 후: 편집 응답 감지 및 전송
+edit_response = None
+if full_response:
+    edit_response = parse_edit_response(full_response)
+    if edit_response:
+        logger.info(f"편집 응답 감지: {len(edit_response.get('changes', []))}개 변경사항")
+        yield f"data: {json.dumps({'type': 'edit', 'message': edit_response['message'], 'changes': edit_response['changes']})}\n\n"
+```
+
+**3. DocMessage metadata에 tool 정보 저장**
+```python
+# 변경 전
+ai_msg = DocMessage.objects.create(
+    doc=document,
+    role='agent',
+    content=full_response
+)
+
+# 변경 후
+ai_msg = DocMessage.objects.create(
+    doc=document,
+    role='agent',
+    content=full_response,
+    metadata={
+        'tools_used': tools_used,
+        'is_edit': edit_response is not None,
+        'changes_count': len(edit_response.get('changes', [])) if edit_response else 0
+    }
+)
+```
+
+**4. 이전 Step 문서 조회 시 html 필드명 수정**
+```python
+# 변경 전
+html_content = content_data.get('html_content', '')
+
+# 변경 후 (프론트엔드 저장 형식에 맞춤)
+html_content = content_data.get('html', '') or content_data.get('html_content', '')
+```
+
+**5. 현재 에디터 내용 컨텍스트 추가**
+```python
+# 추가된 코드
+if document_content and document_content.strip():
+    current_text = re.sub(r'<[^>]+>', ' ', document_content)
+    current_text = re.sub(r'\s+', ' ', current_text).strip()
+    if current_text:
+        context_parts.append(f"[현재 작성 중인 {document.doc_type} 문서 내용]\n{current_text[:2000]}")
+```
+
+---
+
+#### `memory_service.py` 변경
+
+**get_memory_service() 예외 처리 추가**
+```python
+# 변경 전
+def get_memory_service():
+    global _memory_service_instance
+    if _memory_service_instance is None:
+        _memory_service_instance = TradeMemoryService()
+    return _memory_service_instance
+
+# 변경 후
+def get_memory_service():
+    global _memory_service_instance
+    if _memory_service_instance is None:
+        try:
+            _memory_service_instance = TradeMemoryService()
+        except Exception as e:
+            logger.warning(f"⚠️ TradeMemoryService 초기화 실패 (메모리 기능 비활성화): {e}")
+            return None
+    return _memory_service_instance
+```
+
+---
+
+### 10.3 주요 버그 수정 요약
+
+| 문제 | 원인 | 해결 |
+|------|------|------|
+| 문서 ID 매핑 안됨 | 새 문서 생성 시 Trade 초기화 안됨 | `handleNavigate`에서 `/api/trade/init/` 호출 |
+| 채팅 내역 안보임 | role 매핑 불일치 (`sender_type` vs `role`) | `msg.role === 'user'`로 수정 |
+| 에디터 수정 안됨 | edit 응답 전송 누락 + step 정보 누락 | `parse_edit_response` 추가, step 정보 포함 |
+| 일반 채팅 히스토리 안됨 | GenChat 조회 시 user 필터 문제 | user 필터 제거 |
+| Mem0 초기화 실패 시 크래시 | 예외 처리 없음 | `get_memory_service()` None 반환 |
+| Step간 문서 참조 안됨 | html 필드명 불일치 | `html` 또는 `html_content` 모두 체크 |
+| metadata에 tool 정보 없음 | 저장 시 metadata 누락 | `tools_used` 등 metadata 추가 |
+
+---
+
+### 10.4 테스트 체크리스트
+
+개발 후 아래 항목을 테스트하세요:
+
+- [ ] **새 문서 생성**: "새 문서" 버튼 클릭 → Trade 초기화 되는지
+- [ ] **문서 내 채팅**: 채팅 메시지 전송 → 응답 오는지
+- [ ] **에디터 수정**: "가격을 50000달러로 수정해줘" → Apply 버튼 → 에디터 반영
+- [ ] **채팅 히스토리**: 채팅 후 페이지 나갔다 다시 들어가면 이전 대화 보이는지
+- [ ] **일반 채팅**: 메인페이지에서 여러 번 대화 → 이전 대화 기억하는지
+- [ ] **Step간 참조**: Step2에서 "Step1 내용 참조해줘" → 참조되는지
+- [ ] **metadata 저장**: DB `doc_message` 테이블 `metadata` 컬럼에 tool 정보 있는지
+
+---
+
+### 10.5 환경 변수
+
+메모리 기능에 필요한 환경 변수:
+
+```env
+# Qdrant (Mem0 벡터 저장소)
+QDRANT_URL=https://xxx.qdrant.io
+QDRANT_API_KEY=your-api-key
+
+# 또는 로컬 Qdrant
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+
+# OpenAI (Mem0 임베딩용) - 아래 두 개 중 하나만 있으면 됨
+OPENAI_API_KEY=sk-xxx
+# 또는
+MEM0_API_KEY=sk-xxx  # OPENAI_API_KEY가 없으면 이 값이 자동으로 사용됨
+
+# Langfuse (선택)
+LANGFUSE_PUBLIC_KEY=pk-xxx
+LANGFUSE_SECRET_KEY=sk-xxx
+```
+
+**참고**: `MEM0_API_KEY`가 설정되어 있고 `OPENAI_API_KEY`가 없으면, `memory_service.py`에서 자동으로 `MEM0_API_KEY`를 `OPENAI_API_KEY`로 설정합니다.
+
+**Qdrant 연결 실패 시**: 메모리 기능이 비활성화되고, 채팅은 RDS 히스토리만으로 동작합니다.
+
+---
+
+### 10.6 추가 변경사항 (2024-12-05 추가)
+
+#### `memory_service.py` - MEM0_API_KEY 지원
+
+```python
+# __init__ 메서드 시작 부분에 추가
+def __init__(self):
+    if self._initialized:
+        return
+
+    try:
+        # MEM0_API_KEY를 OPENAI_API_KEY로 설정 (Mem0 내부에서 OpenAI 사용)
+        mem0_api_key = os.getenv("MEM0_API_KEY")
+        if mem0_api_key and not os.getenv("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = mem0_api_key
+            logger.info("Set OPENAI_API_KEY from MEM0_API_KEY")
+
+        # ... 이하 기존 코드 ...
+```
+
+**변경 이유**: `.env`에 `MEM0_API_KEY`로 API 키가 저장되어 있는 경우, Mem0가 내부적으로 사용하는 `OPENAI_API_KEY` 환경변수로 자동 설정하여 초기화 실패를 방지합니다.

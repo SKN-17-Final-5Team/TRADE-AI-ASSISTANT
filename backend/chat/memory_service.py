@@ -35,6 +35,12 @@ class TradeMemoryService:
             return
 
         try:
+            # MEM0_API_KEY를 OPENAI_API_KEY로 설정 (Mem0 내부에서 OpenAI 사용)
+            mem0_api_key = os.getenv("MEM0_API_KEY")
+            if mem0_api_key and not os.getenv("OPENAI_API_KEY"):
+                os.environ["OPENAI_API_KEY"] = mem0_api_key
+                logger.info("Set OPENAI_API_KEY from MEM0_API_KEY")
+
             # Qdrant 연결 설정
             qdrant_url = os.getenv("QDRANT_URL")
             qdrant_api_key = os.getenv("QDRANT_API_KEY")
@@ -697,7 +703,11 @@ def get_memory_service():
     """Get or create memory service instance (lazy initialization)"""
     global _memory_service_instance
     if _memory_service_instance is None:
-        _memory_service_instance = TradeMemoryService()
+        try:
+            _memory_service_instance = TradeMemoryService()
+        except Exception as e:
+            logger.warning(f"⚠️ TradeMemoryService 초기화 실패 (메모리 기능 비활성화): {e}")
+            return None
     return _memory_service_instance
 
 # For backwards compatibility

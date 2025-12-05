@@ -29,6 +29,7 @@ from .serializers import (
     DocVersionSerializer, DocChatRequestSerializer
 )
 from .memory_service import get_memory_service
+from .views import parse_edit_response
 
 logger = logging.getLogger(__name__)
 
@@ -236,8 +237,11 @@ class TradeFlowViewSet(viewsets.ModelViewSet):
             # 1. Mem0 메모리 삭제
             if doc_ids:
                 mem_service = get_memory_service()
-                mem_service.delete_trade_memory(trade_id, doc_ids)
-                logger.info(f"Deleted mem0 memories for trade_id={trade_id}, docs={doc_ids}")
+                if mem_service:
+                    mem_service.delete_trade_memory(trade_id, doc_ids)
+                    logger.info(f"Deleted mem0 memories for trade_id={trade_id}, docs={doc_ids}")
+                else:
+                    logger.warning(f"Mem0 service unavailable, skipping memory cleanup for trade_id={trade_id}")
 
             # 2. RDS에서 삭제 (CASCADE로 관련 데이터 자동 삭제)
             trade.delete()
@@ -746,6 +750,15 @@ class DocumentChatStreamView(View):
         enhanced_input = message
         context_parts = []
 
+        # 현재 작성 중인 문서 내용 (에디터에서 전달됨)
+        if document_content and document_content.strip():
+            # HTML 태그 제거하여 텍스트 추출
+            current_text = re.sub(r'<[^>]+>', ' ', document_content)
+            current_text = re.sub(r'\s+', ' ', current_text).strip()
+            if current_text:
+                context_parts.append(f"[현재 작성 중인 {document.doc_type} 문서 내용]\n{current_text[:2000]}")
+                logger.info(f"현재 에디터 내용 {len(current_text)}자 컨텍스트에 추가")
+
         # 이전 step 문서 내용 참조 (RDS DocVersion에서 직접 조회 - 더 신뢰성 있음)
         try:
             sibling_docs = Document.objects.filter(trade_id=trade_id).exclude(doc_id=doc_id)
@@ -755,13 +768,19 @@ class DocumentChatStreamView(View):
                 latest_version = DocVersion.objects.filter(doc=sibling_doc).order_by('-created_at').first()
                 if latest_version and latest_version.content:
                     content_data = latest_version.content
-                    html_content = content_data.get('html_content', '') if isinstance(content_data, dict) else str(content_data)
+                    # 필드명: 'html' (프론트엔드에서 저장하는 필드명)
+                    html_content = ''
+                    if isinstance(content_data, dict):
+                        html_content = content_data.get('html', '') or content_data.get('html_content', '')
+                    else:
+                        html_content = str(content_data)
+
                     if html_content and html_content.strip():
                         # HTML 태그 제거하여 순수 텍스트 추출
                         text_content = re.sub(r'<[^>]+>', ' ', html_content)
                         text_content = re.sub(r'\s+', ' ', text_content).strip()
                         if text_content:
-                            prev_doc_contents.append(f"  [{sibling_doc.doc_type}]\n{text_content[:1000]}")
+                            prev_doc_contents.append(f"  [{sibling_doc.doc_type}]\n{text_content[:1500]}")
 
             if prev_doc_contents:
                 context_parts.append(f"[이전 step 문서 내용 - 참조용]\n" + "\n\n".join(prev_doc_contents))
@@ -892,14 +911,28 @@ class DocumentChatStreamView(View):
         finally:
             loop.close()
 
-        # 7. AI 응답 저장
+        # 7. 편집 응답인지 확인 및 처리
+        edit_response = None
+        if full_response:
+            edit_response = parse_edit_response(full_response)
+            if edit_response:
+                logger.info(f"편집 응답 감지: {len(edit_response.get('changes', []))}개 변경사항")
+                # 편집 응답 전송
+                yield f"data: {json.dumps({'type': 'edit', 'message': edit_response['message'], 'changes': edit_response['changes']})}\n\n"
+
+        # 8. AI 응답 저장 (metadata에 tools_used 포함)
         try:
             ai_msg = DocMessage.objects.create(
                 doc=document,
                 role='agent',
-                content=full_response
+                content=full_response,
+                metadata={
+                    'tools_used': tools_used,
+                    'is_edit': edit_response is not None,
+                    'changes_count': len(edit_response.get('changes', [])) if edit_response else 0
+                }
             )
-            logger.info(f"스트리밍: DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}")
+            logger.info(f"스트리밍: DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}, tools={[t['id'] for t in tools_used]}")
 
             # Mem0에 대화 메모리 추가 (numeric_user_id 사용)
             if numeric_user_id:
@@ -913,12 +946,13 @@ class DocumentChatStreamView(View):
                         ],
                         metadata={
                             "trade_id": trade_id,
-                            "doc_type": document.doc_type
+                            "doc_type": document.doc_type,
+                            "tools_used": [t['id'] for t in tools_used]
                         }
                     )
                     logger.info(f"스트리밍: Mem0 대화 메모리 추가됨: {mem_result}")
                 except Exception as mem_error:
-                    logger.error(f"스트리밍: Mem0 대화 메모리 추가 실패: {mem_error}")
+                    logger.warning(f"스트리밍: Mem0 대화 메모리 추가 실패 (무시): {mem_error}")
 
             logger.info(f"Document chat stream completed: doc_id={doc_id}, tools={[t['id'] for t in tools_used]}")
 

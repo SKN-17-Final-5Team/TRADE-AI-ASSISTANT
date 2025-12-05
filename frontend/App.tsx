@@ -44,15 +44,47 @@ function App() {
   const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
   const [docSessionId, setDocSessionId] = useState<string>(Date.now().toString());
 
-  const handleNavigate = (page: PageType) => {
+  const handleNavigate = async (page: PageType) => {
     if (page === 'main') {
       setCurrentDocId(null);
+      setCurrentDocIds(null);
     }
 
     if (page === 'documents') {
       // If we are navigating to documents and don't have an ID, it's a new document
       // (handleOpenDocument sets the ID before navigating)
-      if (!currentDocId) {
+      if (!currentDocId && currentUser) {
+        try {
+          // Trade 초기화 API 호출 - 새 Trade와 5개의 Document를 생성
+          const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
+          const response = await fetch(`${API_URL}/api/trade/init/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: currentUser.emp_no,
+              title: '새 무역 거래'
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log('[App] Trade 초기화 완료:', data);
+
+            // 새로 생성된 Trade ID 설정
+            setCurrentDocId(data.trade_id.toString());
+
+            // doc_ids를 직접 저장 (새 문서에서 바로 사용 가능)
+            setCurrentDocIds(data.doc_ids);
+
+            // doc_ids를 savedDocuments에 반영하기 위해 fetchTrades 호출 (백그라운드)
+            fetchTrades();
+          } else {
+            console.error('[App] Trade 초기화 실패:', await response.text());
+          }
+        } catch (error) {
+          console.error('[App] Trade 초기화 오류:', error);
+        }
+
         setCurrentStep(1);
         setDocumentData({});
         setCurrentActiveShippingDoc(null);
@@ -72,6 +104,16 @@ function App() {
     const shippingDoc = doc.lastActiveShippingDoc || null;
     setCurrentActiveShippingDoc(shippingDoc);
     setDocSessionId(Date.now().toString()); // New session for opened document
+
+    // tradeData에서 doc_ids 추출하여 설정
+    if (doc.tradeData?.documents) {
+      const docIds: Record<string, number> = {};
+      doc.tradeData.documents.forEach((d: { doc_type: string; doc_id: number }) => {
+        docIds[d.doc_type] = d.doc_id;
+      });
+      setCurrentDocIds(docIds);
+      console.log('[App] 기존 문서 doc_ids 로드:', docIds);
+    }
 
     // Use setTimeout to ensure state is set before navigation
     setTimeout(() => {
@@ -212,6 +254,8 @@ function App() {
   // Track the ID of the document currently being edited
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
   const [currentActiveShippingDoc, setCurrentActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
+  // 현재 Trade의 doc_ids (직접 저장용 - 새 문서 생성 시 바로 사용)
+  const [currentDocIds, setCurrentDocIds] = useState<Record<string, number> | null>(null);
 
   // step을 doc_type으로 변환
   const stepToDocType = (step: number, shippingDoc?: 'CI' | 'PL' | null): string => {
@@ -224,14 +268,21 @@ function App() {
 
   // step에서 doc_id 가져오기
   const getDocId = useCallback((step: number, shippingDoc?: 'CI' | 'PL' | null): number | null => {
+    const docType = stepToDocType(step, shippingDoc);
+
+    // 1. 먼저 currentDocIds에서 찾기 (새 문서 생성 시 바로 사용)
+    if (currentDocIds && currentDocIds[docType]) {
+      return currentDocIds[docType];
+    }
+
+    // 2. savedDocuments에서 찾기
     if (!currentDocId) return null;
     const trade = savedDocuments.find(d => d.id === currentDocId);
     if (!trade?.tradeData?.documents) return null;
 
-    const docType = stepToDocType(step, shippingDoc);
     const document = trade.tradeData.documents.find((d: { doc_type: string }) => d.doc_type === docType);
     return document?.doc_id || null;
-  }, [currentDocId, savedDocuments]);
+  }, [currentDocId, savedDocuments, currentDocIds]);
 
   const handleSaveDocument = async (data: DocumentData, step: number, activeShippingDoc?: 'CI' | 'PL' | null) => {
     // Update currentActiveShippingDoc if provided
