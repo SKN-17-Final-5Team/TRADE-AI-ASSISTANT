@@ -51,13 +51,12 @@ interface ChatAssistantProps {
   onClose?: () => void;
   editorRef: RefObject<ContractEditorRef>;
   onApply: (changes: Change[], step: number) => void;  // Now takes changes array instead of full HTML
-  documentId?: number | null; // Optional document ID for document-specific chat
-  tradeId?: number | null; // 백엔드 TradeFlow.trade_id (정수)
-  docIds?: Record<string, number> | null; // step별 Document.doc_id 맵핑 {"1": 10, "2": 11, ...}
+  documentId?: number | null; // Optional document ID for document-specific chat (업로드 시 사용)
   userEmployeeId?: string; // 사용자 사원번호 (세션 관리용)
+  getDocId?: (step: number, shippingDoc?: 'CI' | 'PL' | null) => number | null; // step에서 doc_id 가져오기 함수
 }
 
-export default function ChatAssistant({ currentStep, onClose, editorRef, onApply, documentId, tradeId, docIds, userEmployeeId }: ChatAssistantProps) {
+export default function ChatAssistant({ currentStep, onClose, editorRef, onApply, documentId, userEmployeeId, getDocId }: ChatAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -75,26 +74,21 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
   const [isConnected, setIsConnected] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 이전 step 및 tradeId 추적 (변경 감지용)
+  // 이전 step 추적 (변경 감지용)
   const prevStepRef = useRef<number>(currentStep);
-  const prevTradeIdRef = useRef<number | null | undefined>(tradeId);
 
-  // Step 번호 → doc_type 매핑
-  const STEP_TO_DOC_TYPE: Record<number, string> = {
-    1: 'offer',
-    2: 'pi',
-    3: 'contract',
-    4: 'ci',
-    5: 'pl'
-  };
-
-  // 현재 step에 해당하는 doc_id 가져오기 (useMemo로 최적화)
+  // 현재 step에 해당하는 doc_id 가져오기 (getDocId 함수 사용)
   const currentDocId = useMemo(() => {
-    if (!docIds) return null;
-    // currentStep 1~5 -> doc_type ('offer', 'pi', ...) -> docIds[doc_type]
-    const docType = STEP_TO_DOC_TYPE[currentStep];
-    return docType ? (docIds[docType] || null) : null;
-  }, [docIds, currentStep, tradeId]);
+    // documentId가 직접 전달된 경우 (업로드된 문서) 우선 사용
+    if (documentId) return documentId;
+    // getDocId 함수를 통해 현재 step의 doc_id 조회
+    if (getDocId) {
+      // Step 4는 CI, Step 5는 PL
+      const shippingDoc = currentStep === 4 ? 'CI' : currentStep === 5 ? 'PL' : null;
+      return getDocId(currentStep <= 3 ? currentStep : (currentStep === 4 ? 4 : 5), shippingDoc);
+    }
+    return null;
+  }, [documentId, getDocId, currentStep]);
 
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
   const USE_DJANGO = import.meta.env.VITE_USE_DJANGO === 'true';
@@ -128,9 +122,10 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
       const data = await response.json();
 
       if (data.messages && data.messages.length > 0) {
-        const loadedMessages: Message[] = data.messages.map((msg: { sender_type: string; content: string }, index: number) => ({
-          id: `loaded_${index}_${Date.now()}`,
-          type: msg.sender_type === 'U' ? 'user' : 'ai',
+        // role 매핑: 백엔드에서는 'user'/'agent'로 저장됨
+        const loadedMessages: Message[] = data.messages.map((msg: { role: string; content: string; doc_message_id?: number }, index: number) => ({
+          id: `loaded_${msg.doc_message_id || index}_${Date.now()}`,
+          type: msg.role === 'user' ? 'user' : 'ai',  // 'agent' -> 'ai'
           content: msg.content,
           step: currentStep
         }));
@@ -143,6 +138,7 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
           },
           ...loadedMessages
         ]);
+        console.log(`[ChatAssistant] 대화 히스토리 로드 완료: ${loadedMessages.length}개 메시지`);
       } else {
         // 히스토리가 없으면 새 채팅으로 시작
         resetChat();
@@ -277,25 +273,21 @@ ${documentContent}
     scrollToBottom();
   }, [messages]);
 
-  // currentStep 또는 tradeId 변경 감지: 문서가 바뀌면 새 채팅 시작
+  // currentStep 변경 감지: 문서가 바뀌면 새 채팅 시작
   useEffect(() => {
     const stepChanged = prevStepRef.current !== currentStep;
-    const tradeChanged = prevTradeIdRef.current !== tradeId;
 
-    if (stepChanged || tradeChanged) {
+    if (stepChanged) {
       prevStepRef.current = currentStep;
-      prevTradeIdRef.current = tradeId;
 
-      // doc_id가 있으면 히스토리 로드, 없으면 리셋
-      const docType = STEP_TO_DOC_TYPE[currentStep];
-      const docId = docType ? docIds?.[docType] : null;
-      if (docId) {
-        loadChatHistory(docId);
+      // currentDocId가 있으면 히스토리 로드, 없으면 리셋
+      if (currentDocId) {
+        loadChatHistory(currentDocId);
       } else {
         resetChat();
       }
     }
-  }, [currentStep, tradeId, docIds]);
+  }, [currentStep, currentDocId]);
 
   // 컴포넌트 마운트 시 현재 step의 대화 히스토리 로드
   useEffect(() => {
@@ -376,18 +368,15 @@ ${documentContent}
 
     // Django 스트리밍 사용 여부
     if (USE_DJANGO) {
-      // doc_id 기반 채팅 (currentDocId 사용)
-      // documentId가 있으면 우선 사용 (업로드된 문서), 없으면 docIds에서 현재 step의 doc_id 사용
-      const effectiveDocId = documentId || currentDocId;
+      // doc_id 기반 채팅 (currentDocId 사용 - 이미 documentId 또는 getDocId 결과가 반영됨)
+      const effectiveDocId = currentDocId;
 
       // 디버깅 로그
       console.log('🔍 Chat API 호출 정보:', {
         documentId,
         currentDocId,
         effectiveDocId,
-        docIds,
         currentStep,
-        tradeId,
         userEmployeeId
       });
 
@@ -485,13 +474,15 @@ ${documentContent}
                   ));
                 } else if (data.type === 'edit') {
                   // 문서 수정 응답 처리 (fieldId/value format)
+                  console.log('[ChatAssistant] 편집 응답 수신:', data);
                   setMessages(prev => prev.map(msg =>
                     msg.id === aiMessageId
                       ? {
                           ...msg,
                           content: data.message || '문서를 수정했습니다.',
                           hasApply: true,
-                          changes: data.changes || []
+                          changes: data.changes || [],
+                          step: requestStep  // step 정보 추가
                         }
                       : msg
                   ));

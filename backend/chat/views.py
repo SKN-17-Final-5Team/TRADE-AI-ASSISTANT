@@ -289,14 +289,18 @@ class ChatStreamView(View):
                 # 기존 채팅 세션 조회 또는 새로 생성
                 if gen_chat_id:
                     try:
-                        gen_chat = GenChat.objects.get(gen_chat_id=gen_chat_id, user=user)
+                        # gen_chat_id만으로 조회 (user 필터 제거 - 이미 프론트에서 관리)
+                        gen_chat = GenChat.objects.get(gen_chat_id=gen_chat_id)
+                        logger.info(f"✅ 기존 GenChat 조회 성공: gen_chat_id={gen_chat_id}")
                     except GenChat.DoesNotExist:
+                        logger.warning(f"⚠️ GenChat 조회 실패, 새로 생성: gen_chat_id={gen_chat_id}")
                         gen_chat = GenChat.objects.create(user=user, title="일반 채팅")
                         is_first_message = True
                 else:
                     # gen_chat_id가 없으면 새 채팅방 생성
                     gen_chat = GenChat.objects.create(user=user, title="일반 채팅")
                     is_first_message = True
+                    logger.info(f"✅ 새 GenChat 생성: gen_chat_id={gen_chat.gen_chat_id}")
 
                 # 사용자 메시지 저장
                 user_msg = GenMessage.objects.create(
@@ -320,41 +324,45 @@ class ChatStreamView(View):
                 {"role": "user" if msg.sender_type == 'U' else "assistant", "content": msg.content}
                 for msg in recent_messages
             ]
-            logger.info(f"✅ 대화 히스토리 로드 (RDS): {len(message_history)}개 메시지")
+            logger.info(f"✅ 대화 히스토리 로드 (RDS): {len(message_history)}개 메시지 (총 {message_count}개 중)")
+            if message_history:
+                for i, msg in enumerate(message_history[-3:]):
+                    logger.info(f"  └ 최근 {i+1}: [{msg['role']}] {msg['content'][:50]}...")
 
-        # 3. Mem0 컨텍스트 로드
+        # 3. Mem0 컨텍스트 로드 (선택적 - 실패해도 계속 진행)
         mem0_context = None
         memory_context_str = ""
         if gen_chat and user:
             try:
                 memory_service = get_memory_service()
-                mem0_context = memory_service.build_gen_chat_context(
-                    gen_chat_id=gen_chat.gen_chat_id,
-                    user_id=user.user_id,
-                    current_query=message,
-                    include_user_memory=True,
-                    is_first_message=is_first_message
-                )
+                if memory_service:
+                    mem0_context = memory_service.build_gen_chat_context(
+                        gen_chat_id=gen_chat.gen_chat_id,
+                        user_id=user.user_id,
+                        current_query=message,
+                        include_user_memory=True,
+                        is_first_message=is_first_message
+                    )
 
-                # Mem0 컨텍스트를 문자열로 변환
-                context_parts = []
-                if mem0_context.get("chat_memories"):
-                    memories_text = "\n".join([
-                        f"- {m.get('memory', m.get('content', ''))}"
-                        for m in mem0_context["chat_memories"]
-                    ])
-                    context_parts.append(f"[이전 대화 컨텍스트]\n{memories_text}")
+                    # Mem0 컨텍스트를 문자열로 변환
+                    context_parts = []
+                    if mem0_context.get("chat_memories"):
+                        memories_text = "\n".join([
+                            f"- {m.get('memory', m.get('content', ''))}"
+                            for m in mem0_context["chat_memories"]
+                        ])
+                        context_parts.append(f"[이전 대화 컨텍스트]\n{memories_text}")
 
-                if mem0_context.get("user_memories"):
-                    user_prefs = "\n".join([
-                        f"- {m.get('memory', m.get('content', ''))}"
-                        for m in mem0_context["user_memories"]
-                    ])
-                    context_parts.append(f"[사용자 선호사항]\n{user_prefs}")
+                    if mem0_context.get("user_memories"):
+                        user_prefs = "\n".join([
+                            f"- {m.get('memory', m.get('content', ''))}"
+                            for m in mem0_context["user_memories"]
+                        ])
+                        context_parts.append(f"[사용자 선호사항]\n{user_prefs}")
 
-                if context_parts:
-                    memory_context_str = "\n\n".join(context_parts)
-                    logger.info(f"✅ Mem0 컨텍스트 로드: {mem0_context.get('context_summary', '')}")
+                    if context_parts:
+                        memory_context_str = "\n\n".join(context_parts)
+                        logger.info(f"✅ Mem0 컨텍스트 로드: {mem0_context.get('context_summary', '')}")
             except Exception as e:
                 logger.warning(f"⚠️ Mem0 컨텍스트 로드 실패 (계속 진행): {e}")
 
@@ -446,21 +454,22 @@ class ChatStreamView(View):
                     except Exception as save_err:
                         logger.error(f"❌ AI 응답 저장 실패: {save_err}")
 
-                # 5. Mem0에 메모리 추가
+                # 5. Mem0에 메모리 추가 (선택적 - 실패해도 무시)
                 if gen_chat and user:
                     try:
                         memory_service = get_memory_service()
-                        memory_service.add_gen_chat_memory(
-                            gen_chat_id=gen_chat.gen_chat_id,
-                            user_id=user.user_id,
-                            messages=[
-                                {"role": "user", "content": message},
-                                {"role": "assistant", "content": full_response}
-                            ]
-                        )
-                        logger.info(f"✅ Mem0 메모리 추가 완료")
+                        if memory_service:
+                            memory_service.add_gen_chat_memory(
+                                gen_chat_id=gen_chat.gen_chat_id,
+                                user_id=user.user_id,
+                                messages=[
+                                    {"role": "user", "content": message},
+                                    {"role": "assistant", "content": full_response}
+                                ]
+                            )
+                            logger.info(f"✅ Mem0 메모리 추가 완료")
                     except Exception as mem_err:
-                        logger.error(f"❌ Mem0 메모리 추가 실패: {mem_err}")
+                        logger.warning(f"⚠️ Mem0 메모리 추가 실패 (무시): {mem_err}")
 
                 # 스트리밍 완료 후 편집 응답인지 확인
                 print(f"[DEBUG] full_response 길이: {len(full_response)}")

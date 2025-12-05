@@ -924,7 +924,8 @@ export default function DocumentCreationPage({
                 ? uploadedDocumentIds[currentStep]
                 : getDocId?.(currentStep, activeShippingDoc) ?? null
             }
-            userId={userEmployeeId}
+            userEmployeeId={userEmployeeId}
+            getDocId={getDocId}
           />
         </div>
       </div>
