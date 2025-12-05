@@ -35,11 +35,11 @@ urlpatterns = [
     # ViewSet routes (먼저 배치하여 trades/, users/ 등이 먼저 매칭되도록 함)
     path('', include(router.urls)),
 
-    # 문서 채팅 (숫자 ID 패턴은 마지막에 배치)
-    path('<int:doc_id>/chat/', DocumentChatView.as_view(), name='document-chat'),
+    # 문서 채팅 (ViewSet URL과 일관성 유지: /api/documents/documents/{id}/...)
+    path('documents/<int:doc_id>/chat/', DocumentChatView.as_view(), name='document-chat'),
 
     # 문서 처리 상태 SSE 스트림
-    path('<int:doc_id>/status/stream/', DocumentProcessingStatusView.as_view(), name='document-status-stream'),
+    path('documents/<int:doc_id>/status/stream/', DocumentProcessingStatusView.as_view(), name='document-status-stream'),
 ]
 
 """
