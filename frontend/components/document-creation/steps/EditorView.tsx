@@ -13,6 +13,8 @@ interface EditorViewProps {
   onBack: () => void;
   onShippingDocChange: (doc: ShippingDocType) => void;
   onChange: (content: string) => void;
+  onRowAdded?: (fieldIds: string[]) => void;
+  onRowDeleted?: (fieldIds: string[]) => void;
 }
 
 export default function EditorView({
@@ -24,6 +26,8 @@ export default function EditorView({
   onBack,
   onShippingDocChange,
   onChange,
+  onRowAdded,
+  onRowDeleted,
   showFieldHighlight,
   showAgentHighlight
 }: EditorViewProps & {
@@ -41,6 +45,8 @@ export default function EditorView({
         className="flex-1 min-h-0"
         initialContent={initialContent}
         onChange={onChange}
+        onRowAdded={onRowAdded}
+        onRowDeleted={onRowDeleted}
         showFieldHighlight={showFieldHighlight}
         showAgentHighlight={showAgentHighlight}
         defaultFontFamily={defaultFontFamily}

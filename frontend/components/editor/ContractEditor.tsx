@@ -5,8 +5,9 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
 import { TextStyle } from '@tiptap/extension-text-style'
+import { TextSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import FontFamily from '@tiptap/extension-font-family'
-import { useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import { saleContractTemplateHTML } from '../../templates/saleContract'
 import EditorToolbar from './EditorToolbar'
 import './editor.css'
@@ -98,11 +99,58 @@ const DataField = Node.create({
 
     // Prevent node deletion - restore placeholder when field would become empty
     addKeyboardShortcuts() {
-        const handleDelete = (editor: any) => {
+        const handleDelete = (editor: any, key: string) => { // Added key param
             const { state } = editor
             const { selection } = state
+            const { from, to } = selection
             const $from = selection.$from
 
+            // 0. Boundary Checks: If at start/end of field, let browser handle (delete outside)
+            if (selection.empty) {
+                // If Backspace at start of field (offset 0), we are deleting the char BEFORE the field.
+                // We should NOT trap this.
+                if (key === 'Backspace' && $from.parentOffset === 0) {
+                    return false
+                }
+                // If Delete at end of field, we are deleting the char AFTER the field.
+                if (key === 'Delete' && $from.parent.type.name === 'dataField' && $from.parentOffset === $from.parent.content.size) {
+                    return false
+                }
+            }
+
+            // 1. Check if selection fully covers a dataField (e.g. NodeSelection or full TextSelection)
+            let coveredNode: any = null
+            let coveredPos: number | null = null
+
+            state.doc.nodesBetween(from, to, (node: any, pos: number) => {
+                if (coveredNode) return false
+                if (node.type.name === 'dataField') {
+                    // Check if fully covered (allow for small margin of error in selection or exact match)
+                    if (pos >= from && pos + node.nodeSize <= to) {
+                        coveredNode = node
+                        coveredPos = pos
+                    }
+                }
+            })
+
+            if (coveredNode && coveredPos !== null) {
+                const fieldId = coveredNode.attrs.fieldId
+                const placeholder = `[${fieldId}]`
+                const targetPos = coveredPos as number // Fix TS error
+
+                // If fully selected, restore placeholder
+                editor.chain()
+                    .command(({ tr }: any) => {
+                        tr.replaceWith(targetPos + 1, targetPos + coveredNode.nodeSize - 1, state.schema.text(placeholder))
+                        tr.setNodeMarkup(targetPos, undefined, { ...coveredNode.attrs, source: null })
+                        return true
+                    })
+                    .setTextSelection({ from: targetPos + 1, to: targetPos + 1 + placeholder.length })
+                    .run()
+                return true
+            }
+
+            // 2. Check if cursor is inside a dataField (Original Logic)
             for (let d = $from.depth; d > 0; d--) {
                 const node = $from.node(d)
                 if (node.type.name === 'dataField') {
@@ -113,6 +161,10 @@ const DataField = Node.create({
 
                     // Already placeholder - prevent any deletion
                     if (text === placeholder) {
+                        // Ensure it is selected so next type overwrites it
+                        if (selection.empty) {
+                            editor.commands.setTextSelection({ from: pos + 1, to: pos + 1 + placeholder.length })
+                        }
                         return true
                     }
 
@@ -138,7 +190,7 @@ const DataField = Node.create({
                                 tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
                                 return true
                             })
-                            .setTextSelection(pos + 1)
+                            .setTextSelection({ from: pos + 1, to: pos + 1 + placeholder.length })
                             .run()
                         return true
                     }
@@ -149,27 +201,32 @@ const DataField = Node.create({
         }
 
         return {
-            'Backspace': ({ editor }) => handleDelete(editor),
-            'Delete': ({ editor }) => handleDelete(editor),
+            'Backspace': ({ editor }) => handleDelete(editor, 'Backspace'),
+            'Delete': ({ editor }) => handleDelete(editor, 'Delete'),
         }
     },
 
     addNodeView() {
         return ReactNodeViewRenderer(({ node, getPos, editor }) => {
-            const isPlaceholder = node.textContent === `[${node.attrs.fieldId}]`;
+            const fieldId = node.attrs.fieldId;
             const source = node.attrs.source;
+            const textContent = node.textContent;
+
+            // Always show placeholder format
+            const displayText = `[${fieldId}]`;
+            const isPlaceholder = textContent === displayText;
 
             let bgClass = '';
-            if (isPlaceholder) {
-                bgClass = 'text-transparent bg-gray-50 hover:bg-gray-100 select-none';
-            } else if (source === 'agent') {
-                bgClass = 'bg-yellow-100';
+            if (source === 'agent') {
+                bgClass = 'bg-yellow-50 border border-yellow-200 text-yellow-900 px-1 rounded';
             } else if (source === 'mapped') {
-                bgClass = 'bg-green-100';
+                bgClass = 'bg-green-50 border border-green-200 text-green-900 px-1 rounded';
             } else if (source === 'user') {
-                bgClass = 'bg-blue-100';
+                // [CHANGED] User input should be black text, but keep blue bg/border to indicate status
+                bgClass = 'bg-blue-50 border border-blue-200 text-gray-900 px-1 rounded';
             } else {
-                bgClass = 'bg-transparent';
+                // Default: show placeholder text always
+                bgClass = 'bg-gray-50 border border-gray-300 text-gray-600 px-1 rounded';
             }
 
             const handleClick = () => {
@@ -191,11 +248,50 @@ const DataField = Node.create({
                     onClick={handleClick}
                     style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
                 >
+                    {/* Always show the text content */}
                     {/* @ts-ignore */}
                     <NodeViewContent as="span" />
                 </NodeViewWrapper>
             )
         })
+    },
+
+    addProseMirrorPlugins() {
+        return [
+            new Plugin({
+                key: new PluginKey('dataFieldProtection'),
+                appendTransaction: (transactions, oldState, newState) => {
+                    // Check if any transaction modified the document
+                    const docChanged = transactions.some(tr => tr.docChanged)
+                    if (!docChanged) return null
+
+                    const tr = newState.tr
+                    let modified = false
+
+                    newState.doc.descendants((node, pos) => {
+                        if (node.type.name === 'dataField' && node.content.size === 0) {
+                            const fieldId = node.attrs.fieldId
+                            const placeholder = `[${fieldId}]`
+
+                            // Restore placeholder
+                            tr.insertText(placeholder, pos + 1)
+                            tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
+
+                            // Force cursor inside and SELECT the placeholder so typing overwrites it
+                            const sel = newState.selection
+                            // Check if selection is near the node (inside or at boundaries)
+                            if (sel.head >= pos && sel.head <= pos + 1) { // Relaxed check
+                                tr.setSelection(TextSelection.create(tr.doc, pos + 1, pos + 1 + placeholder.length))
+                            }
+
+                            modified = true
+                        }
+                    })
+
+                    return modified ? tr : null
+                }
+            })
+        ]
     },
 })
 
@@ -238,6 +334,203 @@ const Div = Node.create({
     renderHTML({ HTMLAttributes }) {
         return ['div', mergeAttributes(HTMLAttributes), 0]
     },
+})
+
+// Row Deletion Detector Extension
+const createRowDeletionDetector = (onRowDeleted?: (fieldIds: string[]) => void) => {
+    return Extension.create({
+        name: 'rowDeletionDetector',
+
+        addProseMirrorPlugins() {
+            return [
+                new Plugin({
+                    key: new PluginKey('rowDeletionDetector'),
+                    appendTransaction: (transactions, oldState, newState) => {
+                        if (!onRowDeleted) return null
+
+                        // Check if any transaction modified the document
+                        const docChanged = transactions.some(tr => tr.docChanged)
+                        if (!docChanged) return null
+
+                        // Count rows and collect field IDs in old and new state
+                        const oldRows: Array<{ fieldIds: string[] }> = []
+                        const newRows: Array<{ fieldIds: string[] }> = []
+
+                        // Collect rows from old state
+                        oldState.doc.descendants((node) => {
+                            if (node.type.name === 'tableRow') {
+                                const fieldIds: string[] = []
+                                node.descendants((childNode) => {
+                                    if (childNode.type.name === 'dataField') {
+                                        const fieldId = childNode.attrs.fieldId
+                                        if (fieldId) {
+                                            fieldIds.push(fieldId)
+                                        }
+                                    }
+                                })
+                                if (fieldIds.length > 0) {
+                                    oldRows.push({ fieldIds })
+                                }
+                            }
+                        })
+
+                        // Collect rows from new state
+                        newState.doc.descendants((node) => {
+                            if (node.type.name === 'tableRow') {
+                                const fieldIds: string[] = []
+                                node.descendants((childNode) => {
+                                    if (childNode.type.name === 'dataField') {
+                                        const fieldId = childNode.attrs.fieldId
+                                        if (fieldId) {
+                                            fieldIds.push(fieldId)
+                                        }
+                                    }
+                                })
+                                if (fieldIds.length > 0) {
+                                    newRows.push({ fieldIds })
+                                }
+                            }
+                        })
+
+                        // Only proceed if row count decreased (deletion)
+                        if (newRows.length >= oldRows.length) {
+                            return null
+                        }
+
+                        // Find which rows were deleted by comparing field IDs
+                        const deletedFieldIds: string[] = []
+                        for (const oldRow of oldRows) {
+                            // Check if this row exists in new state
+                            const rowExists = newRows.some(newRow => {
+                                // Row exists if it has at least one matching field ID
+                                return newRow.fieldIds.some(newId => oldRow.fieldIds.includes(newId))
+                            })
+
+                            if (!rowExists) {
+                                // Row was deleted
+                                deletedFieldIds.push(...oldRow.fieldIds)
+                            }
+                        }
+
+                        if (deletedFieldIds.length > 0) {
+                            console.log(`🗑️ Row deleted with fields: [${deletedFieldIds.join(', ')}]`)
+                            // Call callback asynchronously to avoid transaction conflicts
+                            setTimeout(() => {
+                                onRowDeleted(deletedFieldIds)
+                            }, 0)
+                        }
+
+                        return null
+                    }
+                })
+            ]
+        }
+    })
+}
+
+// Auto Calculation Extension for totals
+const AutoCalculation = Extension.create({
+    name: 'autoCalculation',
+
+    addProseMirrorPlugins() {
+        return [
+            new Plugin({
+                key: new PluginKey('autoCalculation'),
+                appendTransaction: (transactions, oldState, newState) => {
+                    // Check if any transaction modified the document
+                    const docChanged = transactions.some(tr => tr.docChanged)
+                    if (!docChanged) return null
+
+                    const tr = newState.tr
+                    let modified = false
+
+                    // Find total_quantity and total_price fields
+                    let totalQuantityPos: number | null = null
+                    let totalPricePos: number | null = null
+                    let totalQuantityNode: any = null
+                    let totalPriceNode: any = null
+
+                    newState.doc.descendants((node, pos) => {
+                        if (node.type.name === 'dataField') {
+                            if (node.attrs.fieldId === 'total_quantity') {
+                                totalQuantityPos = pos
+                                totalQuantityNode = node
+                            } else if (node.attrs.fieldId === 'total_price') {
+                                totalPricePos = pos
+                                totalPriceNode = node
+                            }
+                        }
+                    })
+
+                    // Calculate totals
+                    if (totalQuantityPos !== null || totalPricePos !== null) {
+                        let totalQuantity = 0
+                        let totalPrice = 0
+
+                        // Sum all quantity and sub_total_price fields
+                        newState.doc.descendants((node) => {
+                            if (node.type.name === 'dataField') {
+                                const fieldId = node.attrs.fieldId
+                                const text = node.textContent
+
+                                // Match quantity fields (quantity, quantity_2, quantity_3, etc.)
+                                if (fieldId && fieldId.match(/^quantity(_\d+)?$/)) {
+                                    const value = parseFloat(text.replace(/[^\d.-]/g, ''))
+                                    if (!isNaN(value)) {
+                                        totalQuantity += value
+                                    }
+                                }
+
+                                // Match sub_total_price fields (sub_total_price, sub_total_price_2, etc.)
+                                if (fieldId && fieldId.match(/^sub_total_price(_\d+)?$/)) {
+                                    const value = parseFloat(text.replace(/[^\d.-]/g, ''))
+                                    if (!isNaN(value)) {
+                                        totalPrice += value
+                                    }
+                                }
+                            }
+                        })
+
+                        // Update total_quantity field
+                        if (totalQuantityPos !== null && totalQuantityNode) {
+                            const newText = totalQuantity.toString()
+                            const currentText = totalQuantityNode.textContent
+
+                            if (currentText !== newText) {
+                                const pos = totalQuantityPos as number
+                                // Create a new dataField node with updated text
+                                const newNode = newState.schema.nodes.dataField.create(
+                                    totalQuantityNode.attrs,
+                                    newState.schema.text(newText)
+                                )
+                                tr.replaceWith(pos, pos + totalQuantityNode.nodeSize, newNode)
+                                modified = true
+                            }
+                        }
+
+                        // Update total_price field
+                        if (totalPricePos !== null && totalPriceNode) {
+                            const newText = totalPrice.toFixed(2)
+                            const currentText = totalPriceNode.textContent
+
+                            if (currentText !== newText) {
+                                const pos = totalPricePos as number
+                                // Create a new dataField node with updated text
+                                const newNode = newState.schema.nodes.dataField.create(
+                                    totalPriceNode.attrs,
+                                    newState.schema.text(newText)
+                                )
+                                tr.replaceWith(pos, pos + totalPriceNode.nodeSize, newNode)
+                                modified = true
+                            }
+                        }
+                    }
+
+                    return modified ? tr : null
+                }
+            })
+        ]
+    }
 })
 
 const Checkbox = Node.create({
@@ -396,6 +689,8 @@ export interface ContractEditorRef {
 interface ContractEditorProps {
     initialContent?: string
     onChange?: (content: string) => void
+    onRowAdded?: (fieldIds: string[]) => void  // Callback when a row is added
+    onRowDeleted?: (fieldIds: string[]) => void  // Callback when a row is deleted
     className?: string
     showFieldHighlight?: boolean
     showAgentHighlight?: boolean
@@ -404,7 +699,7 @@ interface ContractEditorProps {
 }
 
 const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
-    ({ initialContent, onChange, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
+    ({ initialContent, onChange, onRowAdded, onRowDeleted, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
         const editor = useEditor({
             extensions: [
                 StarterKit.configure({
@@ -412,7 +707,219 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                         levels: [1, 2, 3, 4],
                     },
                 }),
-                Table.configure({
+                Table.extend({
+                    addCommands() {
+                        const parentCommands = this.parent?.() || {}
+                        return {
+                            ...parentCommands,
+                            addRowAfter: () => ({ chain, state, dispatch }) => {
+                                console.log('🔵 Custom addRowAfter triggered')
+                                const { selection } = state
+                                const { $from } = selection
+
+                                // Find the table
+                                let tableDepth = -1
+                                for (let d = $from.depth; d > 0; d--) {
+                                    if ($from.node(d).type.name === 'table') {
+                                        tableDepth = d
+                                        break
+                                    }
+                                }
+
+                                const parentAddRowAfter = parentCommands.addRowAfter
+                                if (!parentAddRowAfter) {
+                                    console.error('❌ Parent addRowAfter not found')
+                                    return false
+                                }
+
+                                if (tableDepth === -1) {
+                                    console.warn('⚠️ Not inside a table')
+                                    return chain().command(parentAddRowAfter()).run()
+                                }
+
+                                const tableNode = $from.node(tableDepth)
+
+                                // Find template row (LAST row with 4+ dataField nodes)
+                                // This ensures we get the actual data row (goods section) instead of header sections
+                                let templateRow: any = null
+                                let templateRowFieldCount = 0
+                                const rows: any[] = []
+                                tableNode.forEach((row: any) => {
+                                    if (row.type.name === 'tableRow') {
+                                        rows.push(row)
+                                    }
+                                })
+
+                                // Search in reverse to find the last data row
+                                for (let i = rows.length - 1; i >= 0; i--) {
+                                    const row = rows[i]
+                                    let fieldCount = 0
+                                    row.descendants((node: any) => {
+                                        if (node.type.name === 'dataField') {
+                                            fieldCount++
+                                        }
+                                    })
+
+                                    if (fieldCount >= 4) {
+                                        // Skip if this is the Total row
+                                        let rowText = ''
+                                        row.descendants((node: any) => {
+                                            if (node.isText) {
+                                                rowText += node.text
+                                            }
+                                        })
+                                        if (rowText.toLowerCase().includes('total')) {
+                                            continue
+                                        }
+
+                                        templateRow = row
+                                        templateRowFieldCount = fieldCount
+                                        console.log(`📋 Found template row with ${fieldCount} fields`)
+                                        break
+                                    }
+                                }
+
+                                if (!templateRow) {
+                                    console.log('ℹ️ No template row found with data fields (need at least 4)')
+                                    return chain().command(parentAddRowAfter()).run()
+                                }
+
+                                // Extract field structure from template row
+                                const cellFields: Array<{ cellIndex: number, fields: Array<{ fieldId: string, marks: any[] }> }> = []
+                                templateRow.forEach((cell: any, cellOffset: number, cellIndex: number) => {
+                                    const fields: Array<{ fieldId: string, marks: any[] }> = []
+                                    cell.descendants((node: any) => {
+                                        if (node.type.name === 'dataField') {
+                                            // Get the marks from the text content inside the dataField
+                                            const marks: any[] = []
+                                            node.content.forEach((textNode: any) => {
+                                                if (textNode.marks) {
+                                                    marks.push(...textNode.marks)
+                                                }
+                                            })
+                                            fields.push({
+                                                fieldId: node.attrs.fieldId,
+                                                marks: marks
+                                            })
+                                        }
+                                    })
+                                    if (fields.length > 0) {
+                                        cellFields.push({ cellIndex, fields })
+                                    }
+                                })
+                                console.log(`📋 Found ${cellFields.length} cells with fields in template`)
+
+                                // Collect all existing field IDs
+                                const existingFieldIds = new Set<string>()
+                                state.doc.descendants((node: any) => {
+                                    if (node.type.name === 'dataField') {
+                                        existingFieldIds.add(node.attrs.fieldId)
+                                    }
+                                })
+
+                                // Helper to get next incremented field ID
+                                const getIncrementedFieldId = (baseFieldId: string): string => {
+                                    const match = baseFieldId.match(/^(.*)_(\d+)$/)
+                                    let baseName = baseFieldId
+                                    let startCounter = 2
+
+                                    if (match) {
+                                        baseName = match[1]
+                                    }
+
+                                    let counter = startCounter
+                                    let newId = `${baseName}_${counter}`
+                                    while (existingFieldIds.has(newId)) {
+                                        counter++
+                                        newId = `${baseName}_${counter}`
+                                    }
+                                    existingFieldIds.add(newId)
+                                    return newId
+                                }
+
+                                // Instead of using addRowAfter, we'll insert before the last row (Total row)
+                                // Find the position right before the last row
+                                const lastRowIndex = tableNode.childCount - 1
+                                const tableStartPos = $from.start(tableDepth)
+
+                                // Calculate position before the last row
+                                let insertPos = tableStartPos
+                                for (let i = 0; i < lastRowIndex; i++) {
+                                    insertPos += tableNode.child(i).nodeSize
+                                }
+
+                                console.log(`📍 Inserting new row before Total row (index ${lastRowIndex}) at pos ${insertPos}`)
+
+                                // Helper to recursively clone nodes and replace dataFields
+                                const cloneNode = (node: any): any => {
+                                    if (node.type.name === 'dataField') {
+                                        // Replace with new incremented dataField
+                                        const oldFieldId = node.attrs.fieldId
+                                        const newFieldId = getIncrementedFieldId(oldFieldId)
+                                        const placeholder = `[${newFieldId}]`
+
+                                        // Clone text content with all marks
+                                        const newTextContent: any[] = []
+                                        node.content.forEach((textNode: any) => {
+                                            newTextContent.push(
+                                                state.schema.text(placeholder, textNode.marks)
+                                            )
+                                        })
+
+                                        return state.schema.nodes.dataField.create(
+                                            { ...node.attrs, fieldId: newFieldId },
+                                            newTextContent
+                                        )
+                                    } else if (node.content && node.content.size > 0) {
+                                        // Recursively clone children
+                                        const children: any[] = []
+                                        node.content.forEach((child: any) => {
+                                            children.push(cloneNode(child))
+                                        })
+                                        return node.type.create(node.attrs, children, node.marks)
+                                    } else {
+                                        // Leaf node - clone as-is
+                                        return node.copy(node.content)
+                                    }
+                                }
+
+                                // Clone entire template row
+                                const clonedCells: any[] = []
+                                templateRow.forEach((cell: any) => {
+                                    clonedCells.push(cloneNode(cell))
+                                })
+
+                                const newRow = state.schema.nodes.tableRow.create(
+                                    templateRow.attrs,
+                                    clonedCells
+                                )
+
+                                // Execute: Insert row, then call callback
+                                const result = chain()
+                                    .command(({ tr }) => {
+                                        tr.insert(insertPos, newRow)
+                                        console.log('✅ Inserted new row with cloned fields')
+                                        return true
+                                    })
+                                    .run()
+
+                                // Extract new field IDs and call callback
+                                if (result && onRowAdded) {
+                                    const newFieldIds: string[] = []
+                                    newRow.descendants((node: any) => {
+                                        if (node.type.name === 'dataField') {
+                                            newFieldIds.push(node.attrs.fieldId)
+                                        }
+                                    })
+                                    console.log('📢 Calling onRowAdded with fields:', newFieldIds)
+                                    onRowAdded(newFieldIds)
+                                }
+
+                                return result
+                            },
+                        }
+                    },
+                }).configure({
                     resizable: true,
                     HTMLAttributes: {
                         class: 'contract-table',
@@ -490,6 +997,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 Checkbox,
                 Radio,
                 DataField,
+                createRowDeletionDetector(onRowDeleted),
             ],
             content: initialContent || saleContractTemplateHTML,
             editorProps: {
@@ -526,20 +1034,9 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 const tr = state.tr
                 let modified = false
 
-                // 1. Auto-restore empty fields to placeholder
-                doc.descendants((node: any, pos: number) => {
-                    if (node.type.name === 'dataField') {
-                        const fieldId = node.attrs.fieldId
-                        const placeholder = `[${fieldId}]`
-                        const text = node.textContent
-
-                        if (text === '') {
-                            tr.insertText(placeholder, pos + 1, pos + 1)
-                            tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
-                            modified = true
-                        }
-                    }
-                })
+                // 1. Auto-restore empty fields to placeholder - REMOVED (Handled by ProseMirror Plugin)
+                // The 'dataFieldProtection' plugin in DataField extension now handles this via appendTransaction
+                // which prevents the cursor from jumping out.
 
                 // 2. Sync same-fieldId nodes (if we're in a dataField)
                 if (sourceFieldId && sourceContent !== null && sourcePos !== null) {
@@ -665,10 +1162,20 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             }
         }, [])
 
+        const hasInitialized = useRef(false);
+
+        // Reset hasInitialized when editor instance changes
         useEffect(() => {
-            if (editor && initialContent !== undefined && editor.getHTML() !== initialContent) {
-                // Force update content
+            if (editor) {
+                hasInitialized.current = false;
+            }
+        }, [editor]);
+
+        useEffect(() => {
+            if (editor && initialContent !== undefined && !hasInitialized.current) {
+                // Only set content on initial mount of this editor instance
                 editor.commands.setContent(initialContent);
+                hasInitialized.current = true;
             }
         }, [editor, initialContent]);
 
@@ -688,9 +1195,17 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
         }
 
         return (
-            <div className={`contract-editor flex flex-col h-full ${showFieldHighlight ? 'show-field-highlight' : ''} ${showAgentHighlight ? 'show-agent-highlight' : ''} ${className || ''}`}>
+            <div
+                className={`contract-editor flex flex-col h-full ${showFieldHighlight ? 'show-field-highlight' : ''} ${showAgentHighlight ? 'show-agent-highlight' : ''} ${className || ''}`}
+                onClick={() => {
+                    // [CHANGED] Immediate focus on container click
+                    if (editor && !editor.isFocused) {
+                        editor.chain().focus().run();
+                    }
+                }}
+            >
                 <EditorToolbar editor={editor} defaultFontFamily={defaultFontFamily} defaultFontSize={defaultFontSize} />
-                <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0">
+                <div className="flex-1 border border-gray-200 rounded-b-lg bg-white overflow-y-auto min-h-0 cursor-text">
                     <EditorContent editor={editor} className="h-full" />
                 </div>
             </div>
@@ -701,3 +1216,4 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
 ContractEditor.displayName = 'ContractEditor'
 
 export default ContractEditor
+

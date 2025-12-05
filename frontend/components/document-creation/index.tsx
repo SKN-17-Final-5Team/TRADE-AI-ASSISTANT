@@ -1,5 +1,5 @@
 // DocumentCreationPage - 메인 컴포넌트
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Sparkles, Paperclip, MinusCircle, Check, Lock, Plus, ChevronUp, ChevronDown, Ban, PenTool, ArrowLeft, FileText, Package, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -421,17 +421,81 @@ export default function DocumentCreationPage({
   };
 
   const handleEditorChange = (content: string) => {
+    // Auto-calculate totals
+    const updatedContent = calculateTotals(content);
+
     const saveKey = getDocKeyForStep(currentStep);
     if (saveKey !== -1) {
       setDocumentData((prev: DocumentData) => ({
         ...prev,
-        [saveKey]: content
+        [saveKey]: updatedContent
       }));
+
+      // If content changed due to calculation, update editor
+      if (updatedContent !== content && editorRef.current) {
+        // Use setTimeout to avoid infinite loop
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.setContent(updatedContent);
+          }
+        }, 0);
+      }
 
       // Mark as modified
       markStepModified(saveKey);
       setIsDirty(true);
     }
+  };
+
+  // Helper function to calculate totals
+  const calculateTotals = (htmlContent: string): string => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlContent, 'text/html');
+
+    // Find total_quantity and total_price fields
+    const totalQuantityField = doc.querySelector('[data-field-id="total_quantity"]');
+    const totalPriceField = doc.querySelector('[data-field-id="total_price"]');
+
+    if (!totalQuantityField && !totalPriceField) {
+      return htmlContent; // No total fields, return as is
+    }
+
+    let totalQuantity = 0;
+    let totalPrice = 0;
+
+    // Sum all quantity fields
+    const quantityFields = doc.querySelectorAll('[data-field-id^="quantity"]');
+    quantityFields.forEach((field) => {
+      const fieldId = field.getAttribute('data-field-id');
+      if (fieldId && fieldId.match(/^quantity(_\d+)?$/)) {
+        const value = parseFloat(field.textContent?.replace(/[^\d.-]/g, '') || '0');
+        if (!isNaN(value)) {
+          totalQuantity += value;
+        }
+      }
+    });
+
+    // Sum all sub_total_price fields
+    const priceFields = doc.querySelectorAll('[data-field-id^="sub_total_price"]');
+    priceFields.forEach((field) => {
+      const fieldId = field.getAttribute('data-field-id');
+      if (fieldId && fieldId.match(/^sub_total_price(_\d+)?$/)) {
+        const value = parseFloat(field.textContent?.replace(/[^\d.-]/g, '') || '0');
+        if (!isNaN(value)) {
+          totalPrice += value;
+        }
+      }
+    });
+
+    // Update total fields
+    if (totalQuantityField) {
+      totalQuantityField.textContent = totalQuantity.toString();
+    }
+    if (totalPriceField) {
+      totalPriceField.textContent = totalPrice.toFixed(2);
+    }
+
+    return doc.documentElement.outerHTML.replace(/^<html><head><\/head><body>/, '').replace(/<\/body><\/html>$/, '');
   };
 
   const handleModeSelect = async (mode: StepMode) => {
@@ -454,6 +518,211 @@ export default function DocumentCreationPage({
         console.error('doc_mode 업데이트 실패:', error);
       }
     }
+  };
+
+  const handleRowAdded = (fieldIds: string[]) => {
+    console.log('🔄 handleRowAdded called with:', fieldIds, 'from step:', currentStep);
+
+    // Helper to add row to a document's HTML content
+    const addRowToDocument = (htmlContent: string, fieldIds: string[]): string => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, 'text/html');
+
+      // Find the table
+      const table = doc.querySelector('table');
+      if (!table) {
+        console.warn('⚠️ No table found in document');
+        return htmlContent;
+      }
+
+      // Find the template row (last row with data-field-id)
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      let templateRow: HTMLElement | null = null;
+
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const row = rows[i];
+        const dataFields = row.querySelectorAll('[data-field-id]');
+        const text = row.textContent || '';
+
+        // Check if it's a data row (has multiple fields and not a total/header row)
+        // Explicitly exclude known header sections
+        const isHeaderRow = text.includes('SENT BY') ||
+          text.includes('SENT TO') ||
+          text.includes('Bill of Lading') ||
+          text.includes('Description of goods');
+
+        // Check for Total row (case sensitive "Total " with space to avoid sub_total_price)
+        const isTotalRow = text.includes('Total ');
+
+        if (dataFields.length >= 4 && !isTotalRow && !isHeaderRow) {
+          templateRow = row as HTMLElement;
+          break;
+        }
+      }
+
+      if (!templateRow) {
+        console.warn('⚠️ No template row found in document');
+        return htmlContent;
+      }
+
+      // Collect all existing field IDs in the document to avoid duplicates
+      const existingFieldIds = new Set<string>();
+      const allFields = doc.querySelectorAll('[data-field-id]');
+      allFields.forEach((f: Element) => {
+        const id = f.getAttribute('data-field-id');
+        if (id) existingFieldIds.add(id);
+      });
+
+      const newRow = templateRow.cloneNode(true) as HTMLElement;
+
+      // Create a map of field names to new field IDs
+      const fieldMap = new Map<string, string>();
+      fieldIds.forEach(fieldId => {
+        const baseName = fieldId.replace(/_\d+$/, '');
+        fieldMap.set(baseName, fieldId);
+      });
+
+      // Helper to get next available field ID
+      const getNextFieldId = (baseName: string): string => {
+        let counter = 2;
+        let newId = `${baseName}_${counter}`;
+        while (existingFieldIds.has(newId)) {
+          counter++;
+          newId = `${baseName}_${counter}`;
+        }
+        existingFieldIds.add(newId);
+        return newId;
+      };
+
+      // Replace field IDs in the new row
+      const dataFields = newRow.querySelectorAll('[data-field-id]');
+      dataFields.forEach((field) => {
+        const currentFieldId = field.getAttribute('data-field-id');
+        if (currentFieldId) {
+          const baseName = currentFieldId.replace(/_\d+$/, '');
+          let newFieldId = fieldMap.get(baseName);
+
+          if (!newFieldId) {
+            newFieldId = getNextFieldId(baseName);
+          }
+
+          field.setAttribute('data-field-id', newFieldId);
+          field.textContent = `[${newFieldId}]`;
+        }
+      });
+
+      // Insert AFTER the template row
+      if (templateRow.nextSibling) {
+        templateRow.parentNode?.insertBefore(newRow, templateRow.nextSibling);
+      } else {
+        templateRow.parentNode?.appendChild(newRow);
+      }
+
+      return doc.documentElement.outerHTML.replace(/^<html><head><\/head><body>/, '').replace(/<\/body><\/html>$/, '');
+    };
+
+    // Update all other documents
+    setDocumentData((prev: DocumentData) => {
+      const newData = { ...prev };
+
+      // Sync to all documents except the current one
+      const documentsToSync = [1, 2, 3, 4, 5].filter(step => step !== currentStep);
+
+      documentsToSync.forEach(step => {
+        // Get existing content or template
+        let content = prev[step];
+        if (!content) {
+          // Document doesn't exist yet, use template
+          content = hydrateTemplate(getTemplateForStep(step));
+          console.log(`📄 Using template for step ${step} (first sync)`);
+        }
+
+        console.log(`📝 Updating document at step ${step}`);
+        const updatedContent = addRowToDocument(content, fieldIds);
+        newData[step] = updatedContent;
+      });
+
+      return newData;
+    });
+
+    console.log('✅ Row synchronization complete');
+  };
+
+  // Handle row deletion and sync to other documents
+  const handleRowDeleted = (fieldIds: string[]) => {
+    console.log('🗑️ handleRowDeleted called with:', fieldIds);
+
+    // Helper to delete row from a document's HTML content
+    const deleteRowFromDocument = (htmlContent: string, deletedFieldIds: string[]): string => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, 'text/html');
+
+      // Find the table
+      const table = doc.querySelector('table');
+      if (!table) {
+        console.warn('⚠️ No table found in document');
+        return htmlContent;
+      }
+
+      // Find all rows in tbody only
+      const tbody = table.querySelector('tbody');
+      if (!tbody) {
+        console.warn('⚠️ No tbody found in table');
+        return htmlContent;
+      }
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+
+      // Find and delete rows that contain any of the deleted field IDs
+      let deletedCount = 0;
+      rows.forEach((row) => {
+        const rowFieldIds: string[] = [];
+        const dataFields = row.querySelectorAll('[data-field-id]');
+
+        dataFields.forEach((field) => {
+          const fieldId = field.getAttribute('data-field-id');
+          if (fieldId) {
+            rowFieldIds.push(fieldId);
+          }
+        });
+
+        // Check if this row contains any of the deleted field IDs
+        const hasDeletedField = rowFieldIds.some(id => deletedFieldIds.includes(id));
+
+        if (hasDeletedField) {
+          console.log(`  🗑️ Deleting row with fields: [${rowFieldIds.join(', ')}]`);
+          row.remove();
+          deletedCount++;
+        }
+      });
+
+      if (deletedCount > 0) {
+        console.log(`  ✓ Deleted ${deletedCount} row(s)`);
+      } else {
+        console.log('  ℹ️ No matching rows found to delete');
+      }
+
+      return doc.documentElement.outerHTML.replace(/^<html><head><\/head><body>/, '').replace(/<\/body><\/html>$/, '');
+    };
+
+    // Update all other documents
+    setDocumentData((prev: DocumentData) => {
+      const newData = { ...prev };
+
+      // Sync to all documents except the current one
+      const documentsToSync = [1, 2, 3, 4, 5].filter(step => step !== currentStep);
+
+      documentsToSync.forEach(step => {
+        if (prev[step]) {
+          console.log(`📝 Deleting row from document at step ${step}`);
+          newData[step] = deleteRowFromDocument(prev[step], fieldIds);
+        }
+      });
+
+      return newData;
+    });
+
+    console.log('✅ Row deletion synchronization complete');
   };
 
   const handleShippingDocChange = (doc: ShippingDocType) => {
@@ -492,13 +761,15 @@ export default function DocumentCreationPage({
     }
   };
 
-  // Get initial content for editor
-  const getInitialContent = (): string => {
-    const docKey = getDocKeyForStep(currentStep);
-    if (docKey === -1) return '';
-    const content = documentData[docKey] || hydrateTemplate(getTemplateForStep(docKey));
+  // Calculate doc key for current step
+  const currentDocKey = getDocKeyForStep(currentStep);
+
+  // Get initial content for editor (memoized to prevent unnecessary reloads)
+  const initialContent = useMemo((): string => {
+    if (currentDocKey === -1) return '';
+    const content = documentData[currentDocKey] || hydrateTemplate(getTemplateForStep(currentDocKey));
     return updateContentWithSharedData(content);
-  };
+  }, [currentDocKey, documentData[currentDocKey], sharedData]);
 
   const renderStepHeaderControls = () => {
     // 1. Left Side Content (Back Button)
@@ -658,7 +929,7 @@ export default function DocumentCreationPage({
         stepModes={stepModes}
         activeShippingDoc={activeShippingDoc}
         editorRef={editorRef}
-        initialContent={getInitialContent()}
+        initialContent={initialContent}
         onBack={() => {
           if (currentStep === 4 && activeShippingDoc) {
             // Save before going back to dashboard
@@ -675,6 +946,8 @@ export default function DocumentCreationPage({
         }}
         onShippingDocChange={handleShippingDocChange}
         onChange={handleEditorChange}
+        onRowAdded={handleRowAdded}
+        onRowDeleted={handleRowDeleted}
         showFieldHighlight={showFieldHighlight}
         showAgentHighlight={showAgentHighlight}
       />

@@ -191,14 +191,16 @@
 }
 
 /* Field highlight toggle - hide mapped/user field highlights when toggle is off */
-.contract-editor:not(.show-field-highlight) .data-field-node.bg-green-100,
-.contract-editor:not(.show-field-highlight) .data-field-node.bg-blue-100 {
+.contract-editor:not(.show-field-highlight) .data-field-node.bg-green-50,
+.contract-editor:not(.show-field-highlight) .data-field-node.bg-blue-50 {
     background-color: transparent !important;
+    border-color: transparent !important;
 }
 
 /* Agent highlight toggle - hide agent highlights when toggle is off */
-.contract-editor:not(.show-agent-highlight) .data-field-node.bg-yellow-100 {
+.contract-editor:not(.show-agent-highlight) .data-field-node.bg-yellow-50 {
     background-color: transparent !important;
+    border-color: transparent !important;
 }
 
 /* Print styles */

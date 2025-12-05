@@ -80,7 +80,10 @@ export default function EditorToolbar({ editor, defaultFontFamily = 'Arial', def
     }
 
     return (
-        <div className="flex flex-wrap items-center gap-1 p-2 border border-b-0 border-gray-200 rounded-t-lg bg-gray-50 relative z-10">
+        <div
+            className="flex flex-wrap items-center gap-1 p-2 border border-b-0 border-gray-200 rounded-t-lg bg-gray-50 relative z-10"
+            onClick={(e) => e.stopPropagation()}
+        >
             {/* History */}
             <ToolbarButton
                 onClick={() => editor.chain().focus().undo().run()}
@@ -137,6 +140,10 @@ export default function EditorToolbar({ editor, defaultFontFamily = 'Arial', def
                 <option value="Times New Roman">Times New Roman</option>
                 <option value="Georgia">Georgia</option>
                 <option value="Courier New">Courier New</option>
+                <option value="Roboto">Roboto</option>
+                <option value="Open Sans">Open Sans</option>
+                <option value="Lato">Lato</option>
+                <option value="Montserrat">Montserrat</option>
             </select>
 
             {/* Font Size */}
@@ -160,6 +167,11 @@ export default function EditorToolbar({ editor, defaultFontFamily = 'Arial', def
                 <option value="20px">20px</option>
                 <option value="24px">24px</option>
                 <option value="30px">30px</option>
+                <option value="36px">36px</option>
+                <option value="48px">48px</option>
+                <option value="60px">60px</option>
+                <option value="72px">72px</option>
+                <option value="96px">96px</option>
             </select>
 
             <ToolbarDivider />
