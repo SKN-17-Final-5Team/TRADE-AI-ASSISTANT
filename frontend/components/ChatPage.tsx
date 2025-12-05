@@ -40,12 +40,12 @@ const getToolIcon = (iconName: string) => {
 const suggestedQuestions = [
   {
     icon: FileText,
-    title: 'L/C란 무엇인가요?',
+    title: 'LC란 무엇인가요?',
     description: '신용장의 개념과 종류'
   },
   {
     icon: MessageCircle,
-    title: 'B/L 작성 방법이 궁금해요',
+    title: 'BL 작성 방법이 궁금해요',
     description: '선하증권 작성 가이드'
   },
   {
@@ -59,7 +59,6 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [genChatId, setGenChatId] = useState<number | null>(null);  // 채팅 세션 ID (메모리 추적용)
   const [showMyPageModal, setShowMyPageModal] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -67,7 +66,11 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [genChatId, setGenChatId] = useState<number | null>(null);  // 채팅 세션 ID
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // API URL 정의 (useEffect보다 먼저 정의해야 함)
+  const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -76,6 +79,9 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // 컴포넌트 마운트 시 항상 새 채팅방으로 시작 (genChatId를 null로 유지)
+  // 첫 메시지 전송 시 백엔드에서 새 gen_chat_id를 생성해서 반환함
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,8 +120,6 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
     }, 2000);
   };
 
-  const DJANGO_API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
-
   const handleSend = async (customInput?: string) => {
     const messageToSend = customInput || input;
     if (!messageToSend.trim() || isLoading) return;
@@ -134,14 +138,14 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
     setIsLoading(true);
 
     try {
-      // Django 스트리밍 API 호출 (user_id, gen_chat_id 포함하여 메모리 추적)
+      // Django 스트리밍 API 호출 (user_id, gen_chat_id 포함)
       const response = await fetch(`${DJANGO_API_URL}/api/chat/stream/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: messageToSend,
-          user_id: userEmployeeId,  // 메모리 저장을 위한 사용자 ID
-          gen_chat_id: genChatId    // 기존 채팅 세션 ID (없으면 새로 생성됨)
+          user_id: userEmployeeId,
+          gen_chat_id: genChatId
         })
       });
 
@@ -181,7 +185,7 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
               const data = JSON.parse(line.slice(6));
 
               if (data.type === 'init') {
-                // 서버에서 보내준 gen_chat_id를 저장하여 다음 요청에 사용
+                // 채팅 세션 ID 저장 (메모리 기능용)
                 if (data.gen_chat_id) {
                   setGenChatId(data.gen_chat_id);
                 }
