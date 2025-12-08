@@ -6,6 +6,30 @@ interface PasswordChangeModalProps {
   onClose: () => void;
 }
 
+// 비밀번호 유효성 검사 함수
+// 조건: 8~16자, 영문(A-Z, a-z), 숫자, 특수문자 조합
+function validatePassword(password: string): { isValid: boolean; message: string } {
+  // 길이 검사 (8~16자)
+  if (password.length < 8 || password.length > 16) {
+    return { isValid: false, message: '비밀번호는 8~16자 사이여야 합니다.' };
+  }
+
+  // 각 문자 유형 포함 여부 확인
+  const hasLetter = /[A-Za-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password);
+
+  // 영문, 숫자, 특수문자 모두 포함해야 함
+  if (!hasLetter || !hasNumber || !hasSpecialChar) {
+    return {
+      isValid: false,
+      message: '비밀번호는 영문, 숫자, 특수문자를 각각 1개 이상 포함해야 합니다.'
+    };
+  }
+
+  return { isValid: true, message: '' };
+}
+
 export default function PasswordChangeModal({
   isOpen,
   onClose
@@ -27,14 +51,27 @@ export default function PasswordChangeModal({
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 현재 비밀번호 입력 확인
+    if (!currentPassword) {
+      setPasswordError('현재 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    // 새 비밀번호 유효성 검사
+    const validation = validatePassword(newPassword);
+    if (!validation.isValid) {
+      setPasswordError(validation.message);
+      return;
+    }
+
+    // 새 비밀번호 확인 일치 검사
     if (newPassword !== confirmPassword) {
       setPasswordError('새 비밀번호가 일치하지 않습니다.');
       return;
     }
-    if (newPassword.length < 8) {
-      setPasswordError('비밀번호는 8자 이상이어야 합니다.');
-      return;
-    }
+
+    // TODO: 백엔드 API 연동 (다음 단계에서 구현)
     setPasswordSuccess(true);
     setPasswordError('');
     setTimeout(() => {
@@ -89,7 +126,7 @@ export default function PasswordChangeModal({
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-3"
-              placeholder="새 비밀번호를 입력하세요 (8자 이상)"
+              placeholder="8~16자, 영문/숫자/특수문자 조합"
             />
           </div>
           <div>
