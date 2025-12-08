@@ -281,6 +281,38 @@ class DocumentViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(trade_id=trade_id)
         return queryset
 
+    def destroy(self, request, *args, **kwargs):
+        """
+        문서 삭제 + Mem0 메모리 정리
+
+        DELETE /api/documents/{doc_id}/
+        """
+        document = self.get_object()
+        doc_id = document.doc_id
+
+        try:
+            # 1. Mem0 메모리 삭제
+            mem_service = get_memory_service()
+            if mem_service:
+                mem_service.delete_doc_memory(doc_id)
+                logger.info(f"Deleted mem0 memory for doc_id={doc_id}")
+
+            # 2. RDS에서 삭제
+            document.delete()
+            logger.info(f"Successfully deleted doc_id={doc_id}")
+
+            return Response({
+                'message': '문서가 삭제되었습니다.',
+                'doc_id': doc_id
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Failed to delete document: {e}")
+            return Response(
+                {'error': f'삭제 중 오류가 발생했습니다: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
         """
@@ -533,7 +565,7 @@ class DocumentChatView(APIView):
             user = get_user_by_id_or_emp_no(user_id)
             numeric_user_id = user.user_id if user else None
 
-            if numeric_user_id:
+            if numeric_user_id and mem_service:
                 context = mem_service.build_context(
                     doc_id=doc_id,
                     user_id=numeric_user_id,
@@ -596,22 +628,27 @@ class DocumentChatView(APIView):
             )
             logger.info(f"DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}")
 
-            # 7. Mem0에 메모리 추가
-            if numeric_user_id:
+            # 7. Mem0에 메모리 추가 (단기 + 장기)
+            if numeric_user_id and mem_service:
+                messages = [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": result.final_output}
+                ]
                 try:
-                    mem_result = mem_service.add_doc_memory(
+                    # 단기 메모리 (문서별)
+                    mem_service.add_doc_memory(
                         doc_id=doc_id,
                         user_id=numeric_user_id,
-                        messages=[
-                            {"role": "user", "content": message},
-                            {"role": "assistant", "content": result.final_output}
-                        ],
-                        metadata={
-                            "trade_id": trade_id,
-                            "doc_type": document.doc_type
-                        }
+                        messages=messages,
+                        metadata={"trade_id": trade_id, "doc_type": document.doc_type}
                     )
-                    logger.info(f"Mem0 메모리 추가됨: {mem_result}")
+                    # 장기 메모리 (사용자별)
+                    mem_service.add_user_memory(
+                        user_id=numeric_user_id,
+                        messages=messages,
+                        metadata={"trade_id": trade_id, "doc_type": document.doc_type}
+                    )
+                    logger.info(f"Mem0 단기/장기 메모리 추가됨: doc_id={doc_id}, user_id={numeric_user_id}")
                 except Exception as mem_error:
                     logger.error(f"Mem0 메모리 추가 실패: {mem_error}")
 
@@ -733,7 +770,7 @@ class DocumentChatStreamView(View):
         user = get_user_by_id_or_emp_no(user_id)
         numeric_user_id = user.user_id if user else None
 
-        if numeric_user_id:
+        if numeric_user_id and mem_service:
             context = mem_service.build_context(
                 doc_id=doc_id,
                 user_id=numeric_user_id,
@@ -962,25 +999,21 @@ class DocumentChatStreamView(View):
             )
             logger.info(f"스트리밍: DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}, tools={[t['id'] for t in tools_used]}")
 
-            # Mem0에 대화 메모리 추가 (numeric_user_id 사용)
-            if numeric_user_id:
+            # Mem0에 대화 메모리 추가 (단기 + 장기)
+            if numeric_user_id and mem_service:
+                messages = [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": full_response}
+                ]
+                metadata = {"trade_id": trade_id, "doc_type": document.doc_type, "tools_used": [t['id'] for t in tools_used]}
                 try:
-                    mem_result = mem_service.add_doc_memory(
-                        doc_id=doc_id,
-                        user_id=numeric_user_id,
-                        messages=[
-                            {"role": "user", "content": message},
-                            {"role": "assistant", "content": full_response}
-                        ],
-                        metadata={
-                            "trade_id": trade_id,
-                            "doc_type": document.doc_type,
-                            "tools_used": [t['id'] for t in tools_used]
-                        }
-                    )
-                    logger.info(f"스트리밍: Mem0 대화 메모리 추가됨: {mem_result}")
+                    # 단기 메모리 (문서별)
+                    mem_service.add_doc_memory(doc_id=doc_id, user_id=numeric_user_id, messages=messages, metadata=metadata)
+                    # 장기 메모리 (사용자별)
+                    mem_service.add_user_memory(user_id=numeric_user_id, messages=messages, metadata=metadata)
+                    logger.info(f"스트리밍: Mem0 단기/장기 메모리 추가됨: doc_id={doc_id}, user_id={numeric_user_id}")
                 except Exception as mem_error:
-                    logger.warning(f"스트리밍: Mem0 대화 메모리 추가 실패 (무시): {mem_error}")
+                    logger.warning(f"스트리밍: Mem0 메모리 추가 실패 (무시): {mem_error}")
 
             logger.info(f"Document chat stream completed: doc_id={doc_id}, tools={[t['id'] for t in tools_used]}")
 
