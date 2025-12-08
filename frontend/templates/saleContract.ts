@@ -33,29 +33,14 @@ export const saleContractTemplateHTML = `
         </thead>
         <tbody>
             <tr>
-                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">1 <mark>[item_no]</mark></td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[item_no]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[hscode]</mark>, <mark>[description]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[quantity]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;"><mark>[unit_price]</mark> / <mark>[unit]</mark> <mark>[currency]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;"><mark>[currency]</mark><mark>[sub_total_price]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[notice]</mark></td>
             </tr>
-            <tr>
-                <td style="padding: 10px; border: 1px solid #d1d5db; height: 30px;">2</td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-            </tr>
-            <tr>
-                <td style="padding: 10px; border: 1px solid #d1d5db; height: 30px;">3</td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-            </tr>
+
             <tr>
                 <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; background-color: #f0f0f0; font-weight: bold;">합계</td>
                 <td style="padding: 8px; border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
