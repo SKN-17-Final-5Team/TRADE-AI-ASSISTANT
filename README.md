@@ -52,15 +52,15 @@ TRADE-AI-ASSISTANT/
 │   │   │
 │   │   ├── LoginPage.tsx              # 로그인 페이지
 │   │   ├── MainPage.tsx               # 메인 페이지
-│   │   ├── DocumentCreationPage.tsx   # 문서 생성 페이지
+│   │   ├── DocumentCreationPage.tsx   # 문서 생성 페이지 (안 쓰임)
 │   │   ├── StepSelector.tsx           # 단계 선택기
 │   │   ├── PdfViewer.tsx              # PDF 뷰어
 │   │   ├── OthersDocumentViewer.tsx   # 기타 문서 뷰어
 │   │   ├── VersionHistorySidebar.tsx  # 버전 히스토리 사이드바
 │   │   ├── ShootingStarIntro.tsx      # 인트로 애니메이션
 │   │   │
-│   │   ├── CommercialInvoiceTemplate.tsx   # Commercial Invoice 템플릿
-│   │   ├── SalesContractTemplate.tsx       # Sales Contract 템플릿
+│   │   ├── CommercialInvoiceTemplate.tsx   # Commercial Invoice 템플릿 (안 쓰임)
+│   │   ├── SalesContractTemplate.tsx       # Sales Contract 템플릿 (안 쓰임)
 │   │   │
 │   │   ├── document-creation/         # 문서 생성 모듈
 │   │   │   ├── hooks/                 # 커스텀 훅
