@@ -213,53 +213,38 @@ export default function DocumentCreationPage({
   };
 
   const handleSave = () => {
+    const newDocData: DocumentData = {
+      ...documentData,
+      stepModes,
+      uploadedFileNames,
+      uploadedFileUrls: uploadedDocumentUrls
+    };
+
     if (editorRef.current) {
       const content = editorRef.current.getContent();
       extractData(content);
-      let saveKey = -1;
-      if (currentStep <= 3) saveKey = currentStep;
-      else if (shippingOrder) saveKey = getDocKeyForStep(currentStep);
 
-      const newDocData = {
-        ...documentData,
-        stepModes: stepModes,
-        uploadedFileNames: uploadedFileNames
-      };
-
+      const saveKey = currentStep <= 3 ? currentStep : (shippingOrder ? getDocKeyForStep(currentStep) : -1);
       if (saveKey !== -1) {
         (newDocData as any)[saveKey] = content;
       }
 
       // Propagate shared data changes to other documents
-      // This ensures that if a mapped field (e.g., Buyer Name) is changed,
-      // other documents using that field are also updated and saved.
-      // However, if only unmapped content is changed, other documents are NOT touched.
-      extractData(content); // Update sharedData state
-
       Object.keys(newDocData).forEach(key => {
         const docKey = Number(key);
         if (isNaN(docKey) || key === 'title' || docKey === saveKey) return;
 
         const originalContent = (newDocData as any)[key];
         if (typeof originalContent === 'string') {
-          const newContent = updateContentWithSharedData(originalContent);
-          // Only update if content ACTUALLY changed (mapped field update)
-          if (newContent !== originalContent) {
-            (newDocData as any)[key] = newContent;
-          }
+          const updated = updateContentWithSharedData(originalContent);
+          if (updated !== originalContent) (newDocData as any)[key] = updated;
         }
       });
 
       setDocumentData(newDocData);
-      onSave(newDocData, currentStep, activeShippingDoc);
-    } else {
-      const newDocData = {
-        ...documentData,
-        stepModes: stepModes,
-        uploadedFileNames: uploadedFileNames
-      };
-      onSave(newDocData, currentStep, activeShippingDoc);
     }
+
+    onSave(newDocData, currentStep, activeShippingDoc);
     setIsDirty(false);
     setShowSaveSuccessModal(true);
   };

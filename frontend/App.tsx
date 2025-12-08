@@ -33,13 +33,30 @@ export interface SavedDocument {
   tradeData?: Trade; // 백엔드 Trade 원본 데이터
 }
 
+// sessionStorage에서 문서 작성 상태 복원
+const getSessionState = () => {
+  try {
+    return {
+      currentPage: (sessionStorage.getItem('currentPage') as PageType) || 'main',
+      currentStep: Number(sessionStorage.getItem('currentStep')) || 0,
+      documentData: JSON.parse(sessionStorage.getItem('documentData') || '{}'),
+      currentDocId: sessionStorage.getItem('currentDocId'),
+      currentDocIds: JSON.parse(sessionStorage.getItem('currentDocIds') || 'null'),
+    };
+  } catch {
+    return { currentPage: 'main' as PageType, currentStep: 0, documentData: {}, currentDocId: null, currentDocIds: null };
+  }
+};
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentPage, setCurrentPage] = useState<PageType>('main');
-  const [currentStep, setCurrentStep] = useState(0);
-  const [documentData, setDocumentData] = useState<DocumentData>({});
+
+  const sessionState = getSessionState();
+  const [currentPage, setCurrentPage] = useState<PageType>(sessionState.currentPage);
+  const [currentStep, setCurrentStep] = useState(sessionState.currentStep);
+  const [documentData, setDocumentData] = useState<DocumentData>(sessionState.documentData);
   const [transition, setTransition] = useState<TransitionType>('none');
   const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
   const [docSessionId, setDocSessionId] = useState<string>(Date.now().toString());
@@ -48,6 +65,8 @@ function App() {
     if (page === 'main') {
       setCurrentDocId(null);
       setCurrentDocIds(null);
+      setDocumentData({});
+      setCurrentStep(0);
     }
 
     if (page === 'documents') {
@@ -223,10 +242,10 @@ function App() {
   }, [isAuthenticated, currentUser, fetchTrades]);
 
   // Track the ID of the document currently being edited
-  const [currentDocId, setCurrentDocId] = useState<string | null>(null);
+  const [currentDocId, setCurrentDocId] = useState<string | null>(sessionState.currentDocId);
   const [currentActiveShippingDoc, setCurrentActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
   // 현재 Trade의 doc_ids (직접 저장용 - 새 문서 생성 시 바로 사용)
-  const [currentDocIds, setCurrentDocIds] = useState<Record<string, number> | null>(null);
+  const [currentDocIds, setCurrentDocIds] = useState<Record<string, number> | null>(sessionState.currentDocIds);
 
   // step을 doc_type으로 변환
   const stepToDocType = (step: number, shippingDoc?: 'CI' | 'PL' | null): string => {
@@ -340,6 +359,15 @@ function App() {
       }
     }
   }, []);
+
+  // 문서 작성 상태를 sessionStorage에 저장
+  useEffect(() => {
+    sessionStorage.setItem('currentPage', currentPage);
+    sessionStorage.setItem('currentStep', currentStep.toString());
+    sessionStorage.setItem('documentData', JSON.stringify(documentData));
+    currentDocId ? sessionStorage.setItem('currentDocId', currentDocId) : sessionStorage.removeItem('currentDocId');
+    currentDocIds ? sessionStorage.setItem('currentDocIds', JSON.stringify(currentDocIds)) : sessionStorage.removeItem('currentDocIds');
+  }, [currentPage, currentStep, documentData, currentDocId, currentDocIds]);
 
   const handleLogin = (employeeId: string, user?: User) => {
     setUserEmail(employeeId);
