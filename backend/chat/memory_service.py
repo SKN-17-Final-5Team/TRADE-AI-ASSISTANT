@@ -9,6 +9,15 @@ This module provides memory management for:
 import os
 import logging
 from typing import List, Dict, Any, Optional
+
+# 타임존 설정 (Asia/Seoul)
+os.environ['TZ'] = 'Asia/Seoul'
+try:
+    import time
+    time.tzset()
+except AttributeError:
+    pass  # Windows에서는 tzset() 미지원
+
 from mem0 import Memory
 
 logger = logging.getLogger(__name__)
