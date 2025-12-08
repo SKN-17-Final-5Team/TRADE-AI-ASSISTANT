@@ -524,3 +524,36 @@ class ChatStreamView(View):
                     logger.info(f"✅ Mem0 단기/장기 메모리 추가 완료")
             except Exception as mem_err:
                 logger.warning(f"⚠️ Mem0 메모리 추가 실패 (무시): {mem_err}")
+
+
+class GenChatDeleteView(APIView):
+    """
+    일반 채팅 삭제 API (Mem0 메모리도 함께 삭제)
+
+    DELETE /api/chat/general/<gen_chat_id>/
+    """
+
+    def delete(self, request, gen_chat_id):
+        try:
+            gen_chat = GenChat.objects.get(gen_chat_id=gen_chat_id)
+
+            # Mem0 단기 메모리 삭제
+            try:
+                memory_service = get_memory_service()
+                if memory_service:
+                    memory_service.delete_gen_chat_memory(gen_chat_id)
+                    logger.info(f"✅ Mem0 메모리 삭제 완료: gen_chat_id={gen_chat_id}")
+            except Exception as mem_err:
+                logger.warning(f"⚠️ Mem0 메모리 삭제 실패 (계속 진행): {mem_err}")
+
+            # DB에서 채팅 삭제
+            gen_chat.delete()
+            logger.info(f"✅ GenChat 삭제 완료: gen_chat_id={gen_chat_id}")
+
+            return Response({"message": "삭제 완료"}, status=status.HTTP_200_OK)
+
+        except GenChat.DoesNotExist:
+            return Response(
+                {"error": "채팅을 찾을 수 없습니다."},
+                status=status.HTTP_404_NOT_FOUND
+            )

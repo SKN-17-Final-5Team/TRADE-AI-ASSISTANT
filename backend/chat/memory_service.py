@@ -590,6 +590,25 @@ class TradeMemoryService:
             logger.error(f"Failed to get gen_chat memory: {e}")
             return []
 
+    def delete_gen_chat_memory(self, gen_chat_id: int) -> bool:
+        """
+        일반 채팅 메모리 삭제
+
+        Args:
+            gen_chat_id: 일반 채팅 세션 ID
+
+        Returns:
+            성공 여부
+        """
+        try:
+            self.memory.delete_all(user_id=f"gen_chat_{gen_chat_id}")
+            logger.info(f"Deleted all memories for gen_chat_id={gen_chat_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to delete gen_chat memory: {e}")
+            return False
+
     def build_gen_chat_context(
         self,
         gen_chat_id: int,

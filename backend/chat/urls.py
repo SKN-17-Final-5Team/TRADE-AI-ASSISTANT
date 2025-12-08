@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ChatView, ChatStreamView
+from .views import ChatView, ChatStreamView, GenChatDeleteView
 from .trade_views import (
     TradeInitView,
     TradeFlowViewSet,
@@ -23,6 +23,7 @@ urlpatterns = [
 
     # 일반 채팅 (Mem0 통합)
     path('chat/general/', GeneralChatView.as_view(), name='chat-general'),
+    path('chat/general/<int:gen_chat_id>/', GenChatDeleteView.as_view(), name='chat-general-delete'),
 
     # 무역 거래 초기화
     path('trade/init/', TradeInitView.as_view(), name='trade-init'),
