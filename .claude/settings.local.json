@@ -15,7 +15,8 @@
       "Bash(find:*)",
       "Bash(set DJANGO_SETTINGS_MODULE=config.settings:*)",
       "Bash(timeout /t 3 /nobreak)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "mcp__serena__list_dir"
     ],
     "deny": [],
     "ask": []
