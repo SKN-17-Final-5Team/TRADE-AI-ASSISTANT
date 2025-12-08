@@ -540,43 +540,43 @@ export default function DocumentCreationPage({
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlContent, 'text/html');
 
-      // Find the table
-      const table = doc.querySelector('table');
-      if (!table) {
-        console.warn('⚠️ No table found in document');
-        return htmlContent;
-      }
-
-      // Find the template row (last row with data-field-id)
-      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      // Find the template row by searching all tables
+      const tables = doc.querySelectorAll('table');
       let templateRow: HTMLElement | null = null;
 
-      for (let i = rows.length - 1; i >= 0; i--) {
-        const row = rows[i];
-        const dataFields = row.querySelectorAll('[data-field-id]');
-        const text = row.textContent || '';
+      for (const table of Array.from(tables)) {
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
 
-        // Check if it's a data row by looking for specific item fields
-        let hasItemField = false;
-        dataFields.forEach(field => {
-          const fid = field.getAttribute('data-field-id') || '';
-          if (fid.startsWith('item_no') ||
-            fid.startsWith('unit_price') ||
-            fid.startsWith('quantity') ||
-            fid.startsWith('description') ||
-            fid.startsWith('sub_total_price')) {
-            hasItemField = true;
+        for (let i = rows.length - 1; i >= 0; i--) {
+          const row = rows[i];
+          const dataFields = row.querySelectorAll('[data-field-id]');
+          const text = row.textContent || '';
+
+          // Check if it's a data row by looking for specific item fields
+          let hasItemField = false;
+          dataFields.forEach(field => {
+            const fid = field.getAttribute('data-field-id') || '';
+            if (fid.startsWith('item_no') ||
+              fid.startsWith('unit_price') ||
+              fid.startsWith('quantity') ||
+              fid.startsWith('description') ||
+              fid.startsWith('sub_total_price') ||
+              fid.startsWith('marks_and_numbers')) {
+              hasItemField = true;
+            }
+          });
+
+          // Check for Total row (case sensitive "Total " with space to avoid sub_total_price)
+          const isTotalRow = text.includes('Total ') || text.includes('TOTAL :');
+
+          // Must have item fields AND multiple fields (to avoid false positives)
+          if (hasItemField && dataFields.length >= 3 && !isTotalRow) {
+            templateRow = row as HTMLElement;
+            break;
           }
-        });
-
-        // Check for Total row (case sensitive "Total " with space to avoid sub_total_price)
-        const isTotalRow = text.includes('Total ') || text.includes('TOTAL :');
-
-        // Must have item fields AND multiple fields (to avoid false positives)
-        if (hasItemField && dataFields.length >= 3 && !isTotalRow) {
-          templateRow = row as HTMLElement;
-          break;
         }
+
+        if (templateRow) break; // Found it, stop searching tables
       }
 
       if (!templateRow) {
@@ -645,8 +645,15 @@ export default function DocumentCreationPage({
     setDocumentData((prev: DocumentData) => {
       const newData = { ...prev };
 
+      // Determine the key of the document currently being edited
+      let currentDocKey = currentStep;
+      if (currentStep === 4) {
+        if (activeShippingDoc === 'CI') currentDocKey = 4;
+        else if (activeShippingDoc === 'PL') currentDocKey = 5;
+      }
+
       // Sync to all documents except the current one
-      const documentsToSync = [1, 2, 3, 4, 5].filter(step => step !== currentStep);
+      const documentsToSync = [1, 2, 3, 4, 5].filter(key => key !== currentDocKey);
 
       documentsToSync.forEach(step => {
         // Get existing content or template
