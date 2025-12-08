@@ -51,44 +51,12 @@ function App() {
     }
 
     if (page === 'documents') {
-      // If we are navigating to documents and don't have an ID, it's a new document
-      // (handleOpenDocument sets the ID before navigating)
-      if (!currentDocId && currentUser) {
-        try {
-          // Trade 초기화 API 호출 - 새 Trade와 5개의 Document를 생성
-          const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
-          const response = await fetch(`${API_URL}/api/trade/init/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user_id: currentUser.emp_no,
-              title: '새 무역 거래'
-            })
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            console.log('[App] Trade 초기화 완료:', data);
-
-            // 새로 생성된 Trade ID 설정
-            setCurrentDocId(data.trade_id.toString());
-
-            // doc_ids를 직접 저장 (새 문서에서 바로 사용 가능)
-            setCurrentDocIds(data.doc_ids);
-
-            // doc_ids를 savedDocuments에 반영하기 위해 fetchTrades 호출 (백그라운드)
-            fetchTrades();
-          } else {
-            console.error('[App] Trade 초기화 실패:', await response.text());
-          }
-        } catch (error) {
-          console.error('[App] Trade 초기화 오류:', error);
-        }
-
+      // 새 문서: 상태만 초기화 (Trade는 실제 저장 시점에 생성)
+      if (!currentDocId) {
         setCurrentStep(1);
         setDocumentData({});
         setCurrentActiveShippingDoc(null);
-        setDocSessionId(Date.now().toString()); // New session for new document
+        setDocSessionId(Date.now().toString());
       }
     }
     setCurrentPage(page);
@@ -298,12 +266,22 @@ function App() {
 
     // 백엔드 저장 로직
     try {
-      // 새 Trade 생성 (currentDocId가 없는 경우)
+      // 새 Trade 생성 (currentDocId가 없는 경우) - /api/trade/init/ 사용
       if (!tradeId && currentUser) {
         const title = data.title || 'Untitled Document';
-        const newTrade = await api.createTrade(currentUser.user_id, title);
+        const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_URL}/api/trade/init/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.emp_no, title })
+        });
+
+        if (!response.ok) throw new Error('Trade 생성 실패');
+
+        const newTrade = await response.json();
         tradeId = newTrade.trade_id.toString();
         setCurrentDocId(tradeId);
+        setCurrentDocIds(newTrade.doc_ids);
       }
 
       // 현재 step에 해당하는 Document 찾기
