@@ -1,4 +1,5 @@
 import { useEditor, EditorContent, Node, mergeAttributes, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, Extension } from '@tiptap/react'
+import { Check } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -610,7 +611,7 @@ const Checkbox = Node.create({
         return {
             checked: {
                 default: false,
-                parseHTML: element => element.hasAttribute('data-checked'),
+                parseHTML: element => element.getAttribute('data-checked') === 'true',
                 renderHTML: attributes => {
                     return {
                         'data-checked': attributes.checked,
@@ -638,14 +639,15 @@ const Checkbox = Node.create({
     },
 
     renderHTML({ HTMLAttributes }) {
-        return ['span', mergeAttributes(HTMLAttributes, { class: 'checkbox-widget' }), HTMLAttributes.checked ? '[V]' : '[ ]']
+        return ['span', mergeAttributes(HTMLAttributes, { class: 'checkbox-widget' }), '']
     },
 
     addNodeView() {
         return ReactNodeViewRenderer(({ node, updateAttributes, editor, getPos }) => {
             return (
                 <span
-                    className="checkbox-widget cursor-pointer select-none font-bold hover:text-blue-600"
+                    className={`checkbox-widget inline-flex items-center justify-center w-5 h-5 transition-all cursor-pointer select-none align-middle mx-1 rounded bg-gray-50 border border-gray-300 ${node.attrs.checked ? 'text-black' : 'text-transparent'
+                        }`}
                     onClick={() => {
                         const isChecked = !node.attrs.checked;
                         if (isChecked && node.attrs.group) {
@@ -662,8 +664,9 @@ const Checkbox = Node.create({
                         }
                         updateAttributes({ checked: isChecked });
                     }}
+                    style={{ verticalAlign: 'text-bottom' }}
                 >
-                    {node.attrs.checked ? '[V]' : '[ ]'}
+                    {node.attrs.checked && <Check size={16} strokeWidth={3} />}
                 </span>
             )
         })
@@ -680,10 +683,11 @@ const Radio = Node.create({
         return {
             checked: {
                 default: false,
-                parseHTML: element => element.classList.contains('checked'),
+                parseHTML: element => element.classList.contains('checked') || element.getAttribute('data-checked') === 'true',
                 renderHTML: attributes => {
                     return {
                         class: `radio-circle ${attributes.checked ? 'checked' : ''}`,
+                        'data-checked': attributes.checked,
                     }
                 },
             },
@@ -715,7 +719,10 @@ const Radio = Node.create({
         return ReactNodeViewRenderer(({ node, updateAttributes, editor, getPos }) => {
             return (
                 <span
-                    className={`radio-circle cursor-pointer inline-block w-3 h-3 border border-black rounded-full mx-auto relative ${node.attrs.checked ? 'bg-black' : ''}`}
+                    className={`radio-circle inline-flex items-center justify-center w-5 h-5 rounded-full border transition-all cursor-pointer select-none align-middle mx-1 ${node.attrs.checked
+                        ? 'border-blue-600 bg-white shadow-sm'
+                        : 'bg-white border-gray-300 hover:border-blue-400 shadow-sm'
+                        }`}
                     onClick={() => {
                         const isChecked = !node.attrs.checked;
                         if (isChecked && node.attrs.group) {
@@ -732,8 +739,10 @@ const Radio = Node.create({
                         }
                         updateAttributes({ checked: isChecked });
                     }}
-                    style={{ verticalAlign: 'middle' }}
-                />
+                    style={{ verticalAlign: 'text-bottom' }}
+                >
+                    {node.attrs.checked && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+                </span>
             )
         })
     },

@@ -350,31 +350,46 @@ function App() {
         setCurrentDocId(tradeId);
       }
 
-      // 현재 step에 해당하는 Document 찾기
+      // Iterate through all potential document keys (1-5) to save all modified documents
+      const docKeys = [1, 2, 3, 4, 5];
+      const docTypeMapping: Record<number, string> = {
+        1: 'offer',
+        2: 'pi',
+        3: 'contract',
+        4: 'ci',
+        5: 'pl'
+      };
+
       if (tradeId) {
         const trade = await api.getTrade(parseInt(tradeId));
-        const docType = stepToDocType(step, activeShippingDoc);
-        const document = trade.documents?.find(d => d.doc_type === docType);
 
-        // 제목이 변경되었으면 Trade 제목 업데이트
+        // 제목이 변경되었으면 Trade 제목 업데이트 (한 번만 실행)
         const newTitle = data.title || 'Untitled Document';
         if (trade.title !== newTitle) {
           await api.updateTrade(parseInt(tradeId), { title: newTitle });
           console.log(`[API] Updated trade title to: ${newTitle}`);
         }
 
-        if (document) {
-          // 해당 step의 content 저장 (HTML 문자열 + 메타데이터)
-          const stepContent = data[step] || data[versionStep];
-          const versionContent = {
-            html: stepContent || '',
-            title: data.title || '',
-            stepModes: data.stepModes || {},
-            savedAt: new Date().toISOString(),
-          };
-          await api.createVersion(document.doc_id, versionContent);
-          console.log(`[API] Saved version for doc ${document.doc_id} (${docType})`, versionContent);
-        }
+        // Save all documents concurrently
+        await Promise.all(docKeys.map(async (key) => {
+          const content = data[key];
+          // Only save if content exists
+          if (content) {
+            const docType = docTypeMapping[key];
+            const document = trade.documents?.find(d => d.doc_type === docType);
+
+            if (document) {
+              const versionContent = {
+                html: content,
+                title: data.title || '',
+                stepModes: data.stepModes || {},
+                savedAt: new Date().toISOString(),
+              };
+              await api.createVersion(document.doc_id, versionContent);
+              console.log(`[API] Saved version for doc ${document.doc_id} (${docType})`);
+            }
+          }
+        }));
       }
 
       // 저장 후 목록 새로고침 (백엔드에서 최신 데이터 가져옴)

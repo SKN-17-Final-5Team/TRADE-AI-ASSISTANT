@@ -449,15 +449,7 @@ html {
   flex-shrink: 0;
 }
 
-.checkbox-widget {
-  cursor: pointer;
-  font-weight: bold;
-  user-select: none;
-  background-color: #ffe600;
-  /* Warmer yellow to match mark tag */
-  padding: 0 2px;
-  /* Add slight padding for better look */
-}
+
 
 .po-terms .term-value {
   flex: 1;
