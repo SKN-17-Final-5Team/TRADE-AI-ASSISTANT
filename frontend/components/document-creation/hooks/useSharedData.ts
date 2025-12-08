@@ -24,7 +24,11 @@ export function useSharedData(): UseSharedDataReturn {
       const content = value || `[${key}]`;
       // If we have a value, it's mapped data.
       const sourceAttr = value ? ' data-source="mapped"' : '';
-      return `<span data-field-id="${key}"${sourceAttr}>${content}</span>`;
+
+      // [ADDED] Default disabled state for conditional fields (starting with 'days_')
+      const disabledAttr = key.startsWith('days_') ? ' data-disabled="true"' : '';
+
+      return `<span data-field-id="${key}"${sourceAttr}${disabledAttr}>${content}</span>`;
     });
   }, [sharedData]);
 

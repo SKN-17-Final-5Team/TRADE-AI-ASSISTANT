@@ -85,6 +85,15 @@ const DataField = Node.create({
                     }
                 },
             },
+            disabled: {
+                default: false,
+                parseHTML: element => element.getAttribute('data-disabled') === 'true',
+                renderHTML: attributes => {
+                    return {
+                        'data-disabled': attributes.disabled,
+                    }
+                },
+            },
         }
     },
 
@@ -95,7 +104,11 @@ const DataField = Node.create({
     },
 
     renderHTML({ HTMLAttributes }) {
-        return ['span', mergeAttributes(HTMLAttributes, { class: 'data-field' }), 0]
+        const disabled = HTMLAttributes.disabled === true || HTMLAttributes.disabled === 'true';
+        return ['span', mergeAttributes(HTMLAttributes, {
+            class: `data-field ${disabled ? 'disabled' : ''}`,
+            'data-disabled': disabled
+        }), 0]
     },
 
     // Prevent node deletion - restore placeholder when field would become empty
@@ -217,8 +230,12 @@ const DataField = Node.create({
             const displayText = `[${fieldId}]`;
             const isPlaceholder = textContent === displayText;
 
+            const disabled = node.attrs.disabled === true || node.attrs.disabled === 'true';
+
             let bgClass = '';
-            if (source === 'agent') {
+            if (disabled) {
+                bgClass = 'bg-gray-100 border border-gray-200 text-gray-400 px-1 rounded cursor-not-allowed pointer-events-none opacity-60';
+            } else if (source === 'agent') {
                 bgClass = 'bg-yellow-50 border border-yellow-200 text-yellow-900 px-1 rounded';
             } else if (source === 'mapped') {
                 bgClass = 'bg-green-50 border border-green-200 text-green-900 px-1 rounded';
@@ -645,29 +662,31 @@ const Checkbox = Node.create({
     addNodeView() {
         return ReactNodeViewRenderer(({ node, updateAttributes, editor, getPos }) => {
             return (
-                <span
-                    className={`checkbox-widget inline-flex items-center justify-center w-5 h-5 transition-all cursor-pointer select-none align-middle mx-1 rounded bg-gray-50 border border-gray-300 ${node.attrs.checked ? 'text-black' : 'text-transparent'
-                        }`}
-                    onClick={() => {
-                        const isChecked = !node.attrs.checked;
-                        if (isChecked && node.attrs.group) {
-                            // Uncheck other checkboxes in the same group
-                            editor.state.doc.descendants((descendant: any, pos: number) => {
-                                if (descendant.type.name === 'checkbox' &&
-                                    descendant.attrs.group === node.attrs.group &&
-                                    descendant.attrs.checked &&
-                                    pos !== getPos()) {
-                                    editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
-                                }
-                                return true;
-                            });
-                        }
-                        updateAttributes({ checked: isChecked });
-                    }}
-                    style={{ verticalAlign: 'text-bottom' }}
-                >
-                    {node.attrs.checked && <Check size={16} strokeWidth={3} />}
-                </span>
+                <NodeViewWrapper as="span" className="checkbox-wrapper inline-block align-middle mx-1">
+                    <span
+                        className={`checkbox-widget inline-flex items-center justify-center w-5 h-5 transition-all cursor-pointer select-none rounded bg-gray-50 border border-gray-300 ${node.attrs.checked ? 'text-black' : 'text-transparent'
+                            }`}
+                        onClick={() => {
+                            const isChecked = !node.attrs.checked;
+                            if (isChecked && node.attrs.group) {
+                                // Uncheck other checkboxes in the same group
+                                editor.state.doc.descendants((descendant: any, pos: number) => {
+                                    if (descendant.type.name === 'checkbox' &&
+                                        descendant.attrs.group === node.attrs.group &&
+                                        descendant.attrs.checked &&
+                                        pos !== getPos()) {
+                                        editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
+                                    }
+                                    return true;
+                                });
+                            }
+                            updateAttributes({ checked: isChecked });
+                        }}
+                        style={{ verticalAlign: 'text-bottom' }}
+                    >
+                        {node.attrs.checked && <Check size={16} strokeWidth={3} />}
+                    </span>
+                </NodeViewWrapper>
             )
         })
     },
@@ -700,6 +719,15 @@ const Radio = Node.create({
                     }
                 },
             },
+            linkedField: {
+                default: null,
+                parseHTML: element => element.getAttribute('data-linked-field'),
+                renderHTML: attributes => {
+                    return {
+                        'data-linked-field': attributes.linkedField,
+                    }
+                },
+            },
         }
     },
 
@@ -718,31 +746,61 @@ const Radio = Node.create({
     addNodeView() {
         return ReactNodeViewRenderer(({ node, updateAttributes, editor, getPos }) => {
             return (
-                <span
-                    className={`radio-circle inline-flex items-center justify-center w-5 h-5 rounded-full border transition-all cursor-pointer select-none align-middle mx-1 ${node.attrs.checked
-                        ? 'border-blue-600 bg-white shadow-sm'
-                        : 'bg-white border-gray-300 hover:border-blue-400 shadow-sm'
-                        }`}
-                    onClick={() => {
-                        const isChecked = !node.attrs.checked;
-                        if (isChecked && node.attrs.group) {
-                            // Uncheck other radios in the same group
-                            editor.state.doc.descendants((descendant: any, pos: number) => {
-                                if (descendant.type.name === 'radio' &&
-                                    descendant.attrs.group === node.attrs.group &&
-                                    descendant.attrs.checked &&
-                                    pos !== getPos()) {
-                                    editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
-                                }
-                                return true;
-                            });
-                        }
-                        updateAttributes({ checked: isChecked });
-                    }}
-                    style={{ verticalAlign: 'text-bottom' }}
-                >
-                    {node.attrs.checked && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
-                </span>
+                <NodeViewWrapper as="span" className="radio-wrapper inline-block align-middle mx-1">
+                    <span
+                        className={`radio-circle inline-flex items-center justify-center w-5 h-5 rounded-full border transition-all cursor-pointer select-none ${node.attrs.checked
+                            ? 'border-black bg-white shadow-sm'
+                            : 'bg-white border-gray-300 hover:border-gray-900 shadow-sm'
+                            }`}
+                        onClick={() => {
+                            const isChecked = !node.attrs.checked;
+
+                            // Handle linked field enabling/disabling
+                            const linkedFieldId = node.attrs.linkedField;
+                            if (linkedFieldId) {
+                                // Find the linked dataField
+                                editor.state.doc.descendants((descendant: any, pos: number) => {
+                                    if (descendant.type.name === 'dataField' && descendant.attrs.fieldId === linkedFieldId) {
+                                        // If checked, enable (disabled: false). If unchecked, disable (disabled: true).
+                                        editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, disabled: !isChecked }));
+                                    }
+                                    return true;
+                                });
+                            }
+
+                            if (isChecked && node.attrs.group) {
+                                // Uncheck other radios in the same group AND disable their linked fields
+                                editor.state.doc.descendants((descendant: any, pos: number) => {
+                                    if (descendant.type.name === 'radio' &&
+                                        descendant.attrs.group === node.attrs.group &&
+                                        descendant.attrs.checked &&
+                                        pos !== getPos()) {
+
+                                        // Uncheck the other radio
+                                        let tr = editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false });
+                                        editor.view.dispatch(tr);
+
+                                        // Disable its linked field if it has one
+                                        const otherLinkedFieldId = descendant.attrs.linkedField;
+                                        if (otherLinkedFieldId) {
+                                            editor.state.doc.descendants((fieldNode: any, fieldPos: number) => {
+                                                if (fieldNode.type.name === 'dataField' && fieldNode.attrs.fieldId === otherLinkedFieldId) {
+                                                    editor.view.dispatch(editor.state.tr.setNodeMarkup(fieldPos, undefined, { ...fieldNode.attrs, disabled: true }));
+                                                }
+                                                return true;
+                                            });
+                                        }
+                                    }
+                                    return true;
+                                });
+                            }
+                            updateAttributes({ checked: isChecked });
+                        }}
+                        style={{ verticalAlign: 'text-bottom' }}
+                    >
+                        {node.attrs.checked && <span className="w-2.5 h-2.5 rounded-full bg-black" />}
+                    </span>
+                </NodeViewWrapper>
             )
         })
     },
