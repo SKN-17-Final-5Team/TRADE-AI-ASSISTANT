@@ -39,16 +39,29 @@ export function useSharedData(): UseSharedDataReturn {
     const fields = doc.querySelectorAll('span[data-field-id]');
 
     const newData: Record<string, string> = {};
+    const foundKeys = new Set<string>();
+
     fields.forEach(field => {
       const key = field.getAttribute('data-field-id');
       const value = field.textContent;
 
-      // Only save if it's not the placeholder itself
-      // Use first non-placeholder value (don't overwrite if already set)
-      if (key && value && value !== `[${key}]`) {
-        if (!newData[key]) {
-          newData[key] = value;
+      if (key) {
+        foundKeys.add(key);
+        // Only save if it's not the placeholder itself
+        // Use first non-placeholder value (don't overwrite if already set)
+        if (value && value !== `[${key}]`) {
+          if (!newData[key]) {
+            newData[key] = value;
+          }
         }
+      }
+    });
+
+    // If a key exists in the document but has no value in newData (meaning it's a placeholder),
+    // explicitly set it to empty string to clear any previous value in sharedData
+    foundKeys.forEach(key => {
+      if (!newData[key]) {
+        newData[key] = '';
       }
     });
 

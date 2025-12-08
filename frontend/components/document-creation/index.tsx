@@ -115,7 +115,7 @@ export default function DocumentCreationPage({
   const [showFieldHighlight, setShowFieldHighlight] = useState(true);
   const [showAgentHighlight, setShowAgentHighlight] = useState(true);
   const [editorKey, setEditorKey] = useState(0); // 에디터 강제 리마운트용
-  const isLoadingTemplate = useRef(false); // 템플릿 로딩 중 플래그
+
 
   // Modal State
   const [showMyPageModal, setShowMyPageModal] = useState(false);
@@ -125,9 +125,20 @@ export default function DocumentCreationPage({
   const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
 
+  // [ADDED] Force update state to trigger re-renders on editor changes
+  const [, forceUpdate] = useState({});
+
+
+  const isLoadingTemplate = useRef(false); // 템플릿 로딩 중 플래그
+
   // Intro Animation State
   const [hasShownIntro, setHasShownIntro] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
+
+  // [ADDED] Handler for immediate editor updates (for validation)
+  const handleEditorUpdate = () => {
+    forceUpdate({});
+  };
 
   // Calculate visibility for chatbot button
   const shouldShowChatButton = !isChatOpen && currentStep >= 1 && currentStep <= 5 && (
@@ -175,10 +186,19 @@ export default function DocumentCreationPage({
 
     if (stepNumber <= 3) {
       if (stepModes[stepNumber] === 'upload' && !uploadedFiles[stepNumber] && !uploadedFileNames[stepNumber]) return false;
-      const stepContent = documentData[stepNumber] || hydrateTemplate(getTemplateForStep(stepNumber));
+
+      // [CHANGED] Use live editor content if checking the current step
+      let stepContent;
+      if (stepNumber === currentStep && editorRef.current) {
+        stepContent = editorRef.current.getContent();
+      } else {
+        stepContent = documentData[stepNumber] || hydrateTemplate(getTemplateForStep(stepNumber));
+      }
+
       return checkStepCompletion(stepContent);
     } else {
       if (stepNumber === 4) {
+        // For step 4, we might need to check specific docs if active
         const ciContent = documentData[4] || hydrateTemplate(commercialInvoiceTemplateHTML);
         const plContent = documentData[5] || hydrateTemplate(packingListTemplateHTML);
         return checkStepCompletion(ciContent) && checkStepCompletion(plContent);
@@ -898,6 +918,7 @@ export default function DocumentCreationPage({
       <EditorView
         key={`editor-${currentStep}-${activeShippingDoc || 'default'}-${editorKey}`}
         currentStep={currentStep}
+        onUpdate={handleEditorUpdate}
         stepModes={stepModes}
         activeShippingDoc={activeShippingDoc}
         editorRef={editorRef}

@@ -15,6 +15,7 @@ interface EditorViewProps {
   onChange: (content: string) => void;
   onRowAdded?: (fieldIds: string[]) => void;
   onRowDeleted?: (fieldIds: string[]) => void;
+  onUpdate?: () => void;
 }
 
 export default function EditorView({
@@ -28,6 +29,7 @@ export default function EditorView({
   onChange,
   onRowAdded,
   onRowDeleted,
+  onUpdate,
   showFieldHighlight,
   showAgentHighlight
 }: EditorViewProps & {
@@ -45,6 +47,7 @@ export default function EditorView({
         className="flex-1 min-h-0"
         initialContent={initialContent}
         onChange={onChange}
+        onUpdate={onUpdate}
         onRowAdded={onRowAdded}
         onRowDeleted={onRowDeleted}
         showFieldHighlight={showFieldHighlight}

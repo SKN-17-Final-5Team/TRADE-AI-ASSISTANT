@@ -134,6 +134,13 @@ export function checkStepCompletion(content: string): boolean {
   for (const field of fields) {
     const key = field.getAttribute('data-field-id');
     const value = field.textContent;
+
+    // [CHANGED] Skip validation for optional fields (including dynamic IDs like notice_2)
+    if (key && (key.startsWith('notice') || key.startsWith('remarks'))) continue;
+
+    // [ADDED] Skip validation for disabled fields (e.g. unchecked conditional fields)
+    if (field.getAttribute('data-disabled') === 'true') continue;
+
     if (key && value === `[${key}]`) {
       return false;
     }
