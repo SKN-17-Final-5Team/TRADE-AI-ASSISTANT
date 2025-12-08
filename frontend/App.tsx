@@ -51,47 +51,90 @@ function App() {
     }
 
     if (page === 'documents') {
-      // If we are navigating to documents and don't have an ID, it's a new document
-      // (handleOpenDocument sets the ID before navigating)
-      if (!currentDocId && currentUser) {
-        try {
-          // Trade 초기화 API 호출 - 새 Trade와 5개의 Document를 생성
-          const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
-          const response = await fetch(`${API_URL}/api/trade/init/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user_id: currentUser.emp_no,
-              title: '새 무역 거래'
-            })
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            console.log('[App] Trade 초기화 완료:', data);
-
-            // 새로 생성된 Trade ID 설정
-            setCurrentDocId(data.trade_id.toString());
-
-            // doc_ids를 직접 저장 (새 문서에서 바로 사용 가능)
-            setCurrentDocIds(data.doc_ids);
-
-            // doc_ids를 savedDocuments에 반영하기 위해 fetchTrades 호출 (백그라운드)
-            fetchTrades();
-          } else {
-            console.error('[App] Trade 초기화 실패:', await response.text());
-          }
-        } catch (error) {
-          console.error('[App] Trade 초기화 오류:', error);
-        }
-
-        setCurrentStep(1);
-        setDocumentData({});
-        setCurrentActiveShippingDoc(null);
-        setDocSessionId(Date.now().toString()); // New session for new document
-      }
+      // Don't create Trade immediately - wait until user selects a mode
+      // This prevents creating documents when user just views mode selection and exits
+      setCurrentStep(1);
+      setDocumentData({});
+      setCurrentActiveShippingDoc(null);
+      setDocSessionId(Date.now().toString()); // New session for new document
     }
     setCurrentPage(page);
+  };
+
+  const [isNewTrade, setIsNewTrade] = useState(false);
+
+  const createNewTrade = async (): Promise<string | null> => {
+    // Don't create if we already have a Trade or no user
+    if (currentDocId || !currentUser) {
+      return currentDocId;
+    }
+
+    try {
+      // Trade 초기화 API 호출 - 새 Trade와 5개의 Document를 생성
+      const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/api/trade/init/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser.emp_no,
+          title: '새 무역 거래'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[App] Trade 생성 완료:', data);
+
+        // 새로 생성된 Trade ID 설정
+        const tradeId = data.trade_id.toString();
+        setCurrentDocId(tradeId);
+
+        // doc_ids를 직접 저장
+        setCurrentDocIds(data.doc_ids);
+        setIsNewTrade(true); // Mark as new trade
+
+        // DON'T call fetchTrades here - trade shouldn't appear in list until saved
+        // fetchTrades will be called when:
+        // 1. User saves the document (handleSaveDocument)
+        // 2. User exits without changes (handleDocumentExit - after deletion)
+
+        return tradeId;
+      } else {
+        console.error('[App] Trade 생성 실패:', await response.text());
+      }
+    } catch (error) {
+      console.error('[App] Trade 생성 오류:', error);
+    }
+
+    return null;
+  };
+
+  const handleDocumentExit = async (hasChanges: boolean) => {
+    // If it's a NEW trade that hasn't been saved yet, delete it upon exit
+    // We delete it regardless of hasChanges because if the user is exiting a new trade
+    // without saving (isNewTrade is still true), they are abandoning it.
+    if (isNewTrade && currentDocId) {
+      try {
+        // Delete the empty/abandoned Trade from backend
+        await api.deleteTrade(parseInt(currentDocId));
+        console.log(`[App] Deleted new trade ${currentDocId} on exit`);
+
+        // Clear current document state
+        setCurrentDocId(null);
+        setCurrentDocIds(null);
+        setIsNewTrade(false); // Reset new trade status
+
+        // Refresh the document list
+        await fetchTrades();
+      } catch (error) {
+        console.error('[App] Failed to delete new trade:', error);
+      }
+    } else {
+      // If it's not a new trade (already saved previously), just clear state
+      setCurrentDocId(null);
+      setCurrentDocIds(null);
+      setIsNewTrade(false);
+    }
   };
 
   const handleOpenDocument = (doc: SavedDocument) => {
@@ -116,6 +159,7 @@ function App() {
     }
 
     // Use setTimeout to ensure state is set before navigation
+    setIsNewTrade(false);
     setTimeout(() => {
       setCurrentPage('documents');
     }, 0);
@@ -335,6 +379,7 @@ function App() {
 
       // 저장 후 목록 새로고침 (백엔드에서 최신 데이터 가져옴)
       await fetchTrades();
+      setIsNewTrade(false);
 
     } catch (error) {
       console.error('Failed to save to backend:', error);
@@ -402,13 +447,14 @@ function App() {
       // 백엔드에서 Trade 삭제
       await api.deleteTrade(parseInt(docId));
       console.log(`[API] Deleted trade ${docId}`);
+      // 로컬 상태에서도 제거
+      setSavedDocuments(prev => prev.filter(doc => doc.id !== docId));
     } catch (error) {
       console.error('Failed to delete trade:', error);
     }
-
-    // 로컬 상태에서도 제거
-    setSavedDocuments(prev => prev.filter(doc => doc.id !== docId));
   };
+
+
 
   return (
     <div className="min-h-screen bg-gray-50 relative overflow-hidden">
@@ -517,6 +563,8 @@ function App() {
           userEmployeeId={userEmail}
           onLogout={handleLogout}
           onSave={handleSaveDocument}
+          onCreateTrade={createNewTrade}
+          onExit={handleDocumentExit}
           versions={currentDocId ? savedDocuments.find(d => d.id === currentDocId)?.versions : undefined}
           onRestore={(version) => {
             setDocumentData(prev => ({

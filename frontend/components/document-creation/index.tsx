@@ -62,6 +62,8 @@ export default function DocumentCreationPage({
   userEmployeeId,
   onLogout,
   onSave,
+  onCreateTrade,
+  onExit,
   versions = [],
   onRestore,
   initialActiveShippingDoc,
@@ -113,6 +115,7 @@ export default function DocumentCreationPage({
   const [showFieldHighlight, setShowFieldHighlight] = useState(true);
   const [showAgentHighlight, setShowAgentHighlight] = useState(true);
   const [editorKey, setEditorKey] = useState(0); // 에디터 강제 리마운트용
+  const isLoadingTemplate = useRef(false); // 템플릿 로딩 중 플래그
 
   // Modal State
   const [showMyPageModal, setShowMyPageModal] = useState(false);
@@ -276,6 +279,19 @@ export default function DocumentCreationPage({
     setShowDownloadModal(true);
   };
 
+  const handleExit = async () => {
+    // Check if user made actual changes (not just mode selection)
+    const hasChanges = isDirty;
+
+    // Call onExit callback and wait for completion (e.g., trade deletion)
+    if (onExit) {
+      await onExit(hasChanges);
+    }
+
+    // Navigate to main page after exit handler completes
+    onNavigate('main');
+  };
+
   const handleBatchDownload = async (selectedSteps: Set<number>) => {
     // Close modal first
     setShowDownloadModal(false);
@@ -430,14 +446,33 @@ export default function DocumentCreationPage({
 
       // Mark as modified
       markStepModified(saveKey);
-      setIsDirty(true);
+
+      // Only set isDirty if not loading template
+      if (!isLoadingTemplate.current) {
+        setIsDirty(true);
+      }
     }
   };
 
   const handleModeSelect = async (mode: StepMode) => {
+    // Create Trade if it doesn't exist yet (first mode selection)
+    if (onCreateTrade) {
+      await onCreateTrade();
+    }
+
+    // Set loading flag to prevent isDirty during template load
+    isLoadingTemplate.current = true;
+
+    // Explicitly reset isDirty to false (template load shouldn't count as changes)
+    setIsDirty(false);
+
     // 프론트엔드 상태 업데이트
     setStepModes(prev => ({ ...prev, [currentStep]: mode }));
-    if (mode === 'manual') setIsDirty(true);
+
+    // Reset loading flag after a short delay (template should be loaded by then)
+    setTimeout(() => {
+      isLoadingTemplate.current = false;
+    }, 500);
 
     // 백엔드 doc_mode 업데이트
     const docId = getDocId?.(currentStep, null);
@@ -911,7 +946,7 @@ export default function DocumentCreationPage({
         onTitleChange={(title) => setDocumentData({ ...documentData, title })}
         onBackClick={() => {
           if (isDirty) setShowExitConfirm(true);
-          else onNavigate('main');
+          else handleExit();
         }}
         onSave={handleSave}
         onDownload={handleDownload}
@@ -1182,7 +1217,7 @@ export default function DocumentCreationPage({
         onClose={() => setShowExitConfirm(false)}
         onExit={() => {
           setShowExitConfirm(false);
-          onNavigate('main');
+          handleExit();
         }}
       />
 
