@@ -247,6 +247,17 @@ class TradeMemoryService:
 
     # ==================== User Memory (Long-term) ====================
 
+    # 장기 메모리용 커스텀 프롬프트 (선호도/패턴만 추출)
+    USER_MEMORY_PROMPT = """
+대화에서 사용자의 선호도와 행동 패턴만 추출하세요.
+
+저장할 정보:
+- 무역 조건 선호도 (예: "FOB 조건 선호", "CIF 조건을 주로 사용")
+- 결제 방식 선호도 (예: "T/T 결제 선호", "대량 주문 시 L/C 사용")
+- 커뮤니케이션 스타일 (예: "상세한 설명 선호", "간결한 답변 선호")
+- 일반적인 무역 패턴 (예: "아시아 국가와 자주 거래", "전자제품 전문")
+"""
+
     def add_user_memory(
         self,
         user_id: int,
@@ -254,7 +265,7 @@ class TradeMemoryService:
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        사용자 장기 메모리 추가
+        사용자 장기 메모리 추가 (선호도/패턴만 저장)
 
         Args:
             user_id: 사용자 ID
@@ -266,7 +277,7 @@ class TradeMemoryService:
         """
         try:
             mem_metadata = {
-                "memory_type": "user",
+                "memory_type": "user_preference",
                 "user_id": user_id,
                 **(metadata or {})
             }
@@ -274,10 +285,11 @@ class TradeMemoryService:
             result = self.memory.add(
                 messages=messages,
                 user_id=f"user_{user_id}",
-                metadata=mem_metadata
+                metadata=mem_metadata,
+                prompt=self.USER_MEMORY_PROMPT
             )
 
-            logger.info(f"Added user memory: user_id={user_id}")
+            logger.info(f"Added user memory (preferences only): user_id={user_id}")
             return result
 
         except Exception as e:
