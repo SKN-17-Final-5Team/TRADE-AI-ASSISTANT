@@ -135,8 +135,12 @@ export default function DocumentCreationPage({
   const [hasShownIntro, setHasShownIntro] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
 
-  // [ADDED] Handler for immediate editor updates (for validation)
+  // [ADDED] Handler for immediate editor updates (for validation and sync)
   const handleEditorUpdate = () => {
+    if (editorRef.current) {
+      const content = editorRef.current.getContent();
+      extractData(content); // Extract data in real-time
+    }
     forceUpdate({});
   };
 
@@ -225,8 +229,25 @@ export default function DocumentCreationPage({
 
       if (saveKey !== -1) {
         const newDocData = { ...documentData, [saveKey]: content };
+
+        // [ADDED] Propagate shared data to all other documents immediately
+        extractData(content); // Update sharedData state first
+
+        Object.keys(newDocData).forEach(key => {
+          const docKey = Number(key);
+          if (isNaN(docKey) || key === 'title' || docKey === saveKey) return;
+
+          const originalContent = (newDocData as any)[key];
+          if (typeof originalContent === 'string') {
+            const newContent = updateContentWithSharedData(originalContent);
+            // Only update if content ACTUALLY changed (mapped field update)
+            if (newContent !== originalContent) {
+              (newDocData as any)[key] = newContent;
+            }
+          }
+        });
+
         setDocumentData(newDocData);
-        extractData(content);
       }
     }
     setCurrentStep(newStep);
@@ -535,17 +556,24 @@ export default function DocumentCreationPage({
         const dataFields = row.querySelectorAll('[data-field-id]');
         const text = row.textContent || '';
 
-        // Check if it's a data row (has multiple fields and not a total/header row)
-        // Explicitly exclude known header sections
-        const isHeaderRow = text.includes('SENT BY') ||
-          text.includes('SENT TO') ||
-          text.includes('Bill of Lading') ||
-          text.includes('Description of goods');
+        // Check if it's a data row by looking for specific item fields
+        let hasItemField = false;
+        dataFields.forEach(field => {
+          const fid = field.getAttribute('data-field-id') || '';
+          if (fid.startsWith('item_no') ||
+            fid.startsWith('unit_price') ||
+            fid.startsWith('quantity') ||
+            fid.startsWith('description') ||
+            fid.startsWith('sub_total_price')) {
+            hasItemField = true;
+          }
+        });
 
         // Check for Total row (case sensitive "Total " with space to avoid sub_total_price)
-        const isTotalRow = text.includes('Total ');
+        const isTotalRow = text.includes('Total ') || text.includes('TOTAL :');
 
-        if (dataFields.length >= 4 && !isTotalRow && !isHeaderRow) {
+        // Must have item fields AND multiple fields (to avoid false positives)
+        if (hasItemField && dataFields.length >= 3 && !isTotalRow) {
           templateRow = row as HTMLElement;
           break;
         }

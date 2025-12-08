@@ -496,14 +496,21 @@ const AutoCalculation = Extension.create({
                         quantity: number,
                         unitPrice: number,
                         subTotalNode: any,
-                        subTotalPos: number
+                        subTotalPos: number,
+                        eaBox: number,
+                        box: number
                     }>()
 
                     // Store total fields
                     let totalQuantityPos: number | null = null
                     let totalPricePos: number | null = null
+                    let totalEaBoxPos: number | null = null
+                    let totalBoxPos: number | null = null
+
                     let totalQuantityNode: any = null
                     let totalPriceNode: any = null
+                    let totalEaBoxNode: any = null
+                    let totalBoxNode: any = null
 
                     // First pass: Collect all relevant nodes
                     newState.doc.descendants((node, pos) => {
@@ -522,18 +529,30 @@ const AutoCalculation = Extension.create({
                                 totalPriceNode = node
                                 return
                             }
+                            if (fieldId === 'total_ea/box') {
+                                totalEaBoxPos = pos
+                                totalEaBoxNode = node
+                                return
+                            }
+                            if (fieldId === 'total_box') {
+                                totalBoxPos = pos
+                                totalBoxNode = node
+                                return
+                            }
 
                             // Check for Row fields
-                            // Match quantity(_suffix), unit_price(_suffix), sub_total_price(_suffix)
+                            // Match quantity(_suffix), unit_price(_suffix), sub_total_price(_suffix), ea_box(_suffix), box(_suffix)
                             const quantityMatch = fieldId.match(/^quantity(_\d+)?$/)
                             const unitPriceMatch = fieldId.match(/^unit_price(_\d+)?$/)
                             const subTotalMatch = fieldId.match(/^sub_total_price(_\d+)?$/)
+                            const eaBoxMatch = fieldId.match(/^ea_box(_\d+)?$/)
+                            const boxMatch = fieldId.match(/^box(_\d+)?$/)
 
-                            if (quantityMatch || unitPriceMatch || subTotalMatch) {
-                                const suffix = (quantityMatch?.[1] || unitPriceMatch?.[1] || subTotalMatch?.[1]) || ''
+                            if (quantityMatch || unitPriceMatch || subTotalMatch || eaBoxMatch || boxMatch) {
+                                const suffix = (quantityMatch?.[1] || unitPriceMatch?.[1] || subTotalMatch?.[1] || eaBoxMatch?.[1] || boxMatch?.[1]) || ''
 
                                 if (!rowData.has(suffix)) {
-                                    rowData.set(suffix, { quantity: 0, unitPrice: 0, subTotalNode: null, subTotalPos: -1 })
+                                    rowData.set(suffix, { quantity: 0, unitPrice: 0, subTotalNode: null, subTotalPos: -1, eaBox: 0, box: 0 })
                                 }
                                 const data = rowData.get(suffix)!
 
@@ -546,6 +565,10 @@ const AutoCalculation = Extension.create({
                                 } else if (subTotalMatch) {
                                     data.subTotalNode = node
                                     data.subTotalPos = pos
+                                } else if (eaBoxMatch) {
+                                    if (!isNaN(value)) data.eaBox = value
+                                } else if (boxMatch) {
+                                    if (!isNaN(value)) data.box = value
                                 }
                             }
                         }
@@ -555,6 +578,8 @@ const AutoCalculation = Extension.create({
                     const updates: { pos: number, node: any, newText: string }[] = []
                     let grandTotalQuantity = 0
                     let grandTotalPrice = 0
+                    let grandTotalEaBox = 0
+                    let grandTotalBox = 0
 
                     // Process each row
                     for (const [suffix, data] of rowData) {
@@ -564,6 +589,8 @@ const AutoCalculation = Extension.create({
                         // Add to grand totals
                         grandTotalQuantity += data.quantity
                         grandTotalPrice += subTotal
+                        grandTotalEaBox += data.eaBox || 0
+                        grandTotalBox += data.box || 0
 
                         // Update sub_total_price field if it exists
                         if (data.subTotalNode && data.subTotalPos !== -1) {
@@ -594,6 +621,24 @@ const AutoCalculation = Extension.create({
                         const currentText = totalPriceNode.textContent
                         if (currentText !== newText) {
                             updates.push({ pos: totalPricePos, node: totalPriceNode, newText })
+                        }
+                    }
+
+                    // Update total_ea/box
+                    if (totalEaBoxPos !== null && totalEaBoxNode) {
+                        const newText = grandTotalEaBox.toString()
+                        const currentText = totalEaBoxNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalEaBoxPos, node: totalEaBoxNode, newText })
+                        }
+                    }
+
+                    // Update total_box
+                    if (totalBoxPos !== null && totalBoxNode) {
+                        const newText = grandTotalBox.toString()
+                        const currentText = totalBoxNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalBoxPos, node: totalBoxNode, newText })
                         }
                     }
 

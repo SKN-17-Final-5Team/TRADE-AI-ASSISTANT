@@ -146,6 +146,27 @@ export function checkStepCompletion(content: string): boolean {
     }
   }
 
+  // [ADDED] Validate Radio/Checkbox Groups
+  // Ensure at least one option is selected for each group
+  const groupElements = doc.querySelectorAll('[data-group]');
+  const groups = new Set<string>();
+  groupElements.forEach(el => {
+    const group = el.getAttribute('data-group');
+    if (group) groups.add(group);
+  });
+
+  for (const group of groups) {
+    const options = doc.querySelectorAll(`[data-group="${group}"]`);
+    let hasSelection = false;
+    for (const option of options) {
+      if (option.getAttribute('data-checked') === 'true') {
+        hasSelection = true;
+        break;
+      }
+    }
+    if (!hasSelection) return false;
+  }
+
   return fields.length > 0;
 }
 

@@ -137,9 +137,9 @@ export const commercialInvoiceTemplateHTML = `
             <!-- Footer: Totals -->
             <tr style="background-color: #f0f0f0; font-weight: bold;">
                 <td colspan="2" style="text-align: right; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;">TOTAL :</td>
-                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[ea/box]</mark></td>
-                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[box]</mark></td>
-                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[quantity]</mark></td>
+                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[total_ea/box]</mark></td>
+                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[total_box]</mark></td>
+                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[total_quantity]</mark></td>
                 <td colspan="2" style="text-align: right; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;">
                     <mark>[total_price]</mark><mark>[currency]</mark>
                 </td>
