@@ -9,7 +9,7 @@ interface PasswordChangeModalProps {
 }
 
 // 비밀번호 유효성 검사 함수
-// 조건: 8~16자, 영문(A-Z, a-z), 숫자, 특수문자 조합
+// 조건: 8~16자, 영문(A-Z, a-z) + 숫자 + 특수문자 모두 포함
 function validatePassword(password: string): { isValid: boolean; message: string } {
   // 길이 검사 (8~16자)
   if (password.length < 8 || password.length > 16) {
@@ -22,11 +22,14 @@ function validatePassword(password: string): { isValid: boolean; message: string
   const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password);
 
   // 영문, 숫자, 특수문자 모두 포함해야 함
-  if (!hasLetter || !hasNumber || !hasSpecialChar) {
-    return {
-      isValid: false,
-      message: '비밀번호는 영문, 숫자, 특수문자를 각각 1개 이상 포함해야 합니다.'
-    };
+  if (!hasLetter) {
+    return { isValid: false, message: '비밀번호에 영문자(A-Z, a-z)가 포함되어야 합니다.' };
+  }
+  if (!hasNumber) {
+    return { isValid: false, message: '비밀번호에 숫자(0-9)가 포함되어야 합니다.' };
+  }
+  if (!hasSpecialChar) {
+    return { isValid: false, message: '비밀번호에 특수문자(!@#$%^&* 등)가 포함되어야 합니다.' };
   }
 
   return { isValid: true, message: '' };
@@ -57,6 +60,9 @@ export default function PasswordChangeModal({
   async function handlePasswordChange(e: React.FormEvent) {
     e.preventDefault();
 
+    console.log('[PasswordChange] 새 비밀번호:', newPassword);
+    console.log('[PasswordChange] empNo:', empNo);
+
     // 현재 비밀번호 입력 확인
     if (!currentPassword) {
       setPasswordError('현재 비밀번호를 입력해주세요.');
@@ -65,6 +71,7 @@ export default function PasswordChangeModal({
 
     // 새 비밀번호 유효성 검사
     const validation = validatePassword(newPassword);
+    console.log('[PasswordChange] 유효성 검사 결과:', validation);
     if (!validation.isValid) {
       setPasswordError(validation.message);
       return;
