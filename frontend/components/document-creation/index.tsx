@@ -81,7 +81,10 @@ export default function DocumentCreationPage({
     handleFileUpload,
     removeUploadedFile,
     retryUpload
-  } = useFileUpload(documentData.uploadedFileNames as Record<number, string>);
+  } = useFileUpload(
+    documentData.uploadedFileNames as Record<number, string>,
+    documentData.uploadedFileUrls as Record<number, string>
+  );
 
   const {
     sharedData,

@@ -64,29 +64,28 @@ function App() {
 
   const handleOpenDocument = (doc: SavedDocument) => {
     setCurrentDocId(doc.id);
-    // Resume Document: Load content and go to Step 1
-    if (doc.content) {
-      setDocumentData(doc.content);
-    }
-    setCurrentStep(doc.lastStep || 1); // Resume from last step or default to 1
-    const shippingDoc = doc.lastActiveShippingDoc || null;
-    setCurrentActiveShippingDoc(shippingDoc);
-    setDocSessionId(Date.now().toString()); // New session for opened document
 
-    // tradeData에서 doc_ids 추출하여 설정
-    if (doc.tradeData?.documents) {
-      const docIds: Record<string, number> = {};
-      doc.tradeData.documents.forEach((d: { doc_type: string; doc_id: number }) => {
-        docIds[d.doc_type] = d.doc_id;
-      });
-      setCurrentDocIds(docIds);
-      console.log('[App] 기존 문서 doc_ids 로드:', docIds);
-    }
+    const content: DocumentData = { ...doc.content };
+    const docIds: Record<string, number> = {};
+    const uploadedFileUrls: Record<number, string> = {};
 
-    // Use setTimeout to ensure state is set before navigation
-    setTimeout(() => {
-      setCurrentPage('documents');
-    }, 0);
+    // tradeData에서 doc_ids 및 업로드 정보 복원
+    doc.tradeData?.documents?.forEach((d: any) => {
+      docIds[d.doc_type] = d.doc_id;
+      if (d.upload_status === 'ready' && d.original_filename) {
+        const step = docTypeToStep(d.doc_type);
+        content.stepModes = { ...content.stepModes, [step]: 'upload' };
+        content.uploadedFileNames = { ...content.uploadedFileNames, [step]: d.original_filename };
+        if (d.s3_url) uploadedFileUrls[step] = d.s3_url;
+      }
+    });
+
+    setCurrentDocIds(docIds);
+    setDocumentData({ ...content, uploadedFileUrls });
+    setCurrentStep(doc.lastStep || 1);
+    setCurrentActiveShippingDoc(doc.lastActiveShippingDoc || null);
+    setDocSessionId(Date.now().toString());
+    setTimeout(() => setCurrentPage('documents'), 0);
   };
 
   // 로고 클릭으로 채팅 열기 (확장 애니메이션)
@@ -185,6 +184,9 @@ function App() {
           // 버전을 시간순으로 정렬 (최신순)
           allVersions.sort((a, b) => b.timestamp - a.timestamp);
 
+          // 가장 최근 버전의 step을 lastStep으로 설정
+          const lastStep = allVersions.length > 0 ? allVersions[0].step : 1;
+
           const completedCount = trade.completed_count || 0;
           const totalSteps = 5;
           const progress = Math.round((completedCount / totalSteps) * 100);
@@ -200,6 +202,7 @@ function App() {
             content: content,
             tradeData: tradeDetail,  // documents 포함
             versions: allVersions,
+            lastStep: lastStep,
           };
         })
       );
