@@ -290,6 +290,35 @@ const DataField = Node.create({
 
                     return modified ? tr : null
                 }
+            }),
+            new Plugin({
+                key: new PluginKey('userInputDetector'),
+                appendTransaction: (transactions, oldState, newState) => {
+                    // Check if any transaction modified the document
+                    const docChanged = transactions.some(tr => tr.docChanged)
+                    if (!docChanged) return null
+
+                    const tr = newState.tr
+                    let modified = false
+
+                    // Compare old and new state to detect user modifications
+                    newState.doc.descendants((newNode, pos) => {
+                        if (newNode.type.name === 'dataField' && newNode.attrs.source === null) {
+                            const fieldId = newNode.attrs.fieldId
+                            const placeholder = `[${fieldId}]`
+                            const currentText = newNode.textContent
+
+                            // If text is not the placeholder, user has modified it
+                            if (currentText !== placeholder && currentText.trim() !== '') {
+                                // Change source to 'user' to show blue highlighting
+                                tr.setNodeMarkup(pos, undefined, { ...newNode.attrs, source: 'user' })
+                                modified = true
+                            }
+                        }
+                    })
+
+                    return modified ? tr : null
+                }
             })
         ]
     },
@@ -911,7 +940,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                         })
 
                                         return state.schema.nodes.dataField.create(
-                                            { ...node.attrs, fieldId: newFieldId },
+                                            { ...node.attrs, fieldId: newFieldId, source: null },
                                             newTextContent
                                         )
                                     } else if (node.content && node.content.size > 0) {

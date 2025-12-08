@@ -543,6 +543,7 @@ export default function DocumentCreationPage({
           }
 
           field.setAttribute('data-field-id', newFieldId);
+          field.setAttribute('data-source', ''); // Set to empty string (null equivalent in HTML)
           field.textContent = `[${newFieldId}]`;
         }
       });
