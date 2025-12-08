@@ -281,38 +281,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(trade_id=trade_id)
         return queryset
 
-    def destroy(self, request, *args, **kwargs):
-        """
-        문서 삭제 + Mem0 메모리 정리
-
-        DELETE /api/documents/{doc_id}/
-        """
-        document = self.get_object()
-        doc_id = document.doc_id
-
-        try:
-            # 1. Mem0 메모리 삭제
-            mem_service = get_memory_service()
-            if mem_service:
-                mem_service.delete_doc_memory(doc_id)
-                logger.info(f"Deleted mem0 memory for doc_id={doc_id}")
-
-            # 2. RDS에서 삭제
-            document.delete()
-            logger.info(f"Successfully deleted doc_id={doc_id}")
-
-            return Response({
-                'message': '문서가 삭제되었습니다.',
-                'doc_id': doc_id
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Failed to delete document: {e}")
-            return Response(
-                {'error': f'삭제 중 오류가 발생했습니다: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
         """
