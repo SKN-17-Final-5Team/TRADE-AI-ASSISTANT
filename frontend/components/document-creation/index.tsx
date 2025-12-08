@@ -1190,8 +1190,12 @@ export default function DocumentCreationPage({
       {shouldShowChatButton && (hasShownIntro || showIntro) && (
         <button
           ref={chatButtonRef}
-          onClick={() => setIsChatOpen(!isChatOpen)}
-          className={`fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform transition-colors duration-200 hover:scale-110 z-40 ${!hasShownIntro ? 'opacity-0 pointer-events-none' : ''}`}
+          onClick={() => {
+            setIsChatOpen(!isChatOpen);
+            setShowIntro(false);
+            setHasShownIntro(true);
+          }}
+          className={`fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform transition-colors duration-200 hover:scale-110 z-40 ${!hasShownIntro ? 'opacity-0' : ''}`}
           title="AI 챗봇 열기"
         >
           <Sparkles className="w-6 h-6" />
