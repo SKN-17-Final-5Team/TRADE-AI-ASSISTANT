@@ -157,6 +157,17 @@ class ApiClient {
     });
   }
 
+  async changePassword(
+    emp_no: string,
+    current_password: string,
+    new_password: string
+  ): Promise<{ message: string }> {
+    return this.request<{ message: string }>('/api/documents/auth/password-change/', {
+      method: 'POST',
+      body: JSON.stringify({ emp_no, current_password, new_password }),
+    });
+  }
+
   // ===== Trades =====
 
   async getTrades(userId: number): Promise<Trade[]> {

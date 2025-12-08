@@ -1174,6 +1174,7 @@ export default function DocumentCreationPage({
       <PasswordChangeModal
         isOpen={showPasswordChange}
         onClose={() => setShowPasswordChange(false)}
+        empNo={userEmployeeId}
       />
 
       <ExitConfirmModal

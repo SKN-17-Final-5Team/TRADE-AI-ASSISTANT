@@ -111,6 +111,63 @@ class LoginView(APIView):
         return Response(response_data)
 
 
+class PasswordChangeView(APIView):
+    """비밀번호 변경 API"""
+
+    def post(self, request):
+        emp_no = request.data.get('emp_no')
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+
+        # 필수 필드 검증
+        if not emp_no or not current_password or not new_password:
+            return Response(
+                {'error': '사원번호, 현재 비밀번호, 새 비밀번호는 필수입니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 비밀번호 유효성 검사 (8~16자, 영문/숫자/특수문자 조합)
+        import re
+        if len(new_password) < 8 or len(new_password) > 16:
+            return Response(
+                {'error': '비밀번호는 8~16자 사이여야 합니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        has_letter = bool(re.search(r'[A-Za-z]', new_password))
+        has_number = bool(re.search(r'[0-9]', new_password))
+        has_special = bool(re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?`~]', new_password))
+
+        if not (has_letter and has_number and has_special):
+            return Response(
+                {'error': '비밀번호는 영문, 숫자, 특수문자를 각각 1개 이상 포함해야 합니다.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 현재 비밀번호로 인증
+        user = authenticate(request, username=emp_no, password=current_password)
+
+        if user is None:
+            return Response(
+                {'error': '현재 비밀번호가 올바르지 않습니다.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if not user.activation:
+            return Response(
+                {'error': '비활성화된 계정입니다.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 비밀번호 변경
+        user.set_password(new_password)
+        user.save()
+
+        logger.info(f"Password changed for user: {emp_no}")
+
+        return Response({'message': '비밀번호가 성공적으로 변경되었습니다.'})
+
+
 # =============================================================================
 # Department Views
 # =============================================================================

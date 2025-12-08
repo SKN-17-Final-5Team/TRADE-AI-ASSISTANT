@@ -9,6 +9,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     LoginView,
+    PasswordChangeView,
     DepartmentViewSet,
     UserViewSet,
     TradeFlowViewSet,
@@ -31,6 +32,7 @@ router.register(r'messages', DocMessageViewSet, basename='message')
 urlpatterns = [
     # 인증
     path('auth/login/', LoginView.as_view(), name='login'),
+    path('auth/password-change/', PasswordChangeView.as_view(), name='password-change'),
 
     # ViewSet routes (먼저 배치하여 trades/, users/ 등이 먼저 매칭되도록 함)
     path('', include(router.urls)),
@@ -46,7 +48,8 @@ urlpatterns = [
 API Endpoints:
 
 Auth:
-- POST /api/auth/login/ - 로그인
+- POST /api/documents/auth/login/ - 로그인
+- POST /api/documents/auth/password-change/ - 비밀번호 변경
 
 Departments:
 - GET /api/departments/ - 부서 목록

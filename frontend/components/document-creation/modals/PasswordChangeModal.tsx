@@ -1,9 +1,11 @@
 // PasswordChangeModal.tsx - 비밀번호 변경 모달
 import { useState } from 'react';
+import { api } from '../../../utils/api';
 
 interface PasswordChangeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  empNo: string;
 }
 
 // 비밀번호 유효성 검사 함수
@@ -32,13 +34,15 @@ function validatePassword(password: string): { isValid: boolean; message: string
 
 export default function PasswordChangeModal({
   isOpen,
-  onClose
+  onClose,
+  empNo
 }: PasswordChangeModalProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleClose = () => {
     setPasswordError('');
@@ -46,10 +50,11 @@ export default function PasswordChangeModal({
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setIsLoading(false);
     onClose();
   };
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  async function handlePasswordChange(e: React.FormEvent) {
     e.preventDefault();
 
     // 현재 비밀번호 입력 확인
@@ -71,13 +76,23 @@ export default function PasswordChangeModal({
       return;
     }
 
-    // TODO: 백엔드 API 연동 (다음 단계에서 구현)
-    setPasswordSuccess(true);
+    // 백엔드 API 호출
+    setIsLoading(true);
     setPasswordError('');
-    setTimeout(() => {
-      handleClose();
-    }, 1500);
-  };
+
+    try {
+      await api.changePassword(empNo, currentPassword, newPassword);
+      setPasswordSuccess(true);
+      setTimeout(() => {
+        handleClose();
+      }, 1500);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '비밀번호 변경에 실패했습니다.';
+      setPasswordError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   if (!isOpen) return null;
 
