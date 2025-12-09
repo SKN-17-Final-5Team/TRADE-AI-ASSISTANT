@@ -236,7 +236,7 @@ const DataField = Node.create({
             if (disabled) {
                 bgClass = 'bg-gray-100 border border-gray-200 text-gray-400 px-1 rounded cursor-not-allowed pointer-events-none opacity-60';
             } else if (source === 'agent') {
-                bgClass = 'bg-yellow-50 border border-yellow-200 text-yellow-900 px-1 rounded';
+                bgClass = 'bg-yellow-50 border border-yellow-200 text-gray-900 px-1 rounded';
             } else if (source === 'mapped') {
                 bgClass = 'bg-green-50 border border-green-200 text-green-900 px-1 rounded';
             } else if (source === 'user') {
