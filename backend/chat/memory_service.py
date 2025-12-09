@@ -1,35 +1,71 @@
 """
 Mem0 Memory Service for Trade Assistant
 
-This module provides memory management for:
-1. Short-term memory: Current document conversation context (doc_id based)
-2. Long-term memory: User preferences and patterns (user_id based)
+메모리 구조:
+1. 단기 메모리 (Short-term) - 세션 요약:
+   - 문서별 작업 요약 (doc_{doc_id}) - Trade 삭제 시 함께 삭제
+   - 일반채팅 대화 요약 (gen_chat_{gen_chat_id}) - 채팅방 삭제 시 함께 삭제
+
+2. 장기 메모리 (Long-term) - 영구 보관:
+   - 사용자 선호도 (user_{user_id}) - 무역 조건, 결제 방식 등
+   - 거래처별 메모 (buyer_{user_id}_{buyer_name}) - 거래처 특성, 주의사항 등
+
+3. 영구 기록:
+   - RDS (MySQL): 전체 대화 히스토리 (DocMessage, GenMessage 테이블)
 """
 
 import os
+import re
 import logging
 from typing import List, Dict, Any, Optional
-
-# 타임존 설정 (Asia/Seoul)
-os.environ['TZ'] = 'Asia/Seoul'
-try:
-    import time
-    time.tzset()
-except AttributeError:
-    pass  # Windows에서는 tzset() 미지원
-
 from mem0 import Memory
 
 logger = logging.getLogger(__name__)
 
 
-class TradeMemoryService:
-    """
-    메모리 관리 서비스
+# ==================== 커스텀 프롬프트 ====================
 
-    - RDS: 전체 대화 히스토리 저장
-    - Mem0: 중요 정보 추출 및 컨텍스트 관리
-    """
+PROMPTS = {
+    # 문서 단기 메모리 - 세션 요약
+    "doc": """
+현재 문서 작업 세션의 핵심 내용만 요약하세요.
+저장: 작업 목표, 수정 요청사항, 완료된 작업, 현재 진행 상황
+제외: 인사말, 단순 확인, 구체적 금액/수량/날짜(RDS에 저장됨)
+""",
+
+    # 일반채팅 단기 메모리 - 대화 요약
+    "gen_chat": """
+현재 대화 세션의 핵심 내용만 요약하세요.
+저장: 대화 주제, 질문/답변 요약, 논의된 무역 관련 정보
+제외: 인사말, 단순 확인, 반복 내용
+""",
+
+    # 사용자 장기 메모리 - 선호도만
+    "user": """
+사용자의 일반적인 선호도와 스타일만 추출하세요.
+저장할 정보:
+- 무역 조건 선호 (예: "FOB 조건 선호", "CIF 조건을 주로 사용")
+- 결제 방식 선호 (예: "T/T 결제 선호", "L/C 사용")
+- 커뮤니케이션 스타일 (예: "상세한 설명 선호", "간결한 답변 선호")
+- 자주 거래하는 품목/지역 패턴
+제외: 특정 거래 정보(금액/수량/날짜), 일회성 요청, 거래처 정보
+""",
+
+    # 거래처 장기 메모리 - 거래처 특성만
+    "buyer": """
+거래처(buyer)에 대한 중요 정보만 추출하세요.
+저장할 정보:
+- 거래처 특성 (예: "품질 요구 높음", "가격 민감")
+- 선호 조건 (예: "항상 FOB 요청", "샘플 필수 요구")
+- 주의사항 (예: "결제 지연 이력", "클레임 까다로움")
+- 커뮤니케이션 특성 (예: "빠른 응답 요구", "상세 문서 선호")
+제외: 단순 거래 내역(금액/수량/날짜), 일회성 거래 정보
+"""
+}
+
+
+class TradeMemoryService:
+    """Mem0 메모리 관리 서비스 (싱글톤)"""
 
     _instance = None
 
@@ -42,713 +78,299 @@ class TradeMemoryService:
     def __init__(self):
         if self._initialized:
             return
+        self._init_memory()
 
+    def _init_memory(self):
+        """Mem0 초기화"""
         try:
-            # MEM0_API_KEY를 OPENAI_API_KEY로 설정 (Mem0 내부에서 OpenAI 사용)
-            mem0_api_key = os.getenv("MEM0_API_KEY")
-            if mem0_api_key and not os.getenv("OPENAI_API_KEY"):
-                os.environ["OPENAI_API_KEY"] = mem0_api_key
-                logger.info("Set OPENAI_API_KEY from MEM0_API_KEY")
+            # API 키 설정
+            mem0_key = os.getenv("MEM0_API_KEY")
+            if mem0_key and not os.getenv("OPENAI_API_KEY"):
+                os.environ["OPENAI_API_KEY"] = mem0_key
 
-            # Qdrant 연결 설정
+            # Qdrant 설정
             qdrant_url = os.getenv("QDRANT_URL")
-            qdrant_api_key = os.getenv("QDRANT_API_KEY")
+            qdrant_key = os.getenv("QDRANT_API_KEY")
 
-            if qdrant_url and qdrant_api_key:
-                # 클라우드 Qdrant 사용
+            if qdrant_url and qdrant_key:
                 qdrant_config = {
                     "url": qdrant_url,
-                    "api_key": qdrant_api_key,
+                    "api_key": qdrant_key,
                     "collection_name": "trade_memory"
                 }
-                logger.info(f"Using cloud Qdrant: {qdrant_url}")
             else:
-                # 로컬 Qdrant 사용
                 qdrant_config = {
                     "host": os.getenv("QDRANT_HOST", "localhost"),
                     "port": int(os.getenv("QDRANT_PORT", 6333)),
                     "collection_name": "trade_memory"
                 }
-                logger.info("Using local Qdrant")
 
-            # Mem0 초기화
+            # Mem0 설정
             config = {
-                "vector_store": {
-                    "provider": "qdrant",
-                    "config": qdrant_config
-                },
+                "vector_store": {"provider": "qdrant", "config": qdrant_config},
                 "llm": {
                     "provider": "openai",
                     "config": {
                         "model": "gpt-4o-mini",
                         "temperature": 0.1,
-                        "max_tokens": 2000,
+                        "max_tokens": 2000
                     }
                 },
                 "embedder": {
                     "provider": "openai",
-                    "config": {
-                        "model": "text-embedding-3-small"
-                    }
+                    "config": {"model": "text-embedding-3-small"}
                 }
             }
 
             self.memory = Memory.from_config(config)
             self._initialized = True
-            logger.info("TradeMemoryService initialized successfully")
+            logger.info("TradeMemoryService initialized")
 
         except Exception as e:
-            logger.error(f"Failed to initialize TradeMemoryService: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"TradeMemoryService init failed: {e}")
             raise
 
-    # ==================== Document Memory (Short-term) ====================
+    # ==================== 공통 헬퍼 ====================
 
-    def add_doc_memory(
-        self,
-        doc_id: int,
-        user_id: int,
-        messages: List[Dict[str, str]],
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        문서 대화 메모리 추가 (단기 메모리)
+    def _add(self, user_id: str, messages: List[Dict], metadata: Dict, prompt: str = None) -> Dict:
+        """메모리 추가 (공통)"""
+        kwargs = {"messages": messages, "user_id": user_id, "metadata": metadata}
+        if prompt:
+            kwargs["prompt"] = prompt
+        return self.memory.add(**kwargs)
 
-        Args:
-            doc_id: 문서 ID
-            user_id: 사용자 ID
-            messages: 대화 메시지 [{"role": "user/assistant", "content": "..."}]
-            metadata: 추가 메타데이터 (doc_type, trade_id 등)
+    def _get(self, user_id: str, query: str = None, limit: int = 10) -> List[Dict]:
+        """메모리 조회 (공통)"""
+        if query:
+            result = self.memory.search(query=query, user_id=user_id, limit=limit)
+        else:
+            result = self.memory.get_all(user_id=user_id, limit=limit)
 
-        Returns:
-            추가된 메모리 정보
-        """
+        # Mem0 반환값 처리
+        if isinstance(result, dict):
+            return result.get('results', [])
+        return result if isinstance(result, list) else []
+
+    def _delete(self, user_id: str) -> bool:
+        """메모리 삭제 (공통)"""
         try:
-            # 메타데이터 구성
-            mem_metadata = {
-                "memory_type": "document",
-                "doc_id": doc_id,
-                "user_id": user_id,
-                **(metadata or {})
-            }
-
-            # Mem0에 메모리 추가
-            result = self.memory.add(
-                messages=messages,
-                user_id=f"doc_{doc_id}",  # 문서별 컨텍스트
-                metadata=mem_metadata
-            )
-
-            logger.info(f"Added doc memory: doc_id={doc_id}, user_id={user_id}")
-            return result
-
+            self.memory.delete_all(user_id=user_id)
+            return True
         except Exception as e:
-            logger.error(f"Failed to add doc memory: {e}")
-            raise
+            logger.error(f"Delete failed for {user_id}: {e}")
+            return False
 
-    def get_doc_memory(
-        self,
-        doc_id: int,
-        query: Optional[str] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        문서 메모리 조회
+    @staticmethod
+    def _normalize_buyer(name: str) -> str:
+        """거래처명 정규화 (소문자, 공백→언더스코어, 특수문자 제거)"""
+        if not name:
+            return ""
+        normalized = name.lower().strip()
+        normalized = re.sub(r'\s+', '_', normalized)
+        normalized = re.sub(r'[^a-z0-9_가-힣]', '', normalized)
+        return normalized
 
-        Args:
-            doc_id: 문서 ID
-            query: 검색 쿼리 (없으면 전체 조회)
-            limit: 최대 결과 수
+    # ==================== 문서 메모리 (단기 - 세션 요약) ====================
 
-        Returns:
-            메모리 목록
-        """
-        try:
-            if query:
-                # 쿼리 기반 검색
-                result = self.memory.search(
-                    query=query,
-                    user_id=f"doc_{doc_id}",
-                    limit=limit
-                )
-            else:
-                # 전체 메모리 조회
-                result = self.memory.get_all(
-                    user_id=f"doc_{doc_id}",
-                    limit=limit
-                )
+    def add_doc_memory(self, doc_id: int, user_id: int, messages: List[Dict], metadata: Dict = None) -> Dict:
+        """문서 작업 세션 요약 저장"""
+        meta = {"memory_type": "doc_session", "doc_id": doc_id, "user_id": user_id, **(metadata or {})}
+        result = self._add(f"doc_{doc_id}", messages, meta, PROMPTS["doc"])
+        logger.info(f"Added doc session memory: doc_id={doc_id}")
+        return result
 
-            # Mem0 반환값 처리: dict 또는 list
-            if isinstance(result, dict):
-                memories = result.get('results', [])
-            elif isinstance(result, list):
-                memories = result
-            else:
-                memories = []
-
-            logger.info(f"Retrieved {len(memories)} memories for doc_id={doc_id}")
-            return memories
-
-        except Exception as e:
-            logger.error(f"Failed to get doc memory: {e}")
-            import traceback
-            traceback.print_exc()
-            return []
+    def get_doc_memory(self, doc_id: int, query: str = None, limit: int = 5) -> List[Dict]:
+        """문서 세션 메모리 조회"""
+        return self._get(f"doc_{doc_id}", query, limit)
 
     def delete_doc_memory(self, doc_id: int) -> bool:
-        """
-        문서 메모리 삭제
+        """문서 메모리 삭제"""
+        success = self._delete(f"doc_{doc_id}")
+        if success:
+            logger.info(f"Deleted doc memory: doc_id={doc_id}")
+        return success
 
-        Args:
-            doc_id: 문서 ID
-
-        Returns:
-            성공 여부
-        """
-        try:
-            # 해당 문서의 모든 메모리 삭제
-            self.memory.delete_all(user_id=f"doc_{doc_id}")
-            logger.info(f"Deleted all memories for doc_id={doc_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to delete doc memory: {e}")
-            return False
-
-    # ==================== Trade Memory (Delete cascade) ====================
+    # ==================== Trade 메모리 삭제 (문서 일괄 삭제) ====================
 
     def delete_trade_memory(self, trade_id: int, doc_ids: List[int]) -> bool:
-        """
-        무역 플로우 삭제 시 관련 모든 문서 메모리 삭제
+        """Trade 삭제 시 관련 모든 문서 메모리 삭제"""
+        success_count = 0
+        for doc_id in doc_ids:
+            if self.delete_doc_memory(doc_id):
+                success_count += 1
 
-        Args:
-            trade_id: 무역 ID
-            doc_ids: 삭제할 문서 ID 목록
+        logger.info(f"Deleted trade memory: trade_id={trade_id}, {success_count}/{len(doc_ids)} docs")
+        return success_count == len(doc_ids)
 
-        Returns:
-            성공 여부
-        """
-        try:
-            success_count = 0
-            for doc_id in doc_ids:
-                if self.delete_doc_memory(doc_id):
-                    success_count += 1
+    # ==================== 사용자 메모리 (장기 - 선호도) ====================
 
-            logger.info(
-                f"Deleted memories for trade_id={trade_id}: "
-                f"{success_count}/{len(doc_ids)} documents"
-            )
-            return success_count == len(doc_ids)
+    def add_user_memory(self, user_id: int, messages: List[Dict], metadata: Dict = None) -> Dict:
+        """사용자 선호도 저장 (장기)"""
+        meta = {"memory_type": "user_preference", "user_id": user_id, **(metadata or {})}
+        result = self._add(f"user_{user_id}", messages, meta, PROMPTS["user"])
+        logger.info(f"Added user preference: user_id={user_id}")
+        return result
 
-        except Exception as e:
-            logger.error(f"Failed to delete trade memory: {e}")
-            return False
+    def get_user_memory(self, user_id: int, query: str = None, limit: int = 5) -> List[Dict]:
+        """사용자 선호도 조회"""
+        return self._get(f"user_{user_id}", query, limit)
 
-    # ==================== User Memory (Long-term) ====================
+    # ==================== 거래처 메모리 (장기 - 거래처별 메모) ====================
 
-    # 장기 메모리용 커스텀 프롬프트 (선호도/패턴만 추출)
-    USER_MEMORY_PROMPT = """
-대화에서 사용자의 선호도와 행동 패턴만 추출하세요.
+    def add_buyer_memory(self, user_id: int, buyer_name: str, messages: List[Dict], metadata: Dict = None) -> Dict:
+        """거래처 메모 저장 (장기)"""
+        normalized = self._normalize_buyer(buyer_name)
+        if not normalized:
+            logger.warning(f"Invalid buyer name: {buyer_name}")
+            return {}
 
-저장할 정보:
-- 무역 조건 선호도 (예: "FOB 조건 선호", "CIF 조건을 주로 사용")
-- 결제 방식 선호도 (예: "T/T 결제 선호", "대량 주문 시 L/C 사용")
-- 커뮤니케이션 스타일 (예: "상세한 설명 선호", "간결한 답변 선호")
-- 일반적인 무역 패턴 (예: "아시아 국가와 자주 거래", "전자제품 전문")
-"""
+        meta = {
+            "memory_type": "buyer_memo",
+            "user_id": user_id,
+            "buyer_name": buyer_name,
+            "buyer_normalized": normalized,
+            **(metadata or {})
+        }
+        result = self._add(f"buyer_{user_id}_{normalized}", messages, meta, PROMPTS["buyer"])
+        logger.info(f"Added buyer memo: user_id={user_id}, buyer={buyer_name}")
+        return result
 
-    def add_user_memory(
-        self,
-        user_id: int,
-        messages: List[Dict[str, str]],
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        사용자 장기 메모리 추가 (선호도/패턴만 저장)
-
-        Args:
-            user_id: 사용자 ID
-            messages: 대화 메시지
-            metadata: 추가 메타데이터
-
-        Returns:
-            추가된 메모리 정보
-        """
-        try:
-            mem_metadata = {
-                "memory_type": "user_preference",
-                "user_id": user_id,
-                **(metadata or {})
-            }
-
-            result = self.memory.add(
-                messages=messages,
-                user_id=f"user_{user_id}",
-                metadata=mem_metadata,
-                prompt=self.USER_MEMORY_PROMPT
-            )
-
-            logger.info(f"Added user memory (preferences only): user_id={user_id}")
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to add user memory: {e}")
-            raise
-
-    def get_user_memory(
-        self,
-        user_id: int,
-        query: Optional[str] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        사용자 장기 메모리 조회
-
-        Args:
-            user_id: 사용자 ID
-            query: 검색 쿼리
-            limit: 최대 결과 수
-
-        Returns:
-            메모리 목록
-        """
-        try:
-            if query:
-                result = self.memory.search(
-                    query=query,
-                    user_id=f"user_{user_id}",
-                    limit=limit
-                )
-            else:
-                result = self.memory.get_all(
-                    user_id=f"user_{user_id}",
-                    limit=limit
-                )
-
-            # Mem0 반환값 처리: dict 또는 list
-            if isinstance(result, dict):
-                memories = result.get('results', [])
-            elif isinstance(result, list):
-                memories = result
-            else:
-                memories = []
-
-            logger.info(f"Retrieved {len(memories)} user memories for user_id={user_id}")
-            return memories
-
-        except Exception as e:
-            logger.error(f"Failed to get user memory: {e}")
-            import traceback
-            traceback.print_exc()
+    def get_buyer_memory(self, user_id: int, buyer_name: str, query: str = None, limit: int = 5) -> List[Dict]:
+        """거래처 메모 조회"""
+        normalized = self._normalize_buyer(buyer_name)
+        if not normalized:
             return []
+        return self._get(f"buyer_{user_id}_{normalized}", query, limit)
 
-    # ==================== Trade Memory (Cross-document) ====================
+    # ==================== 일반채팅 메모리 (단기 - 대화 요약) ====================
 
-    def get_trade_memory(
-        self,
-        trade_id: int,
-        doc_ids: List[int],
-        query: Optional[str] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        무역 플로우 내 모든 문서 메모리 조회 (다른 문서 참조용)
+    def add_gen_chat_memory(self, gen_chat_id: int, user_id: int, messages: List[Dict], metadata: Dict = None) -> Dict:
+        """일반채팅 대화 요약 저장"""
+        meta = {"memory_type": "gen_chat_session", "gen_chat_id": gen_chat_id, "user_id": user_id, **(metadata or {})}
+        result = self._add(f"gen_chat_{gen_chat_id}", messages, meta, PROMPTS["gen_chat"])
+        logger.info(f"Added gen_chat session memory: gen_chat_id={gen_chat_id}")
+        return result
 
-        Args:
-            trade_id: 무역 ID
-            doc_ids: 해당 무역의 모든 문서 ID 목록
-            query: 검색 쿼리
-            limit: 최대 결과 수
+    def get_gen_chat_memory(self, gen_chat_id: int, query: str = None, limit: int = 5) -> List[Dict]:
+        """일반채팅 세션 메모리 조회"""
+        return self._get(f"gen_chat_{gen_chat_id}", query, limit)
 
-        Returns:
-            메모리 목록
-        """
-        try:
-            all_memories = []
-            per_doc_limit = max(2, limit // len(doc_ids)) if doc_ids else limit
+    def delete_gen_chat_memory(self, gen_chat_id: int) -> bool:
+        """일반채팅 메모리 삭제"""
+        success = self._delete(f"gen_chat_{gen_chat_id}")
+        if success:
+            logger.info(f"Deleted gen_chat memory: gen_chat_id={gen_chat_id}")
+        return success
 
-            for doc_id in doc_ids:
-                memories = self.get_doc_memory(
-                    doc_id=doc_id,
-                    query=query,
-                    limit=per_doc_limit
-                )
-                for mem in memories:
-                    mem['source_doc_id'] = doc_id
-                all_memories.extend(memories)
+    # ==================== 컨텍스트 빌더 ====================
 
-            # 최신순 정렬 후 limit 적용
-            all_memories = all_memories[:limit]
-
-            logger.info(
-                f"Retrieved {len(all_memories)} memories for trade_id={trade_id} "
-                f"from {len(doc_ids)} documents"
-            )
-            return all_memories
-
-        except Exception as e:
-            logger.error(f"Failed to get trade memory: {e}")
-            return []
-
-    # ==================== Context Building ====================
-
-    def build_context(
+    def build_doc_context(
         self,
         doc_id: int,
         user_id: int,
-        current_query: str,
-        include_user_memory: bool = True,
-        trade_id: Optional[int] = None,
-        sibling_doc_ids: Optional[List[int]] = None
+        query: str,
+        buyer_name: str = None
     ) -> Dict[str, Any]:
         """
-        대화 컨텍스트 구성 (최적화: 병렬 조회, 타임아웃 3초)
-
-        Args:
-            doc_id: 문서 ID
-            user_id: 사용자 ID
-            current_query: 현재 사용자 질문
-            include_user_memory: 사용자 장기 메모리 포함 여부
-            trade_id: 무역 ID (같은 무역 내 다른 문서 참조용)
-            sibling_doc_ids: 같은 무역의 다른 문서 ID 목록
+        문서 채팅용 컨텍스트 구성 (병렬 조회)
 
         Returns:
             {
-                "doc_memories": [...],  # 현재 문서 관련 메모리
-                "trade_memories": [...],  # 같은 무역 내 다른 문서 대화 메모리
-                "user_memories": [...],  # 사용자 관련 메모리
-                "context_summary": "..."  # 컨텍스트 요약
+                "doc_memories": [...],    # 현재 문서 세션 요약
+                "user_memories": [...],   # 사용자 선호도
+                "buyer_memories": [...],  # 거래처 메모 (있으면)
+                "context_summary": "..."
             }
         """
         import concurrent.futures
 
-        context = {
-            "doc_memories": [],
-            "trade_memories": [],
-            "user_memories": [],
-            "context_summary": ""
-        }
+        context = {"doc_memories": [], "user_memories": [], "buyer_memories": [], "context_summary": ""}
 
         try:
-            # 병렬로 모든 메모리 조회 (ThreadPoolExecutor 사용)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-                # 1. 현재 문서 메모리 조회 태스크
-                doc_future = executor.submit(
-                    self.get_doc_memory,
-                    doc_id=doc_id,
-                    query=current_query,
-                    limit=5
-                )
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                doc_f = executor.submit(self.get_doc_memory, doc_id, query, 3)
+                user_f = executor.submit(self.get_user_memory, user_id, query, 3)
+                buyer_f = executor.submit(self.get_buyer_memory, user_id, buyer_name, query, 3) if buyer_name else None
 
-                # 2. 같은 무역 내 다른 문서 대화 메모리 조회 태스크 (옵션)
-                trade_future = None
-                if trade_id and sibling_doc_ids:
-                    other_doc_ids = [d for d in sibling_doc_ids if d != doc_id]
-                    if other_doc_ids:
-                        trade_future = executor.submit(
-                            self.get_trade_memory,
-                            trade_id=trade_id,
-                            doc_ids=other_doc_ids,
-                            query=current_query,
-                            limit=5
-                        )
+                context["doc_memories"] = doc_f.result()
+                context["user_memories"] = user_f.result()
+                if buyer_f:
+                    context["buyer_memories"] = buyer_f.result()
 
-                # 3. 사용자 장기 메모리 조회 태스크 (옵션)
-                user_future = None
-                if include_user_memory:
-                    user_future = executor.submit(
-                        self.get_user_memory,
-                        user_id=user_id,
-                        query=current_query,
-                        limit=3
-                    )
-
-                # 결과 수집 (타임아웃 없음 - 메모리 조회 완료까지 대기)
-                context["doc_memories"] = doc_future.result()
-
-                if trade_future:
-                    context["trade_memories"] = trade_future.result()
-
-                if user_future:
-                    context["user_memories"] = user_future.result()
-
-            # 컨텍스트 요약 생성
-            summary_parts = []
-
+            # 요약 생성
+            parts = []
             if context["doc_memories"]:
-                summary_parts.append(
-                    f"현재 문서에서 {len(context['doc_memories'])}개의 관련 대화가 있었습니다."
-                )
-
-            if context["trade_memories"]:
-                summary_parts.append(
-                    f"같은 무역의 다른 문서에서 {len(context['trade_memories'])}개의 관련 대화가 있습니다."
-                )
-
+                parts.append(f"문서 작업 이력 {len(context['doc_memories'])}건")
             if context["user_memories"]:
-                summary_parts.append(
-                    f"사용자의 {len(context['user_memories'])}개 이전 선호사항이 있습니다."
-                )
-
-            context["context_summary"] = " ".join(summary_parts)
-
-            logger.info(
-                f"Built context for doc_id={doc_id}, user_id={user_id}: "
-                f"{len(context['doc_memories'])} doc memories, "
-                f"{len(context['trade_memories'])} trade memories, {len(context['user_memories'])} user memories"
-            )
+                parts.append(f"사용자 선호도 {len(context['user_memories'])}건")
+            if context["buyer_memories"]:
+                parts.append(f"거래처 메모 {len(context['buyer_memories'])}건")
+            context["context_summary"] = ", ".join(parts) if parts else ""
 
         except Exception as e:
-            logger.error(f"Failed to build context: {e}")
+            logger.error(f"Build doc context failed: {e}")
 
         return context
-
-    # ==================== General Chat Memory ====================
-
-    def add_gen_chat_memory(
-        self,
-        gen_chat_id: int,
-        user_id: int,
-        messages: List[Dict[str, str]],
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        일반 채팅 메모리 추가 (단기 메모리)
-
-        Args:
-            gen_chat_id: 일반 채팅 세션 ID
-            user_id: 사용자 ID
-            messages: 대화 메시지 [{"role": "user/assistant", "content": "..."}]
-            metadata: 추가 메타데이터
-
-        Returns:
-            추가된 메모리 정보
-        """
-        try:
-            mem_metadata = {
-                "memory_type": "gen_chat",
-                "gen_chat_id": gen_chat_id,
-                "user_id": user_id,
-                **(metadata or {})
-            }
-
-            result = self.memory.add(
-                messages=messages,
-                user_id=f"gen_chat_{gen_chat_id}",  # 채팅 세션별 컨텍스트
-                metadata=mem_metadata
-            )
-
-            logger.info(f"Added gen_chat memory: gen_chat_id={gen_chat_id}, user_id={user_id}")
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to add gen_chat memory: {e}")
-            raise
-
-    def get_gen_chat_memory(
-        self,
-        gen_chat_id: int,
-        query: Optional[str] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        일반 채팅 메모리 조회
-
-        Args:
-            gen_chat_id: 일반 채팅 세션 ID
-            query: 검색 쿼리 (없으면 전체 조회)
-            limit: 최대 결과 수
-
-        Returns:
-            메모리 목록
-        """
-        try:
-            if query:
-                result = self.memory.search(
-                    query=query,
-                    user_id=f"gen_chat_{gen_chat_id}",
-                    limit=limit
-                )
-            else:
-                result = self.memory.get_all(
-                    user_id=f"gen_chat_{gen_chat_id}",
-                    limit=limit
-                )
-
-            if isinstance(result, dict):
-                memories = result.get('results', [])
-            elif isinstance(result, list):
-                memories = result
-            else:
-                memories = []
-
-            logger.info(f"Retrieved {len(memories)} memories for gen_chat_id={gen_chat_id}")
-            return memories
-
-        except Exception as e:
-            logger.error(f"Failed to get gen_chat memory: {e}")
-            return []
-
-    def delete_gen_chat_memory(self, gen_chat_id: int) -> bool:
-        """
-        일반 채팅 메모리 삭제
-
-        Args:
-            gen_chat_id: 일반 채팅 세션 ID
-
-        Returns:
-            성공 여부
-        """
-        try:
-            self.memory.delete_all(user_id=f"gen_chat_{gen_chat_id}")
-            logger.info(f"Deleted all memories for gen_chat_id={gen_chat_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to delete gen_chat memory: {e}")
-            return False
 
     def build_gen_chat_context(
         self,
         gen_chat_id: int,
         user_id: int,
-        current_query: str,
-        include_user_memory: bool = True,
+        query: str,
         is_first_message: bool = False
     ) -> Dict[str, Any]:
         """
-        일반 채팅 컨텍스트 구성 (최적화: 첫 메시지면 단기 메모리 스킵, 병렬 조회)
-
-        Args:
-            gen_chat_id: 일반 채팅 세션 ID
-            user_id: 사용자 ID
-            current_query: 현재 사용자 질문
-            include_user_memory: 사용자 장기 메모리 포함 여부
-            is_first_message: 첫 메시지 여부 (True면 단기 메모리 스킵)
+        일반채팅용 컨텍스트 구성
 
         Returns:
             {
-                "chat_memories": [...],  # 현재 채팅 세션 관련 메모리
-                "user_memories": [...],  # 사용자 장기 메모리
-                "context_summary": "..."  # 컨텍스트 요약
+                "chat_memories": [...],   # 현재 채팅 세션 요약
+                "user_memories": [...],   # 사용자 선호도
+                "context_summary": "..."
             }
         """
         import concurrent.futures
 
-        context = {
-            "chat_memories": [],
-            "user_memories": [],
-            "context_summary": ""
-        }
+        context = {"chat_memories": [], "user_memories": [], "context_summary": ""}
 
         try:
-            # 첫 메시지면 단기 메모리 스킵 (새 채팅방이라 조회할 메모리 없음)
             if is_first_message:
-                logger.info(f"First message - skipping chat memory lookup for gen_chat_id={gen_chat_id}")
-                # 장기 메모리만 조회
-                if include_user_memory:
-                    user_memories = self.get_user_memory(
-                        user_id=user_id,
-                        query=current_query,
-                        limit=3
-                    )
-                    context["user_memories"] = user_memories
+                # 첫 메시지면 단기 메모리 스킵 (새 채팅방)
+                context["user_memories"] = self.get_user_memory(user_id, query, 3)
             else:
-                # 병렬로 두 메모리 조회 (ThreadPoolExecutor 사용)
                 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                    # 단기 메모리 조회 태스크
-                    chat_future = executor.submit(
-                        self.get_gen_chat_memory,
-                        gen_chat_id=gen_chat_id,
-                        query=current_query,
-                        limit=5
-                    )
+                    chat_f = executor.submit(self.get_gen_chat_memory, gen_chat_id, query, 3)
+                    user_f = executor.submit(self.get_user_memory, user_id, query, 3)
 
-                    # 장기 메모리 조회 태스크 (옵션)
-                    user_future = None
-                    if include_user_memory:
-                        user_future = executor.submit(
-                            self.get_user_memory,
-                            user_id=user_id,
-                            query=current_query,
-                            limit=3
-                        )
+                    context["chat_memories"] = chat_f.result()
+                    context["user_memories"] = user_f.result()
 
-                    # 결과 수집 (타임아웃 없음 - 메모리 조회 완료까지 대기)
-                    context["chat_memories"] = chat_future.result()
-
-                    if user_future:
-                        context["user_memories"] = user_future.result()
-
-            # 컨텍스트 요약 생성
-            summary_parts = []
-
+            # 요약 생성
+            parts = []
             if context["chat_memories"]:
-                summary_parts.append(
-                    f"현재 대화에서 {len(context['chat_memories'])}개의 관련 정보가 있습니다."
-                )
-
+                parts.append(f"대화 이력 {len(context['chat_memories'])}건")
             if context["user_memories"]:
-                summary_parts.append(
-                    f"사용자의 {len(context['user_memories'])}개 이전 선호사항이 있습니다."
-                )
-
-            context["context_summary"] = " ".join(summary_parts)
-
-            logger.info(
-                f"Built gen_chat context: gen_chat_id={gen_chat_id}, user_id={user_id}, first_msg={is_first_message}: "
-                f"{len(context['chat_memories'])} chat memories, {len(context['user_memories'])} user memories"
-            )
+                parts.append(f"사용자 선호도 {len(context['user_memories'])}건")
+            context["context_summary"] = ", ".join(parts) if parts else ""
 
         except Exception as e:
-            logger.error(f"Failed to build gen_chat context: {e}")
+            logger.error(f"Build gen_chat context failed: {e}")
 
         return context
 
-    # ==================== Utility ====================
 
-    def get_memory_stats(self, doc_id: int = None, user_id: int = None) -> Dict[str, int]:
-        """
-        메모리 통계 조회
+# ==================== 싱글톤 인스턴스 ====================
 
-        Args:
-            doc_id: 문서 ID (선택)
-            user_id: 사용자 ID (선택)
-
-        Returns:
-            통계 정보
-        """
-        stats = {}
-
-        try:
-            if doc_id:
-                doc_memories = self.get_doc_memory(doc_id, limit=1000)
-                stats["doc_memory_count"] = len(doc_memories)
-
-            if user_id:
-                user_memories = self.get_user_memory(user_id, limit=1000)
-                stats["user_memory_count"] = len(user_memories)
-
-        except Exception as e:
-            logger.error(f"Failed to get memory stats: {e}")
-
-        return stats
-
-
-# Singleton instance (lazy initialization)
 _memory_service_instance = None
 
-def get_memory_service():
-    """Get or create memory service instance (lazy initialization)"""
+
+def get_memory_service() -> Optional[TradeMemoryService]:
+    """메모리 서비스 인스턴스 반환 (lazy init)"""
     global _memory_service_instance
     if _memory_service_instance is None:
         try:
             _memory_service_instance = TradeMemoryService()
         except Exception as e:
-            logger.warning(f"⚠️ TradeMemoryService 초기화 실패 (메모리 기능 비활성화): {e}")
+            logger.warning(f"TradeMemoryService init failed (disabled): {e}")
             return None
     return _memory_service_instance
-
-# For backwards compatibility
-memory_service = None  # Will be initialized on first use

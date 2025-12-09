@@ -344,8 +344,7 @@ class ChatStreamView(View):
                     mem0_context = memory_service.build_gen_chat_context(
                         gen_chat_id=gen_chat.gen_chat_id,
                         user_id=user.user_id,
-                        current_query=message,
-                        include_user_memory=True,
+                        query=message,
                         is_first_message=is_first_message
                     )
 

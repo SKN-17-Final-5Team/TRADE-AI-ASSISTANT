@@ -571,16 +571,11 @@ class DocumentChatView(APIView):
                     numeric_user_id = user_obj.user_id
                     logger.info(f"User found: emp_no/user_id={user_id} -> user_id={numeric_user_id}")
 
-            if numeric_user_id:
-                sibling_doc_ids = list(
-                    Document.objects.filter(trade_id=trade_id).values_list('doc_id', flat=True)
-                )
-                context = mem_service.build_context(
+            if numeric_user_id and mem_service:
+                context = mem_service.build_doc_context(
                     doc_id=doc_id,
                     user_id=numeric_user_id,
-                    current_query=message,
-                    trade_id=trade_id,
-                    sibling_doc_ids=sibling_doc_ids
+                    query=message
                 )
 
             # Agent 생성 및 실행
@@ -595,13 +590,7 @@ class DocumentChatView(APIView):
             # 컨텍스트 추가
             enhanced_input = message
             if context.get('context_summary'):
-                context_parts = []
-                if context.get('doc_memories'):
-                    context_parts.append(f"[이전 대화 참조: {len(context['doc_memories'])}개]")
-                if context.get('trade_memories'):
-                    context_parts.append(f"[관련 문서 대화: {len(context['trade_memories'])}개]")
-                if context_parts:
-                    enhanced_input = f"{' '.join(context_parts)}\n\n{message}"
+                enhanced_input = f"[{context['context_summary']}]\n\n{message}"
 
             result = asyncio.run(Runner.run(agent, input=enhanced_input))
 

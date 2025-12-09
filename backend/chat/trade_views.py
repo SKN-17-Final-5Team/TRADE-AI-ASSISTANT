@@ -525,21 +525,16 @@ class DocumentChatView(APIView):
             # 4. Mem0 컨텍스트 로드
             mem_service = get_memory_service()
             context = {}
-            sibling_doc_ids = list(
-                Document.objects.filter(trade_id=trade_id).values_list('doc_id', flat=True)
-            )
 
             # user_id를 정수로 변환 (emp_no가 들어올 수도 있음)
             user = get_user_by_id_or_emp_no(user_id)
             numeric_user_id = user.user_id if user else None
 
             if numeric_user_id and mem_service:
-                context = mem_service.build_context(
+                context = mem_service.build_doc_context(
                     doc_id=doc_id,
                     user_id=numeric_user_id,
-                    current_query=message,
-                    trade_id=trade_id,
-                    sibling_doc_ids=sibling_doc_ids
+                    query=message
                 )
 
             # 5. Agent 실행
@@ -553,17 +548,15 @@ class DocumentChatView(APIView):
             enhanced_input = message
             context_parts = []
 
-            if context.get('trade_memories'):
-                trade_mem_texts = []
-                for mem in context['trade_memories'][:3]:
-                    mem_text = mem.get('memory', mem.get('text', str(mem)))
-                    source_doc = mem.get('source_doc_id', 'unknown')
-                    trade_mem_texts.append(f"  - [문서 {source_doc}] {mem_text[:150]}")
-                if trade_mem_texts:
-                    context_parts.append(f"[이전 문서 내용]\n" + "\n".join(trade_mem_texts))
+            # 사용자 장기 메모리 (선호도, 거래처 정보 등)
+            if context.get('user_memories'):
+                user_mem_texts = [m.get('memory', str(m)) for m in context['user_memories']]
+                context_parts.append(f"[사용자 이전 기록]\n" + "\n".join(f"- {t}" for t in user_mem_texts))
 
-            if context.get('context_summary'):
-                context_parts.append(f"[대화 맥락: {context['context_summary']}]")
+            # 현재 문서 세션 메모리
+            if context.get('doc_memories'):
+                doc_mem_texts = [m.get('memory', str(m)) for m in context['doc_memories']]
+                context_parts.append(f"[현재 문서 대화 요약]\n" + "\n".join(f"- {t}" for t in doc_mem_texts))
 
             if message_history:
                 history_text = "\n".join([
@@ -730,21 +723,16 @@ class DocumentChatStreamView(View):
         # 4. Mem0 컨텍스트 로드
         mem_service = get_memory_service()
         context = {}
-        sibling_doc_ids = list(
-            Document.objects.filter(trade_id=trade_id).values_list('doc_id', flat=True)
-        )
 
         # user_id를 정수로 변환 (emp_no가 들어올 수도 있음)
         user = get_user_by_id_or_emp_no(user_id)
         numeric_user_id = user.user_id if user else None
 
         if numeric_user_id and mem_service:
-            context = mem_service.build_context(
+            context = mem_service.build_doc_context(
                 doc_id=doc_id,
                 user_id=numeric_user_id,
-                current_query=message,
-                trade_id=trade_id,
-                sibling_doc_ids=sibling_doc_ids
+                query=message
             )
 
         if context.get('context_summary'):
@@ -821,18 +809,15 @@ class DocumentChatStreamView(View):
         except Exception as e:
             logger.error(f"이전 문서 조회 오류: {e}")
 
-        # 이전 문서 대화 메모리 (Mem0)
-        if context.get('trade_memories'):
-            trade_mem_texts = []
-            for mem in context['trade_memories'][:3]:
-                mem_text = mem.get('memory', mem.get('text', str(mem)))
-                source_doc = mem.get('source_doc_id', 'unknown')
-                trade_mem_texts.append(f"  - [문서 {source_doc}] {mem_text[:150]}")
-            if trade_mem_texts:
-                context_parts.append(f"[이전 문서 대화 내용]\n" + "\n".join(trade_mem_texts))
+        # 사용자 장기 메모리 (선호도, 거래처 정보 등)
+        if context.get('user_memories'):
+            user_mem_texts = [m.get('memory', str(m)) for m in context['user_memories']]
+            context_parts.append(f"[사용자 이전 기록]\n" + "\n".join(f"- {t}" for t in user_mem_texts))
 
-        if context.get('context_summary'):
-            context_parts.append(f"[대화 맥락: {context['context_summary']}]")
+        # 현재 문서 세션 메모리
+        if context.get('doc_memories'):
+            doc_mem_texts = [m.get('memory', str(m)) for m in context['doc_memories']]
+            context_parts.append(f"[현재 문서 대화 요약]\n" + "\n".join(f"- {t}" for t in doc_mem_texts))
 
         if message_history:
             history_text = "\n".join([
