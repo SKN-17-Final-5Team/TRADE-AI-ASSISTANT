@@ -712,20 +712,23 @@ const Checkbox = Node.create({
                         className={`checkbox-widget inline-flex items-center justify-center w-5 h-5 transition-all cursor-pointer select-none rounded bg-gray-50 border border-gray-300 ${node.attrs.checked ? 'text-black' : 'text-transparent'
                             }`}
                         onClick={() => {
-                            const isChecked = !node.attrs.checked;
-                            if (isChecked && node.attrs.group) {
-                                // Uncheck other checkboxes in the same group
-                                editor.state.doc.descendants((descendant: any, pos: number) => {
-                                    if (descendant.type.name === 'checkbox' &&
-                                        descendant.attrs.group === node.attrs.group &&
-                                        descendant.attrs.checked &&
-                                        pos !== getPos()) {
-                                        editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
-                                    }
-                                    return true;
-                                });
-                            }
-                            updateAttributes({ checked: isChecked });
+                            // [FIX] Wrap in setTimeout to avoid flushSync warning during render cycle
+                            setTimeout(() => {
+                                const isChecked = !node.attrs.checked;
+                                if (isChecked && node.attrs.group) {
+                                    // Uncheck other checkboxes in the same group
+                                    editor.state.doc.descendants((descendant: any, pos: number) => {
+                                        if (descendant.type.name === 'checkbox' &&
+                                            descendant.attrs.group === node.attrs.group &&
+                                            descendant.attrs.checked &&
+                                            pos !== getPos()) {
+                                            editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
+                                        }
+                                        return true;
+                                    });
+                                }
+                                updateAttributes({ checked: isChecked });
+                            }, 0);
                         }}
                         style={{ verticalAlign: 'text-bottom' }}
                     >

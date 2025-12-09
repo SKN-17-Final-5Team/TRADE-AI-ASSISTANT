@@ -44,12 +44,13 @@ export function useSharedData(): UseSharedDataReturn {
     fields.forEach(field => {
       const key = field.getAttribute('data-field-id');
       const value = field.textContent;
+      const source = field.getAttribute('data-source');
 
       if (key) {
         foundKeys.add(key);
-        // Only save if it's not the placeholder itself
+        // Only save if it's not the placeholder itself AND not auto-filled by system
         // Use first non-placeholder value (don't overwrite if already set)
-        if (value && value !== `[${key}]`) {
+        if (value && value !== `[${key}]` && source !== 'auto') {
           if (!newData[key]) {
             newData[key] = value;
           }

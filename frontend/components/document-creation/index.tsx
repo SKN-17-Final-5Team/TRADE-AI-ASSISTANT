@@ -171,6 +171,7 @@ export default function DocumentCreationPage({
     }
   }, [shouldShowChatButton, hasShownIntro, showIntro]);
 
+
   // Get template for step
   const getTemplateForStep = (step: number): string => {
     switch (step) {
@@ -182,6 +183,98 @@ export default function DocumentCreationPage({
       default: return '';
     }
   };
+
+  // [ADDED] L/C Field Automation Logic (Robust Version)
+  useEffect(() => {
+    const scContent = documentData[3];
+    if (!scContent) return;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(scContent, 'text/html');
+
+    // Find all checked radios and filter for payment group
+    const checkedRadios = Array.from(doc.querySelectorAll('.radio-circle'));
+    const paymentRadio = checkedRadios.find(radio => {
+      const isChecked = radio.classList.contains('checked') || radio.getAttribute('data-checked') === 'true';
+      const isPaymentGroup = radio.getAttribute('data-group') === 'payment';
+      return isChecked && isPaymentGroup;
+    });
+
+    if (paymentRadio) {
+      // Structure: LabelDiv + RadioDiv(Flex) + DescDiv
+      // Radio is inside RadioDiv.
+      // [FIX] Tiptap may wrap the inline span in a <p> tag.
+      let radioContainer = paymentRadio.parentElement;
+      if (radioContainer && radioContainer.tagName === 'P') {
+        radioContainer = radioContainer.parentElement;
+      }
+
+      const labelDiv = radioContainer?.previousElementSibling;
+      const labelText = labelDiv?.textContent?.trim() || '';
+
+      const isLC = ['Sight Credit', 'Deferred Payment Credit', 'Acceptance Credit'].includes(labelText);
+      const isNonLC = ['D/P', 'D/A', 'T/T'].includes(labelText);
+
+      if (isLC || isNonLC) {
+        setDocumentData((prev: DocumentData) => {
+          const newData = { ...prev };
+          let hasChanges = false;
+
+          const updateFields = (step: number, fields: string[]) => {
+            let content = newData[step];
+            // Hydrate if missing
+            if (!content) {
+              content = hydrateTemplate(getTemplateForStep(step));
+            }
+            if (!content) return;
+
+            const stepDoc = parser.parseFromString(content, 'text/html');
+            let docChanged = false;
+
+            fields.forEach(fieldId => {
+              const field = stepDoc.querySelector(`[data-field-id="${fieldId}"]`);
+              if (field) {
+                const currentText = field.textContent?.trim();
+
+                if (isNonLC) {
+                  // Set to [N/A] if not already
+                  if (currentText !== '[N/A]') {
+                    field.textContent = '[N/A]';
+                    field.setAttribute('data-source', 'auto');
+                    // Also disable it to prevent editing? User said "automatically filled", implied disabled or just filled.
+                    // But "L/C fields... should remain editable/visible" for L/C.
+                    // For Non-L/C, [N/A] is usually static. Let's keep it editable but filled.
+                    docChanged = true;
+                  }
+                } else if (isLC) {
+                  // Restore placeholder if it was [N/A] or automatically set
+                  if (currentText?.trim() === '[N/A]' || field.getAttribute('data-source') === 'auto') {
+                    field.textContent = `[${fieldId}]`;
+                    field.removeAttribute('data-source');
+                    docChanged = true;
+                  }
+                }
+              }
+            });
+
+            if (docChanged) {
+              newData[step] = stepDoc.body.innerHTML;
+              hasChanges = true;
+            }
+          };
+
+          updateFields(4, ['l/c_no', 'l/c_date', 'l/c_bank']);
+          updateFields(5, ['l/c_no', 'l/c_date']);
+
+          return hasChanges ? newData : prev;
+        });
+      }
+    } else {
+      console.log('ℹ️ No checked payment radio found.');
+    }
+  }, [documentData[3], hydrateTemplate]); // [CHANGED] Added hydrateTemplate to dependencies
+
+
 
   // Helper to check completion status for a specific step
   const getStepCompletionStatus = (stepNumber: number): boolean => {
