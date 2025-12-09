@@ -119,9 +119,9 @@ export const packingListTemplateHTML = `
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[marks_and_numbers]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[description]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[quantity]</mark></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[net_weight]</mark></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[gross_weight]</mark></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[measurement]</mark></td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[net_weight]</mark> KG</td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[gross_weight]</mark> KG</td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[measurement]</mark> CBM</td>
             </tr>
             <tr style="background-color: #f0f0f0; font-weight: bold;">
                 <td colspan="2" style="text-align: right; padding: 8px; border: 1px solid #d1d5db;">TOTAL :</td>

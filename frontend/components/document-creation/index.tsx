@@ -731,6 +731,19 @@ export default function DocumentCreationPage({
           field.setAttribute('data-field-id', newFieldId);
           field.setAttribute('data-source', ''); // Set to empty string (null equivalent in HTML)
           field.textContent = `[${newFieldId}]`;
+
+          // [FIX] Append units if missing (for Net/Gross Weight and Measurement)
+          if (baseName === 'net_weight' || baseName === 'gross_weight') {
+            const parent = field.parentElement;
+            if (parent && !parent.textContent?.includes('KG')) {
+              parent.appendChild(document.createTextNode(' KG'));
+            }
+          } else if (baseName === 'measurement') {
+            const parent = field.parentElement;
+            if (parent && !parent.textContent?.includes('CBM')) {
+              parent.appendChild(document.createTextNode(' CBM'));
+            }
+          }
         }
       });
 

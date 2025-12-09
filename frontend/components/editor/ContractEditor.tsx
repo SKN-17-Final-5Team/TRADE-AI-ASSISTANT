@@ -501,7 +501,10 @@ const AutoCalculation = Extension.create({
                         subTotalNode: any,
                         subTotalPos: number,
                         eaBox: number,
-                        box: number
+                        box: number,
+                        netWeight: number,
+                        grossWeight: number,
+                        measurement: number
                     }>()
 
                     // Store total fields
@@ -509,11 +512,17 @@ const AutoCalculation = Extension.create({
                     let totalPricePos: number | null = null
                     let totalEaBoxPos: number | null = null
                     let totalBoxPos: number | null = null
+                    let totalNetWeightPos: number | null = null
+                    let totalGrossWeightPos: number | null = null
+                    let totalMeasurementPos: number | null = null
 
                     let totalQuantityNode: any = null
                     let totalPriceNode: any = null
                     let totalEaBoxNode: any = null
                     let totalBoxNode: any = null
+                    let totalNetWeightNode: any = null
+                    let totalGrossWeightNode: any = null
+                    let totalMeasurementNode: any = null
 
                     // First pass: Collect all relevant nodes
                     newState.doc.descendants((node, pos) => {
@@ -542,20 +551,39 @@ const AutoCalculation = Extension.create({
                                 totalBoxNode = node
                                 return
                             }
+                            if (fieldId === 'total_net_weight') {
+                                totalNetWeightPos = pos
+                                totalNetWeightNode = node
+                                return
+                            }
+                            if (fieldId === 'total_gross_weight') {
+                                totalGrossWeightPos = pos
+                                totalGrossWeightNode = node
+                                return
+                            }
+                            if (fieldId === 'total_measurement') {
+                                totalMeasurementPos = pos
+                                totalMeasurementNode = node
+                                return
+                            }
 
                             // Check for Row fields
                             // Match quantity(_suffix), unit_price(_suffix), sub_total_price(_suffix), ea_box(_suffix), box(_suffix)
+                            // Also match net_weight(_suffix), gross_weight(_suffix), measurement(_suffix)
                             const quantityMatch = fieldId.match(/^quantity(_\d+)?$/)
                             const unitPriceMatch = fieldId.match(/^unit_price(_\d+)?$/)
                             const subTotalMatch = fieldId.match(/^sub_total_price(_\d+)?$/)
                             const eaBoxMatch = fieldId.match(/^ea_box(_\d+)?$/)
                             const boxMatch = fieldId.match(/^box(_\d+)?$/)
+                            const netWeightMatch = fieldId.match(/^net_weight(_\d+)?$/)
+                            const grossWeightMatch = fieldId.match(/^gross_weight(_\d+)?$/)
+                            const measurementMatch = fieldId.match(/^measurement(_\d+)?$/)
 
-                            if (quantityMatch || unitPriceMatch || subTotalMatch || eaBoxMatch || boxMatch) {
-                                const suffix = (quantityMatch?.[1] || unitPriceMatch?.[1] || subTotalMatch?.[1] || eaBoxMatch?.[1] || boxMatch?.[1]) || ''
+                            if (quantityMatch || unitPriceMatch || subTotalMatch || eaBoxMatch || boxMatch || netWeightMatch || grossWeightMatch || measurementMatch) {
+                                const suffix = (quantityMatch?.[1] || unitPriceMatch?.[1] || subTotalMatch?.[1] || eaBoxMatch?.[1] || boxMatch?.[1] || netWeightMatch?.[1] || grossWeightMatch?.[1] || measurementMatch?.[1]) || ''
 
                                 if (!rowData.has(suffix)) {
-                                    rowData.set(suffix, { quantity: 0, unitPrice: 0, subTotalNode: null, subTotalPos: -1, eaBox: 0, box: 0 })
+                                    rowData.set(suffix, { quantity: 0, unitPrice: 0, subTotalNode: null, subTotalPos: -1, eaBox: 0, box: 0, netWeight: 0, grossWeight: 0, measurement: 0 })
                                 }
                                 const data = rowData.get(suffix)!
 
@@ -572,6 +600,12 @@ const AutoCalculation = Extension.create({
                                     if (!isNaN(value)) data.eaBox = value
                                 } else if (boxMatch) {
                                     if (!isNaN(value)) data.box = value
+                                } else if (netWeightMatch) {
+                                    if (!isNaN(value)) data.netWeight = value
+                                } else if (grossWeightMatch) {
+                                    if (!isNaN(value)) data.grossWeight = value
+                                } else if (measurementMatch) {
+                                    if (!isNaN(value)) data.measurement = value
                                 }
                             }
                         }
@@ -583,6 +617,9 @@ const AutoCalculation = Extension.create({
                     let grandTotalPrice = 0
                     let grandTotalEaBox = 0
                     let grandTotalBox = 0
+                    let grandTotalNetWeight = 0
+                    let grandTotalGrossWeight = 0
+                    let grandTotalMeasurement = 0
 
                     // Process each row
                     for (const [suffix, data] of rowData) {
@@ -594,6 +631,9 @@ const AutoCalculation = Extension.create({
                         grandTotalPrice += subTotal
                         grandTotalEaBox += data.eaBox || 0
                         grandTotalBox += data.box || 0
+                        grandTotalNetWeight += data.netWeight || 0
+                        grandTotalGrossWeight += data.grossWeight || 0
+                        grandTotalMeasurement += data.measurement || 0
 
                         // Update sub_total_price field if it exists
                         if (data.subTotalNode && data.subTotalPos !== -1) {
@@ -642,6 +682,33 @@ const AutoCalculation = Extension.create({
                         const currentText = totalBoxNode.textContent
                         if (currentText !== newText) {
                             updates.push({ pos: totalBoxPos, node: totalBoxNode, newText })
+                        }
+                    }
+
+                    // Update total_net_weight
+                    if (totalNetWeightPos !== null && totalNetWeightNode) {
+                        const newText = grandTotalNetWeight.toFixed(2) + " KG"
+                        const currentText = totalNetWeightNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalNetWeightPos, node: totalNetWeightNode, newText })
+                        }
+                    }
+
+                    // Update total_gross_weight
+                    if (totalGrossWeightPos !== null && totalGrossWeightNode) {
+                        const newText = grandTotalGrossWeight.toFixed(2) + " KG"
+                        const currentText = totalGrossWeightNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalGrossWeightPos, node: totalGrossWeightNode, newText })
+                        }
+                    }
+
+                    // Update total_measurement
+                    if (totalMeasurementPos !== null && totalMeasurementNode) {
+                        const newText = grandTotalMeasurement.toFixed(3) + " CBM"
+                        const currentText = totalMeasurementNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalMeasurementPos, node: totalMeasurementNode, newText })
                         }
                     }
 
