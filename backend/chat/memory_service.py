@@ -262,6 +262,83 @@ class TradeMemoryService:
             logger.info(f"Deleted gen_chat memory: gen_chat_id={gen_chat_id}")
         return success
 
+    # ==================== 스마트 메모리 저장 ====================
+
+    def save_memory_smart(
+        self,
+        messages: List[Dict],
+        user_id: int,
+        doc_id: int = None,
+        gen_chat_id: int = None,
+        buyer_name: str = None,
+        save_doc: bool = True,
+        save_user: bool = True,
+        save_buyer: bool = False
+    ) -> Dict[str, Any]:
+        """
+        스마트 메모리 저장 - 조건에 따라 자동 분배
+
+        Args:
+            messages: 대화 메시지 목록
+            user_id: 사용자 ID
+            doc_id: 문서 ID (문서 채팅 시)
+            gen_chat_id: 일반채팅 ID (일반 채팅 시)
+            buyer_name: 거래처명 (있으면 거래처 메모리도 저장)
+            save_doc: 문서/채팅 단기 메모리 저장 여부
+            save_user: 사용자 장기 메모리 저장 여부
+            save_buyer: 거래처 메모리 저장 여부
+
+        Returns:
+            {"doc": result, "user": result, "buyer": result}
+        """
+        results = {"doc": None, "user": None, "buyer": None, "gen_chat": None}
+
+        try:
+            # 1. 문서 단기 메모리 (세션 요약)
+            if save_doc and doc_id:
+                results["doc"] = self.add_doc_memory(
+                    doc_id=doc_id,
+                    user_id=user_id,
+                    messages=messages,
+                    metadata={"type": "doc_session"}
+                )
+
+            # 2. 일반채팅 단기 메모리
+            if save_doc and gen_chat_id:
+                results["gen_chat"] = self.add_gen_chat_memory(
+                    gen_chat_id=gen_chat_id,
+                    user_id=user_id,
+                    messages=messages,
+                    metadata={"type": "gen_chat_session"}
+                )
+
+            # 3. 사용자 장기 메모리 (선호도)
+            if save_user and user_id:
+                results["user"] = self.add_user_memory(
+                    user_id=user_id,
+                    messages=messages,
+                    metadata={"type": "user_preference"}
+                )
+
+            # 4. 거래처 메모리
+            if save_buyer and buyer_name and user_id:
+                results["buyer"] = self.add_buyer_memory(
+                    user_id=user_id,
+                    buyer_name=buyer_name,
+                    messages=messages,
+                    metadata={"type": "buyer_memo"}
+                )
+
+            logger.info(
+                f"Smart memory saved: user={user_id}, doc={doc_id}, "
+                f"gen_chat={gen_chat_id}, buyer={buyer_name}"
+            )
+
+        except Exception as e:
+            logger.error(f"Smart memory save failed: {e}")
+
+        return results
+
     # ==================== 컨텍스트 빌더 ====================
 
     def build_doc_context(
