@@ -34,6 +34,39 @@ from .views import parse_edit_response
 logger = logging.getLogger(__name__)
 
 
+def extract_buyer_from_content(content: str) -> str:
+    """
+    문서 내용(HTML)에서 buyer 이름 추출
+
+    Offer Sheet, PI 등의 문서에서 To/Buyer 필드를 찾아 추출
+    """
+    if not content:
+        return None
+
+    # HTML에서 텍스트 추출을 위한 간단한 처리
+    text = re.sub(r'<[^>]+>', ' ', content)
+    text = re.sub(r'\s+', ' ', text)
+
+    # 패턴 1: "To:" 또는 "Buyer:" 다음의 회사명
+    patterns = [
+        r'(?:To|Buyer|Messrs\.?)\s*[:\s]+([A-Za-z][\w\s&.,()-]+?)(?:\s*(?:Address|Tel|Fax|Email|Date|From|$))',
+        r'(?:To|Buyer)\s*[:\s]+([A-Za-z][\w\s&.,()-]{3,50})',
+        r'MESSRS\.?\s+([A-Z][\w\s&.,()-]+?)(?:\s*$|\s+[A-Z]{2,})',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            buyer = match.group(1).strip()
+            # 너무 짧거나 긴 경우 제외
+            if 2 < len(buyer) < 100:
+                # 불필요한 후행 문자 제거
+                buyer = re.sub(r'[\s,;:]+$', '', buyer)
+                return buyer
+
+    return None
+
+
 # Step 번호 → doc_type 매핑
 STEP_TO_DOC_TYPE = {
     1: 'offer',
@@ -145,7 +178,7 @@ class TradeInitView(APIView):
 
     def post(self, request):
         user_id = request.data.get('user_id')
-        title = request.data.get('title', '새 무역 거래')
+        title = request.data.get('title', 'untitled document')
 
         logger.info(f"TradeInitView: user_id={user_id}, title={title}")
 
@@ -589,27 +622,30 @@ class DocumentChatView(APIView):
             )
             logger.info(f"DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}")
 
-            # 7. Mem0에 메모리 추가 (단기 + 장기)
+            # 7. Mem0에 스마트 메모리 추가 (단기 + 장기 + 거래처)
             if numeric_user_id and mem_service:
                 messages = [
                     {"role": "user", "content": message},
                     {"role": "assistant", "content": result.final_output}
                 ]
                 try:
-                    # 단기 메모리 (문서별)
-                    mem_service.add_doc_memory(
+                    # 문서 내용에서 buyer 추출
+                    buyer_name = extract_buyer_from_content(document_content)
+
+                    # 스마트 메모리 저장 (자동 분배)
+                    mem_result = mem_service.save_memory_smart(
+                        messages=messages,
+                        user_id=numeric_user_id,
                         doc_id=doc_id,
-                        user_id=numeric_user_id,
-                        messages=messages,
-                        metadata={"trade_id": trade_id, "doc_type": document.doc_type}
+                        buyer_name=buyer_name,
+                        save_doc=True,
+                        save_user=True,
+                        save_buyer=bool(buyer_name)
                     )
-                    # 장기 메모리 (사용자별)
-                    mem_service.add_user_memory(
-                        user_id=numeric_user_id,
-                        messages=messages,
-                        metadata={"trade_id": trade_id, "doc_type": document.doc_type}
+                    logger.info(
+                        f"Mem0 스마트 메모리 저장: doc_id={doc_id}, user_id={numeric_user_id}, "
+                        f"buyer={buyer_name}, result={mem_result}"
                     )
-                    logger.info(f"Mem0 단기/장기 메모리 추가됨: doc_id={doc_id}, user_id={numeric_user_id}")
                 except Exception as mem_error:
                     logger.error(f"Mem0 메모리 추가 실패: {mem_error}")
 
@@ -952,19 +988,30 @@ class DocumentChatStreamView(View):
             )
             logger.info(f"스트리밍: DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}, tools={[t['id'] for t in tools_used]}")
 
-            # Mem0에 대화 메모리 추가 (단기 + 장기)
+            # Mem0에 스마트 메모리 추가 (단기 + 장기 + 거래처)
             if numeric_user_id and mem_service:
                 messages = [
                     {"role": "user", "content": message},
                     {"role": "assistant", "content": full_response}
                 ]
-                metadata = {"trade_id": trade_id, "doc_type": document.doc_type, "tools_used": [t['id'] for t in tools_used]}
                 try:
-                    # 단기 메모리 (문서별)
-                    mem_service.add_doc_memory(doc_id=doc_id, user_id=numeric_user_id, messages=messages, metadata=metadata)
-                    # 장기 메모리 (사용자별)
-                    mem_service.add_user_memory(user_id=numeric_user_id, messages=messages, metadata=metadata)
-                    logger.info(f"스트리밍: Mem0 단기/장기 메모리 추가됨: doc_id={doc_id}, user_id={numeric_user_id}")
+                    # 문서 내용에서 buyer 추출
+                    buyer_name = extract_buyer_from_content(document_content)
+
+                    # 스마트 메모리 저장 (자동 분배)
+                    mem_result = mem_service.save_memory_smart(
+                        messages=messages,
+                        user_id=numeric_user_id,
+                        doc_id=doc_id,
+                        buyer_name=buyer_name,
+                        save_doc=True,
+                        save_user=True,
+                        save_buyer=bool(buyer_name)
+                    )
+                    logger.info(
+                        f"스트리밍: Mem0 스마트 메모리 저장: doc_id={doc_id}, user_id={numeric_user_id}, "
+                        f"buyer={buyer_name}, result={mem_result}"
+                    )
                 except Exception as mem_error:
                     logger.warning(f"스트리밍: Mem0 메모리 추가 실패 (무시): {mem_error}")
 
