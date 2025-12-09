@@ -237,9 +237,9 @@ export default function DocumentCreationPage({
                 const currentText = field.textContent?.trim();
 
                 if (isNonLC) {
-                  // Set to [N/A] if not already
-                  if (currentText !== '[N/A]') {
-                    field.textContent = '[N/A]';
+                  // Set to N/A if not already
+                  if (currentText !== 'N/A') {
+                    field.textContent = 'N/A';
                     field.setAttribute('data-source', 'auto');
                     // Also disable it to prevent editing? User said "automatically filled", implied disabled or just filled.
                     // But "L/C fields... should remain editable/visible" for L/C.
@@ -248,7 +248,7 @@ export default function DocumentCreationPage({
                   }
                 } else if (isLC) {
                   // Restore placeholder if it was [N/A] or automatically set
-                  if (currentText?.trim() === '[N/A]' || field.getAttribute('data-source') === 'auto') {
+                  if (currentText?.trim() === 'N/A' || currentText?.trim() === '[N/A]' || field.getAttribute('data-source') === 'auto') {
                     field.textContent = `[${fieldId}]`;
                     field.removeAttribute('data-source');
                     docChanged = true;
@@ -256,6 +256,16 @@ export default function DocumentCreationPage({
                 }
               }
             });
+
+            if (step === 5) {
+              // [FIX] Ensure Remarks field is never set to N/A
+              const remarksField = stepDoc.querySelector('[data-field-id="remarks"]');
+              if (remarksField && (remarksField.textContent?.trim() === 'N/A' || remarksField.textContent?.trim() === '[N/A]')) {
+                remarksField.textContent = '[remarks]';
+                remarksField.removeAttribute('data-source');
+                docChanged = true;
+              }
+            }
 
             if (docChanged) {
               newData[step] = stepDoc.body.innerHTML;

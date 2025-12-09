@@ -242,6 +242,9 @@ const DataField = Node.create({
             } else if (source === 'user') {
                 // [CHANGED] User input should be black text, but keep blue bg/border to indicate status
                 bgClass = 'bg-blue-50 border border-blue-200 text-gray-900 px-1 rounded';
+            } else if (source === 'auto') {
+                // [ADDED] Auto-filled N/A should look like plain text
+                bgClass = 'bg-transparent text-gray-900 px-0';
             } else {
                 // Default: show placeholder text always
                 bgClass = 'bg-gray-50 border border-gray-300 text-gray-600 px-1 rounded';
