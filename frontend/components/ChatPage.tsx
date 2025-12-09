@@ -83,6 +83,34 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
   // 컴포넌트 마운트 시 항상 새 채팅방으로 시작 (genChatId를 null로 유지)
   // 첫 메시지 전송 시 백엔드에서 새 gen_chat_id를 생성해서 반환함
 
+  // 채팅방 삭제 함수 (RDS + Mem0 모두 삭제)
+  const deleteChat = async () => {
+    if (!genChatId) return;
+
+    try {
+      const response = await fetch(`${DJANGO_API_URL}/api/chat/general/${genChatId}/`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        console.log(`✅ 채팅방 삭제 완료: gen_chat_id=${genChatId}`);
+      } else {
+        console.warn(`⚠️ 채팅방 삭제 실패: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('채팅방 삭제 오류:', error);
+    }
+  };
+
+  // 채팅방 나가기 (삭제 후 메인으로 이동)
+  const handleExitChat = async (logoRect: DOMRect) => {
+    await deleteChat();
+    setGenChatId(null);
+    setMessages([]);
+    onLogoClick(logoRect);
+  };
+
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
@@ -262,7 +290,7 @@ export default function ChatPage({ onNavigate, onLogoClick, userEmployeeId, onLo
             <button
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                onLogoClick(rect);
+                handleExitChat(rect);
               }}
               className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center hover:bg-blue-700 transition-all hover:scale-110 cursor-pointer"
               title="메인으로 돌아가기"
