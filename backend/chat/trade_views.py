@@ -34,6 +34,39 @@ from .views import parse_edit_response
 logger = logging.getLogger(__name__)
 
 
+def extract_buyer_from_content(content: str) -> str:
+    """
+    문서 내용(HTML)에서 buyer 이름 추출
+
+    Offer Sheet, PI 등의 문서에서 To/Buyer 필드를 찾아 추출
+    """
+    if not content:
+        return None
+
+    # HTML에서 텍스트 추출을 위한 간단한 처리
+    text = re.sub(r'<[^>]+>', ' ', content)
+    text = re.sub(r'\s+', ' ', text)
+
+    # 패턴 1: "To:" 또는 "Buyer:" 다음의 회사명
+    patterns = [
+        r'(?:To|Buyer|Messrs\.?)\s*[:\s]+([A-Za-z][\w\s&.,()-]+?)(?:\s*(?:Address|Tel|Fax|Email|Date|From|$))',
+        r'(?:To|Buyer)\s*[:\s]+([A-Za-z][\w\s&.,()-]{3,50})',
+        r'MESSRS\.?\s+([A-Z][\w\s&.,()-]+?)(?:\s*$|\s+[A-Z]{2,})',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            buyer = match.group(1).strip()
+            # 너무 짧거나 긴 경우 제외
+            if 2 < len(buyer) < 100:
+                # 불필요한 후행 문자 제거
+                buyer = re.sub(r'[\s,;:]+$', '', buyer)
+                return buyer
+
+    return None
+
+
 # Step 번호 → doc_type 매핑
 STEP_TO_DOC_TYPE = {
     1: 'offer',
@@ -145,7 +178,7 @@ class TradeInitView(APIView):
 
     def post(self, request):
         user_id = request.data.get('user_id')
-        title = request.data.get('title', '새 무역 거래')
+        title = request.data.get('title', 'untitled document')
 
         logger.info(f"TradeInitView: user_id={user_id}, title={title}")
 
@@ -525,21 +558,16 @@ class DocumentChatView(APIView):
             # 4. Mem0 컨텍스트 로드
             mem_service = get_memory_service()
             context = {}
-            sibling_doc_ids = list(
-                Document.objects.filter(trade_id=trade_id).values_list('doc_id', flat=True)
-            )
 
             # user_id를 정수로 변환 (emp_no가 들어올 수도 있음)
             user = get_user_by_id_or_emp_no(user_id)
             numeric_user_id = user.user_id if user else None
 
-            if numeric_user_id:
-                context = mem_service.build_context(
+            if numeric_user_id and mem_service:
+                context = mem_service.build_doc_context(
                     doc_id=doc_id,
                     user_id=numeric_user_id,
-                    current_query=message,
-                    trade_id=trade_id,
-                    sibling_doc_ids=sibling_doc_ids
+                    query=message
                 )
 
             # 5. Agent 실행
@@ -553,17 +581,15 @@ class DocumentChatView(APIView):
             enhanced_input = message
             context_parts = []
 
-            if context.get('trade_memories'):
-                trade_mem_texts = []
-                for mem in context['trade_memories'][:3]:
-                    mem_text = mem.get('memory', mem.get('text', str(mem)))
-                    source_doc = mem.get('source_doc_id', 'unknown')
-                    trade_mem_texts.append(f"  - [문서 {source_doc}] {mem_text[:150]}")
-                if trade_mem_texts:
-                    context_parts.append(f"[이전 문서 내용]\n" + "\n".join(trade_mem_texts))
+            # 사용자 장기 메모리 (선호도, 거래처 정보 등)
+            if context.get('user_memories'):
+                user_mem_texts = [m.get('memory', str(m)) for m in context['user_memories']]
+                context_parts.append(f"[사용자 이전 기록]\n" + "\n".join(f"- {t}" for t in user_mem_texts))
 
-            if context.get('context_summary'):
-                context_parts.append(f"[대화 맥락: {context['context_summary']}]")
+            # 현재 문서 세션 메모리
+            if context.get('doc_memories'):
+                doc_mem_texts = [m.get('memory', str(m)) for m in context['doc_memories']]
+                context_parts.append(f"[현재 문서 대화 요약]\n" + "\n".join(f"- {t}" for t in doc_mem_texts))
 
             if message_history:
                 history_text = "\n".join([
@@ -596,22 +622,30 @@ class DocumentChatView(APIView):
             )
             logger.info(f"DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}")
 
-            # 7. Mem0에 메모리 추가
-            if numeric_user_id:
+            # 7. Mem0에 스마트 메모리 추가 (단기 + 장기 + 거래처)
+            if numeric_user_id and mem_service:
+                messages = [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": result.final_output}
+                ]
                 try:
-                    mem_result = mem_service.add_doc_memory(
-                        doc_id=doc_id,
+                    # 문서 내용에서 buyer 추출
+                    buyer_name = extract_buyer_from_content(document_content)
+
+                    # 스마트 메모리 저장 (자동 분배)
+                    mem_result = mem_service.save_memory_smart(
+                        messages=messages,
                         user_id=numeric_user_id,
-                        messages=[
-                            {"role": "user", "content": message},
-                            {"role": "assistant", "content": result.final_output}
-                        ],
-                        metadata={
-                            "trade_id": trade_id,
-                            "doc_type": document.doc_type
-                        }
+                        doc_id=doc_id,
+                        buyer_name=buyer_name,
+                        save_doc=True,
+                        save_user=True,
+                        save_buyer=bool(buyer_name)
                     )
-                    logger.info(f"Mem0 메모리 추가됨: {mem_result}")
+                    logger.info(
+                        f"Mem0 스마트 메모리 저장: doc_id={doc_id}, user_id={numeric_user_id}, "
+                        f"buyer={buyer_name}, result={mem_result}"
+                    )
                 except Exception as mem_error:
                     logger.error(f"Mem0 메모리 추가 실패: {mem_error}")
 
@@ -725,21 +759,16 @@ class DocumentChatStreamView(View):
         # 4. Mem0 컨텍스트 로드
         mem_service = get_memory_service()
         context = {}
-        sibling_doc_ids = list(
-            Document.objects.filter(trade_id=trade_id).values_list('doc_id', flat=True)
-        )
 
         # user_id를 정수로 변환 (emp_no가 들어올 수도 있음)
         user = get_user_by_id_or_emp_no(user_id)
         numeric_user_id = user.user_id if user else None
 
-        if numeric_user_id:
-            context = mem_service.build_context(
+        if numeric_user_id and mem_service:
+            context = mem_service.build_doc_context(
                 doc_id=doc_id,
                 user_id=numeric_user_id,
-                current_query=message,
-                trade_id=trade_id,
-                sibling_doc_ids=sibling_doc_ids
+                query=message
             )
 
         if context.get('context_summary'):
@@ -816,18 +845,15 @@ class DocumentChatStreamView(View):
         except Exception as e:
             logger.error(f"이전 문서 조회 오류: {e}")
 
-        # 이전 문서 대화 메모리 (Mem0)
-        if context.get('trade_memories'):
-            trade_mem_texts = []
-            for mem in context['trade_memories'][:3]:
-                mem_text = mem.get('memory', mem.get('text', str(mem)))
-                source_doc = mem.get('source_doc_id', 'unknown')
-                trade_mem_texts.append(f"  - [문서 {source_doc}] {mem_text[:150]}")
-            if trade_mem_texts:
-                context_parts.append(f"[이전 문서 대화 내용]\n" + "\n".join(trade_mem_texts))
+        # 사용자 장기 메모리 (선호도, 거래처 정보 등)
+        if context.get('user_memories'):
+            user_mem_texts = [m.get('memory', str(m)) for m in context['user_memories']]
+            context_parts.append(f"[사용자 이전 기록]\n" + "\n".join(f"- {t}" for t in user_mem_texts))
 
-        if context.get('context_summary'):
-            context_parts.append(f"[대화 맥락: {context['context_summary']}]")
+        # 현재 문서 세션 메모리
+        if context.get('doc_memories'):
+            doc_mem_texts = [m.get('memory', str(m)) for m in context['doc_memories']]
+            context_parts.append(f"[현재 문서 대화 요약]\n" + "\n".join(f"- {t}" for t in doc_mem_texts))
 
         if message_history:
             history_text = "\n".join([
@@ -962,25 +988,32 @@ class DocumentChatStreamView(View):
             )
             logger.info(f"스트리밍: DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}, tools={[t['id'] for t in tools_used]}")
 
-            # Mem0에 대화 메모리 추가 (numeric_user_id 사용)
-            if numeric_user_id:
+            # Mem0에 스마트 메모리 추가 (단기 + 장기 + 거래처)
+            if numeric_user_id and mem_service:
+                messages = [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": full_response}
+                ]
                 try:
-                    mem_result = mem_service.add_doc_memory(
-                        doc_id=doc_id,
+                    # 문서 내용에서 buyer 추출
+                    buyer_name = extract_buyer_from_content(document_content)
+
+                    # 스마트 메모리 저장 (자동 분배)
+                    mem_result = mem_service.save_memory_smart(
+                        messages=messages,
                         user_id=numeric_user_id,
-                        messages=[
-                            {"role": "user", "content": message},
-                            {"role": "assistant", "content": full_response}
-                        ],
-                        metadata={
-                            "trade_id": trade_id,
-                            "doc_type": document.doc_type,
-                            "tools_used": [t['id'] for t in tools_used]
-                        }
+                        doc_id=doc_id,
+                        buyer_name=buyer_name,
+                        save_doc=True,
+                        save_user=True,
+                        save_buyer=bool(buyer_name)
                     )
-                    logger.info(f"스트리밍: Mem0 대화 메모리 추가됨: {mem_result}")
+                    logger.info(
+                        f"스트리밍: Mem0 스마트 메모리 저장: doc_id={doc_id}, user_id={numeric_user_id}, "
+                        f"buyer={buyer_name}, result={mem_result}"
+                    )
                 except Exception as mem_error:
-                    logger.warning(f"스트리밍: Mem0 대화 메모리 추가 실패 (무시): {mem_error}")
+                    logger.warning(f"스트리밍: Mem0 메모리 추가 실패 (무시): {mem_error}")
 
             logger.info(f"Document chat stream completed: doc_id={doc_id}, tools={[t['id'] for t in tools_used]}")
 

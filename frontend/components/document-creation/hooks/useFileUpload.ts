@@ -15,12 +15,21 @@ interface UseFileUploadReturn {
   retryUpload: (step: number) => void;
 }
 
-export function useFileUpload(initialUploadedFileNames: Record<number, string> = {}): UseFileUploadReturn {
+export function useFileUpload(
+  initialFileNames: Record<number, string> = {},
+  initialFileUrls: Record<number, string> = {}
+): UseFileUploadReturn {
+  // 초기 파일명이 있는 step은 'ready' 상태로 초기화
+  const initialStatus = Object.keys(initialFileNames).reduce((acc, key) => {
+    acc[Number(key)] = 'ready';
+    return acc;
+  }, {} as Record<number, UploadStatus>);
+
   const [uploadedFiles, setUploadedFiles] = useState<Record<number, File | null>>({});
-  const [uploadedFileNames, setUploadedFileNames] = useState<Record<number, string>>(initialUploadedFileNames);
+  const [uploadedFileNames, setUploadedFileNames] = useState<Record<number, string>>(initialFileNames);
   const [uploadedDocumentIds, setUploadedDocumentIds] = useState<Record<number, number | null>>({});
-  const [uploadedDocumentUrls, setUploadedDocumentUrls] = useState<Record<number, string | null>>({});
-  const [uploadStatus, setUploadStatus] = useState<Record<number, UploadStatus>>({});
+  const [uploadedDocumentUrls, setUploadedDocumentUrls] = useState<Record<number, string | null>>(initialFileUrls);
+  const [uploadStatus, setUploadStatus] = useState<Record<number, UploadStatus>>(initialStatus);
   const [uploadError, setUploadError] = useState<Record<number, string | null>>({});
   const [uploadUnsubscribe, setUploadUnsubscribe] = useState<Record<number, (() => void) | null>>({});
 

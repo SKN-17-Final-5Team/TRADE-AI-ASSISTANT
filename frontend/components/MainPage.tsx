@@ -1,6 +1,7 @@
 import { FileText, Plus, ChevronDown, LogOut, CheckCircle, Clock, Search, Filter, User, Sparkles, Trash2 } from 'lucide-react';
 import { PageType, SavedDocument } from '../App';
 import { useState } from 'react';
+import PasswordChangeModal from './document-creation/modals/PasswordChangeModal';
 
 interface MainPageProps {
   onNavigate: (page: PageType) => void;
@@ -20,51 +21,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
   const [showStatusFilter, setShowStatusFilter] = useState(false);
   const [showMyPageModal, setShowMyPageModal] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
-  const handlePasswordChange = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordError('');
-    setPasswordSuccess(false);
-
-    // 유효성 검사
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordError('모든 필드를 입력해주세요.');
-      return;
-    }
-
-    if (currentPassword !== 'a123456!') {
-      setPasswordError('현재 비밀번호가 올바르지 않습니다.');
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      setPasswordError('새 비밀번호는 8자 이상이어야 합니다.');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError('새 비밀번호가 일치하지 않습니다.');
-      return;
-    }
-
-    // Mock 비밀번호 변경 성공
-    setPasswordSuccess(true);
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-
-    setTimeout(() => {
-      setShowPasswordChange(false);
-      setShowMyPageModal(false);
-      setPasswordSuccess(false);
-    }, 2000);
-  };
 
   const handleLogout = () => {
     setShowLogoutConfirm(true);
@@ -328,121 +285,15 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
         </div>
       )}
 
-      {/* Password Change Modal */}
-      {showPasswordChange && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-[200]"
-          onClick={() => {
-            setShowPasswordChange(false);
-            setPasswordError('');
-            setPasswordSuccess(false);
-            setCurrentPassword('');
-            setNewPassword('');
-            setConfirmPassword('');
-          }}
-        >
-          <div
-            className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-gray-900">비밀번호 변경</h2>
-              <button
-                onClick={() => {
-                  setShowPasswordChange(false);
-                  setPasswordError('');
-                  setPasswordSuccess(false);
-                  setCurrentPassword('');
-                  setNewPassword('');
-                  setConfirmPassword('');
-                }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={handlePasswordChange} className="space-y-4">
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="currentPassword">
-                  현재 비밀번호
-                </label>
-                <input
-                  type="password"
-                  id="currentPassword"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-3"
-                  placeholder="현재 비밀번호를 입력하세요"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="newPassword">
-                  새 비밀번호
-                </label>
-                <input
-                  type="password"
-                  id="newPassword"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-3"
-                  placeholder="새 비밀번호를 입력하세요 (8자 이상)"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="confirmPassword">
-                  새 비밀번호 확인
-                </label>
-                <input
-                  type="password"
-                  id="confirmPassword"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-3"
-                  placeholder="새 비밀번호를 다시 입력하세요"
-                />
-              </div>
-
-              {passwordError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                  {passwordError}
-                </div>
-              )}
-
-              {passwordSuccess && (
-                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
-                  비밀번호가 성공적으로 변경되었습니다!
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPasswordChange(false);
-                    setPasswordError('');
-                    setPasswordSuccess(false);
-                    setCurrentPassword('');
-                    setNewPassword('');
-                    setConfirmPassword('');
-                  }}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-lg transition-colors"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors"
-                >
-                  변경하기
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Password Change Modal - 실제 백엔드 API 연동 */}
+      <PasswordChangeModal
+        isOpen={showPasswordChange}
+        onClose={() => {
+          setShowPasswordChange(false);
+          setShowMyPageModal(false);
+        }}
+        empNo={userEmployeeId}
+      />
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
         <div

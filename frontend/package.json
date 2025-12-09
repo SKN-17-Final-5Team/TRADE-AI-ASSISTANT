@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.53.3",
     "@tailwindcss/typography": "^0.5.19",
     "@tiptap/extension-font-family": "^3.12.1",
     "@tiptap/extension-highlight": "^3.11.0",
@@ -38,11 +39,11 @@
     "@types/react": "^18.2.21",
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.0",
     "autoprefixer": "^10.4.14",
     "clsx": "^2.0.0",
     "postcss": "^8.4.24",
     "tailwindcss": "^3.3.3",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
   }
 }

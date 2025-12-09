@@ -344,8 +344,7 @@ class ChatStreamView(View):
                     mem0_context = memory_service.build_gen_chat_context(
                         gen_chat_id=gen_chat.gen_chat_id,
                         user_id=user.user_id,
-                        current_query=message,
-                        include_user_memory=True,
+                        query=message,
                         is_first_message=is_first_message
                     )
 
@@ -373,6 +372,9 @@ class ChatStreamView(View):
 
         # gen_chat_id 전송 (프론트엔드에서 추적용)
         gen_chat_id_to_send = gen_chat.gen_chat_id if gen_chat else None
+
+        # 응답 수집을 위한 container (동기 컨텍스트에서 DB 저장용)
+        response_container = {"full_response": "", "tools_used": []}
 
         async def run_stream():
             tools_used = []
@@ -447,34 +449,9 @@ class ChatStreamView(View):
                                 tools_used.append(tool_data)
                                 yield f"data: {json.dumps({'type': 'tool', 'tool': tool_data})}\n\n"
 
-                # 4. AI 응답 저장 (GenMessage)
-                if gen_chat:
-                    try:
-                        GenMessage.objects.create(
-                            gen_chat=gen_chat,
-                            sender_type='A',
-                            content=full_response
-                        )
-                        logger.info(f"✅ AI 응답 GenMessage 저장 완료")
-                    except Exception as save_err:
-                        logger.error(f"❌ AI 응답 저장 실패: {save_err}")
-
-                # 5. Mem0에 메모리 추가 (선택적 - 실패해도 무시)
-                if gen_chat and user:
-                    try:
-                        memory_service = get_memory_service()
-                        if memory_service:
-                            memory_service.add_gen_chat_memory(
-                                gen_chat_id=gen_chat.gen_chat_id,
-                                user_id=user.user_id,
-                                messages=[
-                                    {"role": "user", "content": message},
-                                    {"role": "assistant", "content": full_response}
-                                ]
-                            )
-                            logger.info(f"✅ Mem0 메모리 추가 완료")
-                    except Exception as mem_err:
-                        logger.warning(f"⚠️ Mem0 메모리 추가 실패 (무시): {mem_err}")
+                # 응답을 container에 저장 (동기 컨텍스트에서 DB 저장용)
+                response_container["full_response"] = full_response
+                response_container["tools_used"] = tools_used
 
                 # 스트리밍 완료 후 편집 응답인지 확인
                 print(f"[DEBUG] full_response 길이: {len(full_response)}")
@@ -507,3 +484,75 @@ class ChatStreamView(View):
                     break
         finally:
             loop.close()
+
+        # 스트리밍 완료 후 동기 컨텍스트에서 DB 저장
+        full_response = response_container["full_response"]
+
+        # AI 응답 저장 (GenMessage)
+        if gen_chat and full_response:
+            try:
+                GenMessage.objects.create(
+                    gen_chat=gen_chat,
+                    sender_type='A',
+                    content=full_response
+                )
+                logger.info(f"✅ AI 응답 GenMessage 저장 완료: {len(full_response)}자")
+            except Exception as save_err:
+                logger.error(f"❌ AI 응답 저장 실패: {save_err}")
+
+        # Mem0에 메모리 추가 (단기 + 장기)
+        if gen_chat and user and full_response:
+            try:
+                memory_service = get_memory_service()
+                if memory_service:
+                    messages = [
+                        {"role": "user", "content": message},
+                        {"role": "assistant", "content": full_response}
+                    ]
+                    # 단기 메모리 (채팅방별)
+                    memory_service.add_gen_chat_memory(
+                        gen_chat_id=gen_chat.gen_chat_id,
+                        user_id=user.user_id,
+                        messages=messages
+                    )
+                    # 장기 메모리 (사용자별)
+                    memory_service.add_user_memory(
+                        user_id=user.user_id,
+                        messages=messages
+                    )
+                    logger.info(f"✅ Mem0 단기/장기 메모리 추가 완료")
+            except Exception as mem_err:
+                logger.warning(f"⚠️ Mem0 메모리 추가 실패 (무시): {mem_err}")
+
+
+class GenChatDeleteView(APIView):
+    """
+    일반 채팅 삭제 API (Mem0 메모리도 함께 삭제)
+
+    DELETE /api/chat/general/<gen_chat_id>/
+    """
+
+    def delete(self, request, gen_chat_id):
+        try:
+            gen_chat = GenChat.objects.get(gen_chat_id=gen_chat_id)
+
+            # Mem0 단기 메모리 삭제
+            try:
+                memory_service = get_memory_service()
+                if memory_service:
+                    memory_service.delete_gen_chat_memory(gen_chat_id)
+                    logger.info(f"✅ Mem0 메모리 삭제 완료: gen_chat_id={gen_chat_id}")
+            except Exception as mem_err:
+                logger.warning(f"⚠️ Mem0 메모리 삭제 실패 (계속 진행): {mem_err}")
+
+            # DB에서 채팅 삭제
+            gen_chat.delete()
+            logger.info(f"✅ GenChat 삭제 완료: gen_chat_id={gen_chat_id}")
+
+            return Response({"message": "삭제 완료"}, status=status.HTTP_200_OK)
+
+        except GenChat.DoesNotExist:
+            return Response(
+                {"error": "채팅을 찾을 수 없습니다."},
+                status=status.HTTP_404_NOT_FOUND
+            )

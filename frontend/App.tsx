@@ -33,13 +33,30 @@ export interface SavedDocument {
   tradeData?: Trade; // 백엔드 Trade 원본 데이터
 }
 
+// sessionStorage에서 문서 작성 상태 복원
+const getSessionState = () => {
+  try {
+    return {
+      currentPage: (sessionStorage.getItem('currentPage') as PageType) || 'main',
+      currentStep: Number(sessionStorage.getItem('currentStep')) || 0,
+      documentData: JSON.parse(sessionStorage.getItem('documentData') || '{}'),
+      currentDocId: sessionStorage.getItem('currentDocId'),
+      currentDocIds: JSON.parse(sessionStorage.getItem('currentDocIds') || 'null'),
+    };
+  } catch {
+    return { currentPage: 'main' as PageType, currentStep: 0, documentData: {}, currentDocId: null, currentDocIds: null };
+  }
+};
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentPage, setCurrentPage] = useState<PageType>('main');
-  const [currentStep, setCurrentStep] = useState(0);
-  const [documentData, setDocumentData] = useState<DocumentData>({});
+
+  const sessionState = getSessionState();
+  const [currentPage, setCurrentPage] = useState<PageType>(sessionState.currentPage);
+  const [currentStep, setCurrentStep] = useState(sessionState.currentStep);
+  const [documentData, setDocumentData] = useState<DocumentData>(sessionState.documentData);
   const [transition, setTransition] = useState<TransitionType>('none');
   const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
   const [docSessionId, setDocSessionId] = useState<string>(Date.now().toString());
@@ -48,15 +65,18 @@ function App() {
     if (page === 'main') {
       setCurrentDocId(null);
       setCurrentDocIds(null);
+      setDocumentData({});
+      setCurrentStep(0);
     }
 
     if (page === 'documents') {
-      // Don't create Trade immediately - wait until user selects a mode
-      // This prevents creating documents when user just views mode selection and exits
-      setCurrentStep(1);
-      setDocumentData({});
-      setCurrentActiveShippingDoc(null);
-      setDocSessionId(Date.now().toString()); // New session for new document
+      // 새 문서: 상태만 초기화 (Trade는 실제 저장 시점에 생성)
+      if (!currentDocId) {
+        setCurrentStep(1);
+        setDocumentData({});
+        setCurrentActiveShippingDoc(null);
+        setDocSessionId(Date.now().toString());
+      }
     }
     setCurrentPage(page);
   };
@@ -139,30 +159,29 @@ function App() {
 
   const handleOpenDocument = (doc: SavedDocument) => {
     setCurrentDocId(doc.id);
-    // Resume Document: Load content and go to Step 1
-    if (doc.content) {
-      setDocumentData(doc.content);
-    }
-    setCurrentStep(doc.lastStep || 1); // Resume from last step or default to 1
-    const shippingDoc = doc.lastActiveShippingDoc || null;
-    setCurrentActiveShippingDoc(shippingDoc);
-    setDocSessionId(Date.now().toString()); // New session for opened document
 
-    // tradeData에서 doc_ids 추출하여 설정
-    if (doc.tradeData?.documents) {
-      const docIds: Record<string, number> = {};
-      doc.tradeData.documents.forEach((d: { doc_type: string; doc_id: number }) => {
-        docIds[d.doc_type] = d.doc_id;
-      });
-      setCurrentDocIds(docIds);
-      console.log('[App] 기존 문서 doc_ids 로드:', docIds);
-    }
+    const content: DocumentData = { ...doc.content };
+    const docIds: Record<string, number> = {};
+    const uploadedFileUrls: Record<number, string> = {};
 
-    // Use setTimeout to ensure state is set before navigation
+    // tradeData에서 doc_ids 및 업로드 정보 복원
+    doc.tradeData?.documents?.forEach((d: any) => {
+      docIds[d.doc_type] = d.doc_id;
+      if (d.upload_status === 'ready' && d.original_filename) {
+        const step = docTypeToStep(d.doc_type);
+        content.stepModes = { ...content.stepModes, [step]: 'upload' };
+        content.uploadedFileNames = { ...content.uploadedFileNames, [step]: d.original_filename };
+        if (d.s3_url) uploadedFileUrls[step] = d.s3_url;
+      }
+    });
+
+    setCurrentDocIds(docIds);
+    setDocumentData({ ...content, uploadedFileUrls });
+    setCurrentStep(doc.lastStep || 1);
+    setCurrentActiveShippingDoc(doc.lastActiveShippingDoc || null);
+    setDocSessionId(Date.now().toString());
     setIsNewTrade(false);
-    setTimeout(() => {
-      setCurrentPage('documents');
-    }, 0);
+    setTimeout(() => setCurrentPage('documents'), 0);
   };
 
   // 로고 클릭으로 채팅 열기 (확장 애니메이션)
@@ -261,6 +280,9 @@ function App() {
           // 버전을 시간순으로 정렬 (최신순)
           allVersions.sort((a, b) => b.timestamp - a.timestamp);
 
+          // 가장 최근 버전의 step을 lastStep으로 설정
+          const lastStep = allVersions.length > 0 ? allVersions[0].step : 1;
+
           const completedCount = trade.completed_count || 0;
           const totalSteps = 5;
           const progress = Math.round((completedCount / totalSteps) * 100);
@@ -276,6 +298,7 @@ function App() {
             content: content,
             tradeData: tradeDetail,  // documents 포함
             versions: allVersions,
+            lastStep: lastStep,
           };
         })
       );
@@ -296,10 +319,10 @@ function App() {
   }, [isAuthenticated, currentUser, fetchTrades]);
 
   // Track the ID of the document currently being edited
-  const [currentDocId, setCurrentDocId] = useState<string | null>(null);
+  const [currentDocId, setCurrentDocId] = useState<string | null>(sessionState.currentDocId);
   const [currentActiveShippingDoc, setCurrentActiveShippingDoc] = useState<'CI' | 'PL' | null>(null);
   // 현재 Trade의 doc_ids (직접 저장용 - 새 문서 생성 시 바로 사용)
-  const [currentDocIds, setCurrentDocIds] = useState<Record<string, number> | null>(null);
+  const [currentDocIds, setCurrentDocIds] = useState<Record<string, number> | null>(sessionState.currentDocIds);
 
   // step을 doc_type으로 변환
   const stepToDocType = (step: number, shippingDoc?: 'CI' | 'PL' | null): string => {
@@ -342,12 +365,22 @@ function App() {
 
     // 백엔드 저장 로직
     try {
-      // 새 Trade 생성 (currentDocId가 없는 경우)
+      // 새 Trade 생성 (currentDocId가 없는 경우) - /api/trade/init/ 사용
       if (!tradeId && currentUser) {
         const title = data.title || 'Untitled Document';
-        const newTrade = await api.createTrade(currentUser.user_id, title);
+        const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_URL}/api/trade/init/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.emp_no, title })
+        });
+
+        if (!response.ok) throw new Error('Trade 생성 실패');
+
+        const newTrade = await response.json();
         tradeId = newTrade.trade_id.toString();
         setCurrentDocId(tradeId);
+        setCurrentDocIds(newTrade.doc_ids);
       }
 
       // Iterate through all potential document keys (1-5) to save all modified documents
@@ -419,6 +452,15 @@ function App() {
       }
     }
   }, []);
+
+  // 문서 작성 상태를 sessionStorage에 저장
+  useEffect(() => {
+    sessionStorage.setItem('currentPage', currentPage);
+    sessionStorage.setItem('currentStep', currentStep.toString());
+    sessionStorage.setItem('documentData', JSON.stringify(documentData));
+    currentDocId ? sessionStorage.setItem('currentDocId', currentDocId) : sessionStorage.removeItem('currentDocId');
+    currentDocIds ? sessionStorage.setItem('currentDocIds', JSON.stringify(currentDocIds)) : sessionStorage.removeItem('currentDocIds');
+  }, [currentPage, currentStep, documentData, currentDocId, currentDocIds]);
 
   const handleLogin = (employeeId: string, user?: User) => {
     setUserEmail(employeeId);
