@@ -449,15 +449,7 @@ html {
   flex-shrink: 0;
 }
 
-.checkbox-widget {
-  cursor: pointer;
-  font-weight: bold;
-  user-select: none;
-  background-color: #ffe600;
-  /* Warmer yellow to match mark tag */
-  padding: 0 2px;
-  /* Add slight padding for better look */
-}
+
 
 .po-terms .term-value {
   flex: 1;
@@ -889,14 +881,7 @@ html {
   text-align: center;
 }
 
-.sc-wrapper .radio-circle {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border: 1px solid #000;
-  border-radius: 50%;
-  margin: 0 auto;
-}
+
 
 .sc-wrapper .general-terms-section {
   text-align: justify;

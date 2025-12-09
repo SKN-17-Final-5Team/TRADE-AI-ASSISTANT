@@ -33,29 +33,14 @@ export const saleContractTemplateHTML = `
         </thead>
         <tbody>
             <tr>
-                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;">1 <mark>[item_no]</mark></td>
+                <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[item_no]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[hscode]</mark>, <mark>[description]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: center;"><mark>[quantity]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;"><mark>[unit_price]</mark> / <mark>[unit]</mark> <mark>[currency]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top; text-align: right;"><mark>[currency]</mark><mark>[sub_total_price]</mark></td>
                 <td style="padding: 10px; border: 1px solid #d1d5db; vertical-align: top;"><mark>[notice]</mark></td>
             </tr>
-            <tr>
-                <td style="padding: 10px; border: 1px solid #d1d5db; height: 30px;">2</td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-            </tr>
-            <tr>
-                <td style="padding: 10px; border: 1px solid #d1d5db; height: 30px;">3</td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-                <td style="padding: 10px; border: 1px solid #d1d5db;"></td>
-            </tr>
+
             <tr>
                 <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; background-color: #f0f0f0; font-weight: bold;">합계</td>
                 <td style="padding: 8px; border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
@@ -92,13 +77,13 @@ export const saleContractTemplateHTML = `
                 </div>
                 <div style="display: flex; border-bottom: 1px solid #d1d5db;">
                     <div style="width: 25%; background-color: #f3f4f6; font-weight: bold; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center;">Deferred Payment Credit</div>
-                    <div style="width: 6.25%; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center; justify-content: center;"><span class="radio-circle" data-group="payment"></span></div>
-                    <div style="width: 68.75%; padding: 8px; display: flex; align-items: center;">irrevocable documentary credit with deferred payment at [ &nbsp; ] days from B/L(AWB) date</div>
+                    <div style="width: 6.25%; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center; justify-content: center;"><span class="radio-circle" data-group="payment" data-linked-field="days_dpc"></span></div>
+                    <div style="width: 68.75%; padding: 8px; display: flex; align-items: center;">irrevocable documentary credit with deferred payment at <mark>[days_dpc]</mark> days from B/L(AWB) date</div>
                 </div>
                 <div style="display: flex;">
                     <div style="width: 25%; background-color: #f3f4f6; font-weight: bold; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center;">Acceptance Credit</div>
-                    <div style="width: 6.25%; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center; justify-content: center;"><span class="radio-circle" data-group="payment"></span></div>
-                    <div style="width: 68.75%; padding: 8px; display: flex; align-items: center;">irrevocable documentary credit with acceptance of drafts at [ &nbsp; ] days from B/L(AWB) date</div>
+                    <div style="width: 6.25%; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center; justify-content: center;"><span class="radio-circle" data-group="payment" data-linked-field="days_ac"></span></div>
+                    <div style="width: 68.75%; padding: 8px; display: flex; align-items: center;">irrevocable documentary credit with acceptance of drafts at <mark>[days_ac]</mark> days from B/L(AWB) date</div>
                 </div>
             </div>
         </div>
@@ -116,8 +101,8 @@ export const saleContractTemplateHTML = `
                 </div>
                 <div style="display: flex;">
                     <div style="width: 25%; background-color: #f3f4f6; font-weight: bold; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center;">D/A</div>
-                    <div style="width: 6.25%; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center; justify-content: center;"><span class="radio-circle" data-group="payment"></span></div>
-                    <div style="width: 68.75%; padding: 8px; display: flex; align-items: center;">documents against acceptance payable at [ &nbsp; ] days from B/L(AWB) date</div>
+                    <div style="width: 6.25%; padding: 8px; border-right: 1px solid #d1d5db; display: flex; align-items: center; justify-content: center;"><span class="radio-circle" data-group="payment" data-linked-field="days_da"></span></div>
+                    <div style="width: 68.75%; padding: 8px; display: flex; align-items: center;">documents against acceptance payable at <mark>[days_da]</mark> days from B/L(AWB) date</div>
                 </div>
             </div>
         </div>

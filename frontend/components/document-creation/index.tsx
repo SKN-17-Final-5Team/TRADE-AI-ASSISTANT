@@ -62,6 +62,8 @@ export default function DocumentCreationPage({
   userEmployeeId,
   onLogout,
   onSave,
+  onCreateTrade,
+  onExit,
   versions = [],
   onRestore,
   initialActiveShippingDoc,
@@ -117,6 +119,7 @@ export default function DocumentCreationPage({
   const [showAgentHighlight, setShowAgentHighlight] = useState(true);
   const [editorKey, setEditorKey] = useState(0); // 에디터 강제 리마운트용
 
+
   // Modal State
   const [showMyPageModal, setShowMyPageModal] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
@@ -125,9 +128,24 @@ export default function DocumentCreationPage({
   const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
 
+  // [ADDED] Force update state to trigger re-renders on editor changes
+  const [, forceUpdate] = useState({});
+
+
+  const isLoadingTemplate = useRef(false); // 템플릿 로딩 중 플래그
+
   // Intro Animation State
   const [hasShownIntro, setHasShownIntro] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
+
+  // [ADDED] Handler for immediate editor updates (for validation and sync)
+  const handleEditorUpdate = () => {
+    if (editorRef.current) {
+      const content = editorRef.current.getContent();
+      extractData(content); // Extract data in real-time
+    }
+    forceUpdate({});
+  };
 
   // Calculate visibility for chatbot button
   const shouldShowChatButton = !isChatOpen && currentStep >= 1 && currentStep <= 5 && (
@@ -175,10 +193,19 @@ export default function DocumentCreationPage({
 
     if (stepNumber <= 3) {
       if (stepModes[stepNumber] === 'upload' && !uploadedFiles[stepNumber] && !uploadedFileNames[stepNumber]) return false;
-      const stepContent = documentData[stepNumber] || hydrateTemplate(getTemplateForStep(stepNumber));
+
+      // [CHANGED] Use live editor content if checking the current step
+      let stepContent;
+      if (stepNumber === currentStep && editorRef.current) {
+        stepContent = editorRef.current.getContent();
+      } else {
+        stepContent = documentData[stepNumber] || hydrateTemplate(getTemplateForStep(stepNumber));
+      }
+
       return checkStepCompletion(stepContent);
     } else {
       if (stepNumber === 4) {
+        // For step 4, we might need to check specific docs if active
         const ciContent = documentData[4] || hydrateTemplate(commercialInvoiceTemplateHTML);
         const plContent = documentData[5] || hydrateTemplate(packingListTemplateHTML);
         return checkStepCompletion(ciContent) && checkStepCompletion(plContent);
@@ -205,8 +232,25 @@ export default function DocumentCreationPage({
 
       if (saveKey !== -1) {
         const newDocData = { ...documentData, [saveKey]: content };
+
+        // [ADDED] Propagate shared data to all other documents immediately
+        extractData(content); // Update sharedData state first
+
+        Object.keys(newDocData).forEach(key => {
+          const docKey = Number(key);
+          if (isNaN(docKey) || key === 'title' || docKey === saveKey) return;
+
+          const originalContent = (newDocData as any)[key];
+          if (typeof originalContent === 'string') {
+            const newContent = updateContentWithSharedData(originalContent);
+            // Only update if content ACTUALLY changed (mapped field update)
+            if (newContent !== originalContent) {
+              (newDocData as any)[key] = newContent;
+            }
+          }
+        });
+
         setDocumentData(newDocData);
-        extractData(content);
       }
     }
     setCurrentStep(newStep);
@@ -262,6 +306,19 @@ export default function DocumentCreationPage({
       }
     }
     setShowDownloadModal(true);
+  };
+
+  const handleExit = async () => {
+    // Check if user made actual changes (not just mode selection)
+    const hasChanges = isDirty;
+
+    // Call onExit callback and wait for completion (e.g., trade deletion)
+    if (onExit) {
+      await onExit(hasChanges);
+    }
+
+    // Navigate to main page after exit handler completes
+    onNavigate('main');
   };
 
   const handleBatchDownload = async (selectedSteps: Set<number>) => {
@@ -418,14 +475,33 @@ export default function DocumentCreationPage({
 
       // Mark as modified
       markStepModified(saveKey);
-      setIsDirty(true);
+
+      // Only set isDirty if not loading template
+      if (!isLoadingTemplate.current) {
+        setIsDirty(true);
+      }
     }
   };
 
   const handleModeSelect = async (mode: StepMode) => {
+    // Create Trade if it doesn't exist yet (first mode selection)
+    if (onCreateTrade) {
+      await onCreateTrade();
+    }
+
+    // Set loading flag to prevent isDirty during template load
+    isLoadingTemplate.current = true;
+
+    // Explicitly reset isDirty to false (template load shouldn't count as changes)
+    setIsDirty(false);
+
     // 프론트엔드 상태 업데이트
     setStepModes(prev => ({ ...prev, [currentStep]: mode }));
-    if (mode === 'manual') setIsDirty(true);
+
+    // Reset loading flag after a short delay (template should be loaded by then)
+    setTimeout(() => {
+      isLoadingTemplate.current = false;
+    }, 500);
 
     // 백엔드 doc_mode 업데이트
     const docId = getDocId?.(currentStep, null);
@@ -452,36 +528,43 @@ export default function DocumentCreationPage({
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlContent, 'text/html');
 
-      // Find the table
-      const table = doc.querySelector('table');
-      if (!table) {
-        console.warn('⚠️ No table found in document');
-        return htmlContent;
-      }
-
-      // Find the template row (last row with data-field-id)
-      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      // Find the template row by searching all tables
+      const tables = doc.querySelectorAll('table');
       let templateRow: HTMLElement | null = null;
 
-      for (let i = rows.length - 1; i >= 0; i--) {
-        const row = rows[i];
-        const dataFields = row.querySelectorAll('[data-field-id]');
-        const text = row.textContent || '';
+      for (const table of Array.from(tables)) {
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
 
-        // Check if it's a data row (has multiple fields and not a total/header row)
-        // Explicitly exclude known header sections
-        const isHeaderRow = text.includes('SENT BY') ||
-          text.includes('SENT TO') ||
-          text.includes('Bill of Lading') ||
-          text.includes('Description of goods');
+        for (let i = rows.length - 1; i >= 0; i--) {
+          const row = rows[i];
+          const dataFields = row.querySelectorAll('[data-field-id]');
+          const text = row.textContent || '';
 
-        // Check for Total row (case sensitive "Total " with space to avoid sub_total_price)
-        const isTotalRow = text.includes('Total ');
+          // Check if it's a data row by looking for specific item fields
+          let hasItemField = false;
+          dataFields.forEach(field => {
+            const fid = field.getAttribute('data-field-id') || '';
+            if (fid.startsWith('item_no') ||
+              fid.startsWith('unit_price') ||
+              fid.startsWith('quantity') ||
+              fid.startsWith('description') ||
+              fid.startsWith('sub_total_price') ||
+              fid.startsWith('marks_and_numbers')) {
+              hasItemField = true;
+            }
+          });
 
-        if (dataFields.length >= 4 && !isTotalRow && !isHeaderRow) {
-          templateRow = row as HTMLElement;
-          break;
+          // Check for Total row (case sensitive "Total " with space to avoid sub_total_price)
+          const isTotalRow = text.includes('Total ') || text.includes('TOTAL :');
+
+          // Must have item fields AND multiple fields (to avoid false positives)
+          if (hasItemField && dataFields.length >= 3 && !isTotalRow) {
+            templateRow = row as HTMLElement;
+            break;
+          }
         }
+
+        if (templateRow) break; // Found it, stop searching tables
       }
 
       if (!templateRow) {
@@ -531,6 +614,7 @@ export default function DocumentCreationPage({
           }
 
           field.setAttribute('data-field-id', newFieldId);
+          field.setAttribute('data-source', ''); // Set to empty string (null equivalent in HTML)
           field.textContent = `[${newFieldId}]`;
         }
       });
@@ -549,8 +633,15 @@ export default function DocumentCreationPage({
     setDocumentData((prev: DocumentData) => {
       const newData = { ...prev };
 
+      // Determine the key of the document currently being edited
+      let currentDocKey = currentStep;
+      if (currentStep === 4) {
+        if (activeShippingDoc === 'CI') currentDocKey = 4;
+        else if (activeShippingDoc === 'PL') currentDocKey = 5;
+      }
+
       // Sync to all documents except the current one
-      const documentsToSync = [1, 2, 3, 4, 5].filter(step => step !== currentStep);
+      const documentsToSync = [1, 2, 3, 4, 5].filter(key => key !== currentDocKey);
 
       documentsToSync.forEach(step => {
         // Get existing content or template
@@ -850,6 +941,7 @@ export default function DocumentCreationPage({
       <EditorView
         key={`editor-${currentStep}-${activeShippingDoc || 'default'}-${editorKey}`}
         currentStep={currentStep}
+        onUpdate={handleEditorUpdate}
         stepModes={stepModes}
         activeShippingDoc={activeShippingDoc}
         editorRef={editorRef}
@@ -898,7 +990,7 @@ export default function DocumentCreationPage({
         onTitleChange={(title) => setDocumentData({ ...documentData, title })}
         onBackClick={() => {
           if (isDirty) setShowExitConfirm(true);
-          else onNavigate('main');
+          else handleExit();
         }}
         onSave={handleSave}
         onDownload={handleDownload}
@@ -1142,8 +1234,12 @@ export default function DocumentCreationPage({
       {shouldShowChatButton && (hasShownIntro || showIntro) && (
         <button
           ref={chatButtonRef}
-          onClick={() => setIsChatOpen(!isChatOpen)}
-          className={`fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform transition-colors duration-200 hover:scale-110 z-40 ${!hasShownIntro ? 'opacity-0 pointer-events-none' : ''}`}
+          onClick={() => {
+            setIsChatOpen(!isChatOpen);
+            setShowIntro(false);
+            setHasShownIntro(true);
+          }}
+          className={`fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform transition-colors duration-200 hover:scale-110 z-40 ${!hasShownIntro ? 'opacity-0' : ''}`}
           title="AI 챗봇 열기"
         >
           <Sparkles className="w-6 h-6" />
@@ -1170,7 +1266,7 @@ export default function DocumentCreationPage({
         onClose={() => setShowExitConfirm(false)}
         onExit={() => {
           setShowExitConfirm(false);
-          onNavigate('main');
+          handleExit();
         }}
       />
 

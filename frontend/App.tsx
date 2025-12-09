@@ -81,6 +81,82 @@ function App() {
     setCurrentPage(page);
   };
 
+  const [isNewTrade, setIsNewTrade] = useState(false);
+
+  const createNewTrade = async (): Promise<string | null> => {
+    // Don't create if we already have a Trade or no user
+    if (currentDocId || !currentUser) {
+      return currentDocId;
+    }
+
+    try {
+      // Trade 초기화 API 호출 - 새 Trade와 5개의 Document를 생성
+      const API_URL = import.meta.env.VITE_DJANGO_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/api/trade/init/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser.emp_no,
+          title: '새 무역 거래'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[App] Trade 생성 완료:', data);
+
+        // 새로 생성된 Trade ID 설정
+        const tradeId = data.trade_id.toString();
+        setCurrentDocId(tradeId);
+
+        // doc_ids를 직접 저장
+        setCurrentDocIds(data.doc_ids);
+        setIsNewTrade(true); // Mark as new trade
+
+        // DON'T call fetchTrades here - trade shouldn't appear in list until saved
+        // fetchTrades will be called when:
+        // 1. User saves the document (handleSaveDocument)
+        // 2. User exits without changes (handleDocumentExit - after deletion)
+
+        return tradeId;
+      } else {
+        console.error('[App] Trade 생성 실패:', await response.text());
+      }
+    } catch (error) {
+      console.error('[App] Trade 생성 오류:', error);
+    }
+
+    return null;
+  };
+
+  const handleDocumentExit = async (hasChanges: boolean) => {
+    // If it's a NEW trade that hasn't been saved yet, delete it upon exit
+    // We delete it regardless of hasChanges because if the user is exiting a new trade
+    // without saving (isNewTrade is still true), they are abandoning it.
+    if (isNewTrade && currentDocId) {
+      try {
+        // Delete the empty/abandoned Trade from backend
+        await api.deleteTrade(parseInt(currentDocId));
+        console.log(`[App] Deleted new trade ${currentDocId} on exit`);
+
+        // Clear current document state
+        setCurrentDocId(null);
+        setCurrentDocIds(null);
+        setIsNewTrade(false); // Reset new trade status
+
+        // Refresh the document list
+        await fetchTrades();
+      } catch (error) {
+        console.error('[App] Failed to delete new trade:', error);
+      }
+    } else {
+      // If it's not a new trade (already saved previously), just clear state
+      setCurrentDocId(null);
+      setCurrentDocIds(null);
+      setIsNewTrade(false);
+    }
+  };
+
   const handleOpenDocument = (doc: SavedDocument) => {
     setCurrentDocId(doc.id);
 
@@ -104,6 +180,7 @@ function App() {
     setCurrentStep(doc.lastStep || 1);
     setCurrentActiveShippingDoc(doc.lastActiveShippingDoc || null);
     setDocSessionId(Date.now().toString());
+    setIsNewTrade(false);
     setTimeout(() => setCurrentPage('documents'), 0);
   };
 
@@ -306,35 +383,51 @@ function App() {
         setCurrentDocIds(newTrade.doc_ids);
       }
 
-      // 현재 step에 해당하는 Document 찾기
+      // Iterate through all potential document keys (1-5) to save all modified documents
+      const docKeys = [1, 2, 3, 4, 5];
+      const docTypeMapping: Record<number, string> = {
+        1: 'offer',
+        2: 'pi',
+        3: 'contract',
+        4: 'ci',
+        5: 'pl'
+      };
+
       if (tradeId) {
         const trade = await api.getTrade(parseInt(tradeId));
-        const docType = stepToDocType(step, activeShippingDoc);
-        const document = trade.documents?.find(d => d.doc_type === docType);
 
-        // 제목이 변경되었으면 Trade 제목 업데이트
+        // 제목이 변경되었으면 Trade 제목 업데이트 (한 번만 실행)
         const newTitle = data.title || 'Untitled Document';
         if (trade.title !== newTitle) {
           await api.updateTrade(parseInt(tradeId), { title: newTitle });
           console.log(`[API] Updated trade title to: ${newTitle}`);
         }
 
-        if (document) {
-          // 해당 step의 content 저장 (HTML 문자열 + 메타데이터)
-          const stepContent = data[step] || data[versionStep];
-          const versionContent = {
-            html: stepContent || '',
-            title: data.title || '',
-            stepModes: data.stepModes || {},
-            savedAt: new Date().toISOString(),
-          };
-          await api.createVersion(document.doc_id, versionContent);
-          console.log(`[API] Saved version for doc ${document.doc_id} (${docType})`, versionContent);
-        }
+        // Save all documents concurrently
+        await Promise.all(docKeys.map(async (key) => {
+          const content = data[key];
+          // Only save if content exists
+          if (content) {
+            const docType = docTypeMapping[key];
+            const document = trade.documents?.find(d => d.doc_type === docType);
+
+            if (document) {
+              const versionContent = {
+                html: content,
+                title: data.title || '',
+                stepModes: data.stepModes || {},
+                savedAt: new Date().toISOString(),
+              };
+              await api.createVersion(document.doc_id, versionContent);
+              console.log(`[API] Saved version for doc ${document.doc_id} (${docType})`);
+            }
+          }
+        }));
       }
 
       // 저장 후 목록 새로고침 (백엔드에서 최신 데이터 가져옴)
       await fetchTrades();
+      setIsNewTrade(false);
 
     } catch (error) {
       console.error('Failed to save to backend:', error);
@@ -411,13 +504,14 @@ function App() {
       // 백엔드에서 Trade 삭제
       await api.deleteTrade(parseInt(docId));
       console.log(`[API] Deleted trade ${docId}`);
+      // 로컬 상태에서도 제거
+      setSavedDocuments(prev => prev.filter(doc => doc.id !== docId));
     } catch (error) {
       console.error('Failed to delete trade:', error);
     }
-
-    // 로컬 상태에서도 제거
-    setSavedDocuments(prev => prev.filter(doc => doc.id !== docId));
   };
+
+
 
   return (
     <div className="min-h-screen bg-gray-50 relative overflow-hidden">
@@ -526,6 +620,8 @@ function App() {
           userEmployeeId={userEmail}
           onLogout={handleLogout}
           onSave={handleSaveDocument}
+          onCreateTrade={createNewTrade}
+          onExit={handleDocumentExit}
           versions={currentDocId ? savedDocuments.find(d => d.id === currentDocId)?.versions : undefined}
           onRestore={(version) => {
             setDocumentData(prev => ({

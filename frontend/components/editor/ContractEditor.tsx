@@ -1,4 +1,5 @@
 import { useEditor, EditorContent, Node, mergeAttributes, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, Extension } from '@tiptap/react'
+import { Check } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -84,6 +85,15 @@ const DataField = Node.create({
                     }
                 },
             },
+            disabled: {
+                default: false,
+                parseHTML: element => element.getAttribute('data-disabled') === 'true',
+                renderHTML: attributes => {
+                    return {
+                        'data-disabled': attributes.disabled,
+                    }
+                },
+            },
         }
     },
 
@@ -94,7 +104,11 @@ const DataField = Node.create({
     },
 
     renderHTML({ HTMLAttributes }) {
-        return ['span', mergeAttributes(HTMLAttributes, { class: 'data-field' }), 0]
+        const disabled = HTMLAttributes.disabled === true || HTMLAttributes.disabled === 'true';
+        return ['span', mergeAttributes(HTMLAttributes, {
+            class: `data-field ${disabled ? 'disabled' : ''}`,
+            'data-disabled': disabled
+        }), 0]
     },
 
     // Prevent node deletion - restore placeholder when field would become empty
@@ -216,8 +230,12 @@ const DataField = Node.create({
             const displayText = `[${fieldId}]`;
             const isPlaceholder = textContent === displayText;
 
+            const disabled = node.attrs.disabled === true || node.attrs.disabled === 'true';
+
             let bgClass = '';
-            if (source === 'agent') {
+            if (disabled) {
+                bgClass = 'bg-gray-100 border border-gray-200 text-gray-400 px-1 rounded cursor-not-allowed pointer-events-none opacity-60';
+            } else if (source === 'agent') {
                 bgClass = 'bg-yellow-50 border border-yellow-200 text-yellow-900 px-1 rounded';
             } else if (source === 'mapped') {
                 bgClass = 'bg-green-50 border border-green-200 text-green-900 px-1 rounded';
@@ -285,6 +303,35 @@ const DataField = Node.create({
                             }
 
                             modified = true
+                        }
+                    })
+
+                    return modified ? tr : null
+                }
+            }),
+            new Plugin({
+                key: new PluginKey('userInputDetector'),
+                appendTransaction: (transactions, oldState, newState) => {
+                    // Check if any transaction modified the document
+                    const docChanged = transactions.some(tr => tr.docChanged)
+                    if (!docChanged) return null
+
+                    const tr = newState.tr
+                    let modified = false
+
+                    // Compare old and new state to detect user modifications
+                    newState.doc.descendants((newNode, pos) => {
+                        if (newNode.type.name === 'dataField' && newNode.attrs.source === null) {
+                            const fieldId = newNode.attrs.fieldId
+                            const placeholder = `[${fieldId}]`
+                            const currentText = newNode.textContent
+
+                            // If text is not the placeholder, user has modified it
+                            if (currentText !== placeholder && currentText.trim() !== '') {
+                                // Change source to 'user' to show blue highlighting
+                                tr.setNodeMarkup(pos, undefined, { ...newNode.attrs, source: 'user' })
+                                modified = true
+                            }
                         }
                     })
 
@@ -449,14 +496,21 @@ const AutoCalculation = Extension.create({
                         quantity: number,
                         unitPrice: number,
                         subTotalNode: any,
-                        subTotalPos: number
+                        subTotalPos: number,
+                        eaBox: number,
+                        box: number
                     }>()
 
                     // Store total fields
                     let totalQuantityPos: number | null = null
                     let totalPricePos: number | null = null
+                    let totalEaBoxPos: number | null = null
+                    let totalBoxPos: number | null = null
+
                     let totalQuantityNode: any = null
                     let totalPriceNode: any = null
+                    let totalEaBoxNode: any = null
+                    let totalBoxNode: any = null
 
                     // First pass: Collect all relevant nodes
                     newState.doc.descendants((node, pos) => {
@@ -475,18 +529,30 @@ const AutoCalculation = Extension.create({
                                 totalPriceNode = node
                                 return
                             }
+                            if (fieldId === 'total_ea/box') {
+                                totalEaBoxPos = pos
+                                totalEaBoxNode = node
+                                return
+                            }
+                            if (fieldId === 'total_box') {
+                                totalBoxPos = pos
+                                totalBoxNode = node
+                                return
+                            }
 
                             // Check for Row fields
-                            // Match quantity(_suffix), unit_price(_suffix), sub_total_price(_suffix)
+                            // Match quantity(_suffix), unit_price(_suffix), sub_total_price(_suffix), ea_box(_suffix), box(_suffix)
                             const quantityMatch = fieldId.match(/^quantity(_\d+)?$/)
                             const unitPriceMatch = fieldId.match(/^unit_price(_\d+)?$/)
                             const subTotalMatch = fieldId.match(/^sub_total_price(_\d+)?$/)
+                            const eaBoxMatch = fieldId.match(/^ea_box(_\d+)?$/)
+                            const boxMatch = fieldId.match(/^box(_\d+)?$/)
 
-                            if (quantityMatch || unitPriceMatch || subTotalMatch) {
-                                const suffix = (quantityMatch?.[1] || unitPriceMatch?.[1] || subTotalMatch?.[1]) || ''
+                            if (quantityMatch || unitPriceMatch || subTotalMatch || eaBoxMatch || boxMatch) {
+                                const suffix = (quantityMatch?.[1] || unitPriceMatch?.[1] || subTotalMatch?.[1] || eaBoxMatch?.[1] || boxMatch?.[1]) || ''
 
                                 if (!rowData.has(suffix)) {
-                                    rowData.set(suffix, { quantity: 0, unitPrice: 0, subTotalNode: null, subTotalPos: -1 })
+                                    rowData.set(suffix, { quantity: 0, unitPrice: 0, subTotalNode: null, subTotalPos: -1, eaBox: 0, box: 0 })
                                 }
                                 const data = rowData.get(suffix)!
 
@@ -499,6 +565,10 @@ const AutoCalculation = Extension.create({
                                 } else if (subTotalMatch) {
                                     data.subTotalNode = node
                                     data.subTotalPos = pos
+                                } else if (eaBoxMatch) {
+                                    if (!isNaN(value)) data.eaBox = value
+                                } else if (boxMatch) {
+                                    if (!isNaN(value)) data.box = value
                                 }
                             }
                         }
@@ -508,6 +578,8 @@ const AutoCalculation = Extension.create({
                     const updates: { pos: number, node: any, newText: string }[] = []
                     let grandTotalQuantity = 0
                     let grandTotalPrice = 0
+                    let grandTotalEaBox = 0
+                    let grandTotalBox = 0
 
                     // Process each row
                     for (const [suffix, data] of rowData) {
@@ -517,6 +589,8 @@ const AutoCalculation = Extension.create({
                         // Add to grand totals
                         grandTotalQuantity += data.quantity
                         grandTotalPrice += subTotal
+                        grandTotalEaBox += data.eaBox || 0
+                        grandTotalBox += data.box || 0
 
                         // Update sub_total_price field if it exists
                         if (data.subTotalNode && data.subTotalPos !== -1) {
@@ -547,6 +621,24 @@ const AutoCalculation = Extension.create({
                         const currentText = totalPriceNode.textContent
                         if (currentText !== newText) {
                             updates.push({ pos: totalPricePos, node: totalPriceNode, newText })
+                        }
+                    }
+
+                    // Update total_ea/box
+                    if (totalEaBoxPos !== null && totalEaBoxNode) {
+                        const newText = grandTotalEaBox.toString()
+                        const currentText = totalEaBoxNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalEaBoxPos, node: totalEaBoxNode, newText })
+                        }
+                    }
+
+                    // Update total_box
+                    if (totalBoxPos !== null && totalBoxNode) {
+                        const newText = grandTotalBox.toString()
+                        const currentText = totalBoxNode.textContent
+                        if (currentText !== newText) {
+                            updates.push({ pos: totalBoxPos, node: totalBoxNode, newText })
                         }
                     }
 
@@ -581,7 +673,7 @@ const Checkbox = Node.create({
         return {
             checked: {
                 default: false,
-                parseHTML: element => element.hasAttribute('data-checked'),
+                parseHTML: element => element.getAttribute('data-checked') === 'true',
                 renderHTML: attributes => {
                     return {
                         'data-checked': attributes.checked,
@@ -609,33 +701,37 @@ const Checkbox = Node.create({
     },
 
     renderHTML({ HTMLAttributes }) {
-        return ['span', mergeAttributes(HTMLAttributes, { class: 'checkbox-widget' }), HTMLAttributes.checked ? '[V]' : '[ ]']
+        return ['span', mergeAttributes(HTMLAttributes, { class: 'checkbox-widget' }), '']
     },
 
     addNodeView() {
         return ReactNodeViewRenderer(({ node, updateAttributes, editor, getPos }) => {
             return (
-                <span
-                    className="checkbox-widget cursor-pointer select-none font-bold hover:text-blue-600"
-                    onClick={() => {
-                        const isChecked = !node.attrs.checked;
-                        if (isChecked && node.attrs.group) {
-                            // Uncheck other checkboxes in the same group
-                            editor.state.doc.descendants((descendant: any, pos: number) => {
-                                if (descendant.type.name === 'checkbox' &&
-                                    descendant.attrs.group === node.attrs.group &&
-                                    descendant.attrs.checked &&
-                                    pos !== getPos()) {
-                                    editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
-                                }
-                                return true;
-                            });
-                        }
-                        updateAttributes({ checked: isChecked });
-                    }}
-                >
-                    {node.attrs.checked ? '[V]' : '[ ]'}
-                </span>
+                <NodeViewWrapper as="span" className="checkbox-wrapper inline-block align-middle mx-1">
+                    <span
+                        className={`checkbox-widget inline-flex items-center justify-center w-5 h-5 transition-all cursor-pointer select-none rounded bg-gray-50 border border-gray-300 ${node.attrs.checked ? 'text-black' : 'text-transparent'
+                            }`}
+                        onClick={() => {
+                            const isChecked = !node.attrs.checked;
+                            if (isChecked && node.attrs.group) {
+                                // Uncheck other checkboxes in the same group
+                                editor.state.doc.descendants((descendant: any, pos: number) => {
+                                    if (descendant.type.name === 'checkbox' &&
+                                        descendant.attrs.group === node.attrs.group &&
+                                        descendant.attrs.checked &&
+                                        pos !== getPos()) {
+                                        editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
+                                    }
+                                    return true;
+                                });
+                            }
+                            updateAttributes({ checked: isChecked });
+                        }}
+                        style={{ verticalAlign: 'text-bottom' }}
+                    >
+                        {node.attrs.checked && <Check size={16} strokeWidth={3} />}
+                    </span>
+                </NodeViewWrapper>
             )
         })
     },
@@ -651,10 +747,11 @@ const Radio = Node.create({
         return {
             checked: {
                 default: false,
-                parseHTML: element => element.classList.contains('checked'),
+                parseHTML: element => element.classList.contains('checked') || element.getAttribute('data-checked') === 'true',
                 renderHTML: attributes => {
                     return {
                         class: `radio-circle ${attributes.checked ? 'checked' : ''}`,
+                        'data-checked': attributes.checked,
                     }
                 },
             },
@@ -664,6 +761,15 @@ const Radio = Node.create({
                 renderHTML: attributes => {
                     return {
                         'data-group': attributes.group,
+                    }
+                },
+            },
+            linkedField: {
+                default: null,
+                parseHTML: element => element.getAttribute('data-linked-field'),
+                renderHTML: attributes => {
+                    return {
+                        'data-linked-field': attributes.linkedField,
                     }
                 },
             },
@@ -685,26 +791,71 @@ const Radio = Node.create({
     addNodeView() {
         return ReactNodeViewRenderer(({ node, updateAttributes, editor, getPos }) => {
             return (
-                <span
-                    className={`radio-circle cursor-pointer inline-block w-3 h-3 border border-black rounded-full mx-auto relative ${node.attrs.checked ? 'bg-black' : ''}`}
-                    onClick={() => {
-                        const isChecked = !node.attrs.checked;
-                        if (isChecked && node.attrs.group) {
-                            // Uncheck other radios in the same group
-                            editor.state.doc.descendants((descendant: any, pos: number) => {
-                                if (descendant.type.name === 'radio' &&
-                                    descendant.attrs.group === node.attrs.group &&
-                                    descendant.attrs.checked &&
-                                    pos !== getPos()) {
-                                    editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
-                                }
-                                return true;
-                            });
-                        }
-                        updateAttributes({ checked: isChecked });
-                    }}
-                    style={{ verticalAlign: 'middle' }}
-                />
+                <NodeViewWrapper as="span" className="radio-wrapper inline-block align-middle mx-1">
+                    <span
+                        className={`radio-circle inline-flex items-center justify-center w-5 h-5 rounded-full border transition-all cursor-pointer select-none ${node.attrs.checked
+                            ? 'border-black bg-white shadow-sm'
+                            : 'bg-white border-gray-300 hover:border-gray-900 shadow-sm'
+                            }`}
+                        onClick={() => {
+                            const clickedPos = getPos();
+                            if (typeof clickedPos !== 'number') return;
+
+                            const isChecked = !node.attrs.checked;
+                            let tr = editor.state.tr;
+
+                            // 1. Update clicked radio state
+                            tr.setNodeMarkup(clickedPos, undefined, { ...node.attrs, checked: isChecked });
+
+                            // 2. Handle linked field enabling/disabling for THIS radio
+                            const linkedFieldId = node.attrs.linkedField;
+                            if (linkedFieldId) {
+                                editor.state.doc.descendants((descendant: any, pos: number) => {
+                                    if (descendant.type.name === 'dataField' && descendant.attrs.fieldId === linkedFieldId) {
+                                        tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, disabled: !isChecked });
+                                    }
+                                    return true;
+                                });
+                            }
+
+                            // 3. If checking this radio, uncheck others in group and disable their fields
+                            if (isChecked && node.attrs.group) {
+                                editor.state.doc.descendants((descendant: any, pos: number) => {
+                                    if (descendant.type.name === 'radio' &&
+                                        descendant.attrs.group === node.attrs.group &&
+                                        descendant.attrs.checked &&
+                                        pos !== clickedPos) {
+
+                                        // Uncheck other radio
+                                        tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false });
+
+                                        // Disable its linked field
+                                        const otherLinkedFieldId = descendant.attrs.linkedField;
+                                        if (otherLinkedFieldId) {
+                                            // We need to find the field linked to this OTHER radio
+                                            // Note: We can't use a nested descendants loop safely if we are modifying the doc?
+                                            // Actually setNodeMarkup doesn't change doc structure/positions, so it's safe.
+                                            // But we need to scan for the field.
+                                            editor.state.doc.descendants((fieldNode: any, fieldPos: number) => {
+                                                if (fieldNode.type.name === 'dataField' && fieldNode.attrs.fieldId === otherLinkedFieldId) {
+                                                    tr.setNodeMarkup(fieldPos, undefined, { ...fieldNode.attrs, disabled: true });
+                                                }
+                                                return true;
+                                            });
+                                        }
+                                    }
+                                    return true;
+                                });
+                            }
+
+                            editor.view.dispatch(tr);
+                            updateAttributes({ checked: isChecked });
+                        }}
+                        style={{ verticalAlign: 'text-bottom' }}
+                    >
+                        {node.attrs.checked && <span className="w-2.5 h-2.5 rounded-full bg-black" />}
+                    </span>
+                </NodeViewWrapper>
             )
         })
     },
@@ -734,10 +885,11 @@ interface ContractEditorProps {
     showAgentHighlight?: boolean
     defaultFontFamily?: string
     defaultFontSize?: string
+    onUpdate?: () => void
 }
 
 const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
-    ({ initialContent, onChange, onRowAdded, onRowDeleted, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
+    ({ initialContent, onChange, onUpdate, onRowAdded, onRowDeleted, className, showFieldHighlight = true, showAgentHighlight = true, defaultFontFamily, defaultFontSize }, ref) => {
         const editor = useEditor({
             extensions: [
                 StarterKit.configure({
@@ -776,51 +928,60 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                 }
 
                                 const tableNode = $from.node(tableDepth)
+                                const tableStartPos = $from.start(tableDepth)
 
-                                // Find template row (LAST row with 4+ dataField nodes)
-                                // This ensures we get the actual data row (goods section) instead of header sections
+                                // Find template row (The Item Row)
+                                // We look for a row that contains fields characteristic of an item (item_no, unit_price, etc.)
                                 let templateRow: any = null
-                                let templateRowFieldCount = 0
-                                const rows: any[] = []
-                                tableNode.forEach((row: any) => {
-                                    if (row.type.name === 'tableRow') {
-                                        rows.push(row)
-                                    }
-                                })
+                                let templateRowOffset = 0
 
-                                // Search in reverse to find the last data row
-                                for (let i = rows.length - 1; i >= 0; i--) {
-                                    const row = rows[i]
+                                // Iterate all rows to find the best candidate
+                                // We prefer the LAST matching row so we clone the most recent item
+                                tableNode.forEach((row: any, offset: number) => {
+                                    if (row.type.name !== 'tableRow') return
+
+                                    let hasItemField = false
                                     let fieldCount = 0
+
                                     row.descendants((node: any) => {
                                         if (node.type.name === 'dataField') {
                                             fieldCount++
+                                            const fid = node.attrs.fieldId || ''
+                                            // Check for characteristic item fields
+                                            if (fid.startsWith('item_no') ||
+                                                fid.startsWith('unit_price') ||
+                                                fid.startsWith('quantity') ||
+                                                fid.startsWith('description') ||
+                                                fid.startsWith('sub_total_price')) {
+                                                hasItemField = true
+                                            }
                                         }
                                     })
 
-                                    if (fieldCount >= 4) {
-                                        // Skip if this is the Total row
+                                    // Check if this is a valid item row
+                                    // Must have at least one item field AND multiple fields (to avoid false positives)
+                                    // Also explicitly exclude Total row
+                                    if (hasItemField && fieldCount >= 3) {
                                         let rowText = ''
                                         row.descendants((node: any) => {
                                             if (node.isText) {
                                                 rowText += node.text
                                             }
                                         })
-                                        if (rowText.toLowerCase().includes('total')) {
-                                            continue
-                                        }
 
-                                        templateRow = row
-                                        templateRowFieldCount = fieldCount
-                                        console.log(`📋 Found template row with ${fieldCount} fields`)
-                                        break
+                                        if (!rowText.toLowerCase().includes('total')) {
+                                            templateRow = row
+                                            templateRowOffset = offset
+                                        }
                                     }
-                                }
+                                })
 
                                 if (!templateRow) {
-                                    console.log('ℹ️ No template row found with data fields (need at least 4)')
+                                    console.log('ℹ️ No valid item template row found, falling back to default')
                                     return chain().command(parentAddRowAfter()).run()
                                 }
+
+                                console.log(`📋 Found template row at offset ${templateRowOffset}`)
 
                                 // Extract field structure from template row
                                 const cellFields: Array<{ cellIndex: number, fields: Array<{ fieldId: string, marks: any[] }> }> = []
@@ -875,18 +1036,9 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                     return newId
                                 }
 
-                                // Instead of using addRowAfter, we'll insert before the last row (Total row)
-                                // Find the position right before the last row
-                                const lastRowIndex = tableNode.childCount - 1
-                                const tableStartPos = $from.start(tableDepth)
-
-                                // Calculate position before the last row
-                                let insertPos = tableStartPos
-                                for (let i = 0; i < lastRowIndex; i++) {
-                                    insertPos += tableNode.child(i).nodeSize
-                                }
-
-                                console.log(`📍 Inserting new row before Total row (index ${lastRowIndex}) at pos ${insertPos}`)
+                                // Insert AFTER the template row
+                                const insertPos = tableStartPos + templateRowOffset + templateRow.nodeSize
+                                console.log(`📍 Inserting new row at pos ${insertPos}`)
 
                                 // Helper to recursively clone nodes and replace dataFields
                                 const cloneNode = (node: any): any => {
@@ -911,7 +1063,7 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                         })
 
                                         return state.schema.nodes.dataField.create(
-                                            { ...node.attrs, fieldId: newFieldId },
+                                            { ...node.attrs, fieldId: newFieldId, source: null },
                                             newTextContent
                                         )
                                     } else if (node.content && node.content.size > 0) {
@@ -1051,6 +1203,10 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                 },
             },
             onUpdate: ({ editor }) => {
+                // Call the onUpdate prop if provided (to trigger parent re-renders)
+                onUpdate?.()
+
+                // 1. Call onChange prop
                 onChange?.(editor.getHTML())
 
                 // Skip if currently syncing
@@ -1220,6 +1376,47 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
             if (editor && initialContent !== undefined && !hasInitialized.current) {
                 // Only set content on initial mount of this editor instance
                 editor.commands.setContent(initialContent);
+
+                // [ADDED] Synchronize conditional fields based on radio button state
+                // This ensures that loaded documents correctly reflect the disabled state of fields
+                const updates: { pos: number, attrs: any }[] = [];
+                const radios: { checked: boolean, linkedField: string }[] = [];
+
+                editor.state.doc.descendants((node, pos) => {
+                    if (node.type.name === 'radio' && node.attrs.linkedField) {
+                        radios.push({ checked: node.attrs.checked, linkedField: node.attrs.linkedField });
+                    }
+                    return true;
+                });
+
+                if (radios.length > 0) {
+                    editor.state.doc.descendants((node, pos) => {
+                        if (node.type.name === 'dataField') {
+                            const fieldId = node.attrs.fieldId;
+                            const controllingRadio = radios.find(r => r.linkedField === fieldId);
+
+                            if (controllingRadio) {
+                                const shouldBeDisabled = !controllingRadio.checked;
+                                // Only update if state is different to avoid unnecessary changes
+                                if (node.attrs.disabled !== shouldBeDisabled) {
+                                    updates.push({ pos, attrs: { ...node.attrs, disabled: shouldBeDisabled } });
+                                }
+                            }
+                        }
+                        return true;
+                    });
+                }
+
+                if (updates.length > 0) {
+                    let tr = editor.state.tr;
+                    // Apply updates in reverse order to preserve positions? 
+                    // setNodeMarkup doesn't change document length, so order doesn't matter for positions.
+                    updates.forEach(update => {
+                        tr = tr.setNodeMarkup(update.pos, undefined, update.attrs);
+                    });
+                    editor.view.dispatch(tr);
+                }
+
                 hasInitialized.current = true;
             }
         }, [editor, initialContent]);

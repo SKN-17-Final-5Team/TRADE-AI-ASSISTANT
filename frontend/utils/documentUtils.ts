@@ -134,9 +134,37 @@ export function checkStepCompletion(content: string): boolean {
   for (const field of fields) {
     const key = field.getAttribute('data-field-id');
     const value = field.textContent;
+
+    // [CHANGED] Skip validation for optional fields (including dynamic IDs like notice_2)
+    if (key && (key.startsWith('notice') || key.startsWith('remarks'))) continue;
+
+    // [ADDED] Skip validation for disabled fields (e.g. unchecked conditional fields)
+    if (field.getAttribute('data-disabled') === 'true') continue;
+
     if (key && value === `[${key}]`) {
       return false;
     }
+  }
+
+  // [ADDED] Validate Radio/Checkbox Groups
+  // Ensure at least one option is selected for each group
+  const groupElements = doc.querySelectorAll('[data-group]');
+  const groups = new Set<string>();
+  groupElements.forEach(el => {
+    const group = el.getAttribute('data-group');
+    if (group) groups.add(group);
+  });
+
+  for (const group of groups) {
+    const options = doc.querySelectorAll(`[data-group="${group}"]`);
+    let hasSelection = false;
+    for (const option of options) {
+      if (option.getAttribute('data-checked') === 'true') {
+        hasSelection = true;
+        break;
+      }
+    }
+    if (!hasSelection) return false;
   }
 
   return fields.length > 0;

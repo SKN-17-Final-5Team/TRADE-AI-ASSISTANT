@@ -32,13 +32,13 @@ export const ShootingStarIntro: React.FC<ShootingStarIntroProps> = ({ onComplete
     return (
         <div className="fixed inset-0 z-[9999] pointer-events-none overflow-hidden">
             {/* Positioning Container - Anchored to bottom-right */}
-            <div className="absolute bottom-6 right-6 w-14 h-14 flex items-center justify-center">
+            <div className="absolute bottom-6 right-6 w-14 h-14 flex items-center justify-center pointer-events-none">
 
                 {/* 1. Ambient Bloom (Aura) - Removed as requested */}
 
                 {/* 2. Signal Pulse (Radar Ripple) */}
                 <motion.div
-                    className="absolute left-1/2 top-1/2 border border-blue-400 rounded-full opacity-0"
+                    className="absolute left-1/2 top-1/2 border border-blue-400 rounded-full opacity-0 pointer-events-none"
                     initial={{ x: "-50%", y: "-50%" }}
                     animate={{
                         width: ['100%', '300%'],
@@ -56,7 +56,7 @@ export const ShootingStarIntro: React.FC<ShootingStarIntroProps> = ({ onComplete
 
                 {/* 3. Construct (Button Background) */}
                 <motion.div
-                    className="absolute inset-0 bg-blue-600 rounded-full shadow-lg z-10"
+                    className="absolute inset-0 bg-blue-600 rounded-full shadow-lg z-10 pointer-events-none"
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{
@@ -72,7 +72,7 @@ export const ShootingStarIntro: React.FC<ShootingStarIntroProps> = ({ onComplete
 
                 {/* 4. Icon Assembly */}
                 <motion.div
-                    className="relative z-20 text-white flex items-center justify-center"
+                    className="relative z-20 text-white flex items-center justify-center pointer-events-none"
                     initial={{ scale: 0, rotate: -90 }}
                     animate={{ scale: 1, rotate: 0 }}
                     transition={{
@@ -93,7 +93,7 @@ export const ShootingStarIntro: React.FC<ShootingStarIntroProps> = ({ onComplete
                             animate={{ opacity: 1, x: 0, scale: 1 }}
                             exit={{ opacity: 0, x: 5, scale: 0.95 }}
                             transition={{ duration: 0.4, ease: "easeOut" }}
-                            className="absolute right-full mr-3 top-1/2 -translate-y-1/2 whitespace-nowrap bg-white/80 backdrop-blur-md text-slate-700 text-sm font-medium px-3 py-1.5 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.1)] border border-white/60 z-30 flex items-center gap-2"
+                            className="absolute right-full mr-3 top-1/2 -translate-y-1/2 whitespace-nowrap bg-white/80 backdrop-blur-md text-slate-700 text-sm font-medium px-3 py-1.5 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.1)] border border-white/60 z-30 flex items-center gap-2 pointer-events-none"
                         >
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>

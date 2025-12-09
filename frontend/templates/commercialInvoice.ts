@@ -137,24 +137,22 @@ export const commercialInvoiceTemplateHTML = `
             <!-- Footer: Totals -->
             <tr style="background-color: #f0f0f0; font-weight: bold;">
                 <td colspan="2" style="text-align: right; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;">TOTAL :</td>
-                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[ea/box]</mark></td>
-                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[box]</mark></td>
-                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[quantity]</mark></td>
+                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[total_ea/box]</mark></td>
+                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[total_box]</mark></td>
+                <td style="text-align: center; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;"><mark>[total_quantity]</mark></td>
                 <td colspan="2" style="text-align: right; border: 1px solid #d1d5db; padding: 8px; vertical-align: middle;">
                     <mark>[total_price]</mark><mark>[currency]</mark>
                 </td>
             </tr>
 
-            <!-- Footer: Signature & Terms -->
+            <!-- Footer: Signature -->
             <tr>
                 <td colspan="7" style="padding: 20px; border: 1px solid #d1d5db; border-top: none;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-                        <div style="text-align: left;">
-                            <div style="margin-bottom: 10px; font-weight: bold;">H.S Code: <mark>[hscode]</mark></div>
-                            <div style="font-weight: bold;">Trade Terms : <mark>[incoterms]</mark> <mark>[incoterms_port]</mark> incoterms2020</div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="font-weight: bold;">Signed by <mark>[seller_name]</mark></div>
+                    <div style="display: flex; justify-content: flex-end;">
+                        <div style="text-align: center; width: 250px;">
+                            <div style="font-weight: bold; text-align: left; margin-bottom: 20px;">Signed by :</div>
+                            <div style="font-weight: bold; margin-bottom: 5px;"><mark>[seller_name]</mark></div>
+                            <div style="border-top: 1px solid #000; padding-top: 5px;">Authorized Signature</div>
                         </div>
                     </div>
                 </td>

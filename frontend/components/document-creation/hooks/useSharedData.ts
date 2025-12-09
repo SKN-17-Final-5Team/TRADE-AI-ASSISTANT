@@ -24,7 +24,11 @@ export function useSharedData(): UseSharedDataReturn {
       const content = value || `[${key}]`;
       // If we have a value, it's mapped data.
       const sourceAttr = value ? ' data-source="mapped"' : '';
-      return `<span data-field-id="${key}"${sourceAttr}>${content}</span>`;
+
+      // [ADDED] Default disabled state for conditional fields (starting with 'days_')
+      const disabledAttr = key.startsWith('days_') ? ' data-disabled="true"' : '';
+
+      return `<span data-field-id="${key}"${sourceAttr}${disabledAttr}>${content}</span>`;
     });
   }, [sharedData]);
 
@@ -35,16 +39,29 @@ export function useSharedData(): UseSharedDataReturn {
     const fields = doc.querySelectorAll('span[data-field-id]');
 
     const newData: Record<string, string> = {};
+    const foundKeys = new Set<string>();
+
     fields.forEach(field => {
       const key = field.getAttribute('data-field-id');
       const value = field.textContent;
 
-      // Only save if it's not the placeholder itself
-      // Use first non-placeholder value (don't overwrite if already set)
-      if (key && value && value !== `[${key}]`) {
-        if (!newData[key]) {
-          newData[key] = value;
+      if (key) {
+        foundKeys.add(key);
+        // Only save if it's not the placeholder itself
+        // Use first non-placeholder value (don't overwrite if already set)
+        if (value && value !== `[${key}]`) {
+          if (!newData[key]) {
+            newData[key] = value;
+          }
         }
+      }
+    });
+
+    // If a key exists in the document but has no value in newData (meaning it's a placeholder),
+    // explicitly set it to empty string to clear any previous value in sharedData
+    foundKeys.forEach(key => {
+      if (!newData[key]) {
+        newData[key] = '';
       }
     });
 
