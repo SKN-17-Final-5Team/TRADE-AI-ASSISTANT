@@ -622,10 +622,11 @@ src/components/documentCreation/
 │   └── ShippingDocsDashboard.tsx # Step 4 CI/PL 대시보드
 │
 └── hooks/                       # 커스텀 훅
+    ├── index.ts                 # 훅 export
     ├── useDocumentState.ts      # ★ 문서 상태 관리
     ├── useSharedData.ts         # ★ 필드 데이터 공유/동기화
-    ├── useSaveDocument.ts       # 저장 로직
-    └── useUpload.ts             # 파일 업로드 로직
+    └── useFileUpload.ts         # 파일 업로드 로직
+    # Note: 저장 로직은 App.tsx의 handleSaveDocument()에서 onSave prop으로 전달
 ```
 
 ### 5.3 DocumentCreationPage 하위 파일 역할
@@ -831,7 +832,7 @@ DocumentCreationPage
 │
 ├── useDocumentState()    # stepModes, modifiedSteps, isDirty
 ├── useSharedData()       # sharedData, hydrateTemplate, extractData
-└── useSaveDocument()     # 저장 로직
+└── onSave prop           # App.tsx의 handleSaveDocument()에서 전달
 
     ↓ Props로 전달
 
@@ -902,7 +903,7 @@ Step 1 (Offer Sheet)
 | POST | `/trades/` | 거래 생성 | `MainPage.tsx` |
 | GET | `/trades/{id}/` | 거래 상세 | `App.tsx` |
 | GET | `/documents/` | 문서 목록 | - |
-| PUT | `/documents/{id}/` | 문서 수정 | `useSaveDocument.ts` |
+| PUT | `/documents/{id}/` | 문서 수정 | `App.tsx` (handleSaveDocument) |
 | PATCH | `/documents/{id}/` | 문서 부분 수정 (doc_mode 등) | `index.tsx` |
 | POST | `/documents/{id}/upload_request/` | S3 업로드 URL | `useFileUpload.ts` |
 | POST | `/documents/{id}/upload_complete/` | 업로드 완료 | `useFileUpload.ts` |
@@ -934,8 +935,8 @@ Step 1 (Offer Sheet)
 | 프론트엔드 파일 | 호출하는 API |
 |----------------|-------------|
 | `src/utils/api.ts` | 공통 API 유틸리티 |
+| `src/App.tsx` | `/api/documents/{id}/` (handleSaveDocument), `/api/versions/` |
 | `src/components/chat/ChatAssistant.tsx` | `/api/documents/chat/stream/` |
-| `src/components/documentCreation/hooks/useSaveDocument.ts` | `/api/documents/{id}/` |
 | `src/components/documentCreation/hooks/useFileUpload.ts` | 업로드 관련 API |
 | `src/components/documentCreation/index.tsx` | `/api/documents/{id}/` (doc_mode 업데이트) |
 
@@ -952,8 +953,9 @@ DocumentCreationPage (index.tsx)
 ├── imports from './hooks/*'
 │   ├── useDocumentState
 │   ├── useSharedData
-│   ├── useSaveDocument
-│   └── useUpload
+│   └── useFileUpload
+├── props from App.tsx
+│   └── onSave (handleSaveDocument)
 ├── imports from './layout/*'
 │   ├── DocumentHeader
 │   └── StepNavigation
