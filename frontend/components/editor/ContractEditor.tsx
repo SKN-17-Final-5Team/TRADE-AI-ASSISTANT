@@ -294,15 +294,19 @@ const DataField = Node.create({
                             const fieldId = node.attrs.fieldId
                             const placeholder = `[${fieldId}]`
 
+                            // [FIX] Map position to account for previous changes in this transaction
+                            const mappedPos = tr.mapping.map(pos)
+
                             // Restore placeholder
-                            tr.insertText(placeholder, pos + 1)
-                            tr.setNodeMarkup(pos, undefined, { ...node.attrs, source: null })
+                            tr.insertText(placeholder, mappedPos + 1)
+                            tr.setNodeMarkup(mappedPos, undefined, { ...node.attrs, source: null })
 
                             // Force cursor inside and SELECT the placeholder so typing overwrites it
                             const sel = newState.selection
                             // Check if selection is near the node (inside or at boundaries)
-                            if (sel.head >= pos && sel.head <= pos + 1) { // Relaxed check
-                                tr.setSelection(TextSelection.create(tr.doc, pos + 1, pos + 1 + placeholder.length))
+                            // Note: We use original pos for selection check against newState, but mappedPos for setting selection
+                            if (sel.head >= pos && sel.head <= pos + 1) {
+                                tr.setSelection(TextSelection.create(tr.doc, mappedPos + 1, mappedPos + 1 + placeholder.length))
                             }
 
                             modified = true
@@ -413,7 +417,8 @@ const createRowDeletionDetector = (onRowDeleted?: (fieldIds: string[]) => void) 
                                 node.descendants((childNode) => {
                                     if (childNode.type.name === 'dataField') {
                                         const fieldId = childNode.attrs.fieldId
-                                        if (fieldId) {
+                                        // [FIX] Ignore 'currency' as it is shared across all rows and breaks uniqueness checks
+                                        if (fieldId && fieldId !== 'currency') {
                                             fieldIds.push(fieldId)
                                         }
                                     }
@@ -431,7 +436,8 @@ const createRowDeletionDetector = (onRowDeleted?: (fieldIds: string[]) => void) 
                                 node.descendants((childNode) => {
                                     if (childNode.type.name === 'dataField') {
                                         const fieldId = childNode.attrs.fieldId
-                                        if (fieldId) {
+                                        // [FIX] Ignore 'currency' as it is shared across all rows and breaks uniqueness checks
+                                        if (fieldId && fieldId !== 'currency') {
                                             fieldIds.push(fieldId)
                                         }
                                     }
@@ -442,10 +448,14 @@ const createRowDeletionDetector = (onRowDeleted?: (fieldIds: string[]) => void) 
                             }
                         })
 
+                        // console.log(`📊 [RowDetector] Old Rows: ${oldRows.length}, New Rows: ${newRows.length}`)
+
                         // Only proceed if row count decreased (deletion)
                         if (newRows.length >= oldRows.length) {
                             return null
                         }
+
+
 
                         // Find which rows were deleted by comparing field IDs
                         const deletedFieldIds: string[] = []
@@ -463,7 +473,6 @@ const createRowDeletionDetector = (onRowDeleted?: (fieldIds: string[]) => void) 
                         }
 
                         if (deletedFieldIds.length > 0) {
-                            console.log(`🗑️ Row deleted with fields: [${deletedFieldIds.join(', ')}]`)
                             // Call callback asynchronously to avoid transaction conflicts
                             setTimeout(() => {
                                 onRowDeleted(deletedFieldIds)
@@ -782,29 +791,40 @@ const Checkbox = Node.create({
                         className={`checkbox-widget inline-flex items-center justify-center w-5 h-5 transition-all cursor-pointer select-none rounded bg-gray-50 border border-gray-300 ${node.attrs.checked ? 'text-black' : 'text-transparent'
                             }`}
                         onClick={() => {
-                            // [FIX] Wrap in setTimeout to avoid flushSync warning during render cycle
+                            const clickedPos = getPos();
+                            if (typeof clickedPos !== 'number') return;
+
+                            // [FIX] Use setTimeout to ensure we are out of the render cycle
                             setTimeout(() => {
                                 const isChecked = !node.attrs.checked;
-                                if (isChecked && node.attrs.group) {
-                                    // Uncheck other checkboxes in the same group
-                                    editor.state.doc.descendants((descendant: any, pos: number) => {
-                                        if (descendant.type.name === 'checkbox' &&
-                                            descendant.attrs.group === node.attrs.group &&
-                                            descendant.attrs.checked &&
-                                            pos !== getPos()) {
-                                            editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false }));
+
+                                editor.chain()
+                                    .command(({ tr }) => {
+                                        // 1. Update SELF
+                                        tr.setNodeMarkup(clickedPos, undefined, { ...node.attrs, checked: isChecked });
+
+                                        // 2. If checking self, uncheck OTHERS in group
+                                        if (isChecked && node.attrs.group) {
+                                            editor.state.doc.descendants((descendant: any, pos: number) => {
+                                                if (descendant.type.name === 'checkbox' &&
+                                                    descendant.attrs.group === node.attrs.group &&
+                                                    descendant.attrs.checked &&
+                                                    pos !== clickedPos) {
+                                                    tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false });
+                                                }
+                                                return true;
+                                            });
                                         }
                                         return true;
-                                    });
-                                }
-                                updateAttributes({ checked: isChecked });
+                                    })
+                                    .run();
                             }, 0);
                         }}
                         style={{ verticalAlign: 'text-bottom' }}
                     >
                         {node.attrs.checked && <Check size={16} strokeWidth={3} />}
                     </span>
-                </NodeViewWrapper>
+                </NodeViewWrapper >
             )
         })
     },
@@ -874,55 +894,54 @@ const Radio = Node.create({
                             const clickedPos = getPos();
                             if (typeof clickedPos !== 'number') return;
 
-                            const isChecked = !node.attrs.checked;
-                            let tr = editor.state.tr;
+                            // [FIX] Use setTimeout to ensure we are out of the render cycle
+                            setTimeout(() => {
+                                const isChecked = !node.attrs.checked;
 
-                            // 1. Update clicked radio state
-                            tr.setNodeMarkup(clickedPos, undefined, { ...node.attrs, checked: isChecked });
+                                editor.chain()
+                                    .command(({ tr }) => {
+                                        // 1. Update clicked radio state
+                                        tr.setNodeMarkup(clickedPos, undefined, { ...node.attrs, checked: isChecked });
 
-                            // 2. Handle linked field enabling/disabling for THIS radio
-                            const linkedFieldId = node.attrs.linkedField;
-                            if (linkedFieldId) {
-                                editor.state.doc.descendants((descendant: any, pos: number) => {
-                                    if (descendant.type.name === 'dataField' && descendant.attrs.fieldId === linkedFieldId) {
-                                        tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, disabled: !isChecked });
-                                    }
-                                    return true;
-                                });
-                            }
-
-                            // 3. If checking this radio, uncheck others in group and disable their fields
-                            if (isChecked && node.attrs.group) {
-                                editor.state.doc.descendants((descendant: any, pos: number) => {
-                                    if (descendant.type.name === 'radio' &&
-                                        descendant.attrs.group === node.attrs.group &&
-                                        descendant.attrs.checked &&
-                                        pos !== clickedPos) {
-
-                                        // Uncheck other radio
-                                        tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false });
-
-                                        // Disable its linked field
-                                        const otherLinkedFieldId = descendant.attrs.linkedField;
-                                        if (otherLinkedFieldId) {
-                                            // We need to find the field linked to this OTHER radio
-                                            // Note: We can't use a nested descendants loop safely if we are modifying the doc?
-                                            // Actually setNodeMarkup doesn't change doc structure/positions, so it's safe.
-                                            // But we need to scan for the field.
-                                            editor.state.doc.descendants((fieldNode: any, fieldPos: number) => {
-                                                if (fieldNode.type.name === 'dataField' && fieldNode.attrs.fieldId === otherLinkedFieldId) {
-                                                    tr.setNodeMarkup(fieldPos, undefined, { ...fieldNode.attrs, disabled: true });
+                                        // 2. Handle linked field enabling/disabling for THIS radio
+                                        const linkedFieldId = node.attrs.linkedField;
+                                        if (linkedFieldId) {
+                                            editor.state.doc.descendants((descendant: any, pos: number) => {
+                                                if (descendant.type.name === 'dataField' && descendant.attrs.fieldId === linkedFieldId) {
+                                                    tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, disabled: !isChecked });
                                                 }
                                                 return true;
                                             });
                                         }
-                                    }
-                                    return true;
-                                });
-                            }
 
-                            editor.view.dispatch(tr);
-                            updateAttributes({ checked: isChecked });
+                                        // 3. If checking this radio, uncheck others in group and disable their fields
+                                        if (isChecked && node.attrs.group) {
+                                            editor.state.doc.descendants((descendant: any, pos: number) => {
+                                                if (descendant.type.name === 'radio' &&
+                                                    descendant.attrs.group === node.attrs.group &&
+                                                    descendant.attrs.checked &&
+                                                    pos !== clickedPos) {
+                                                    // Uncheck other radio
+                                                    tr.setNodeMarkup(pos, undefined, { ...descendant.attrs, checked: false });
+
+                                                    // Disable its linked field
+                                                    const otherLinkedFieldId = descendant.attrs.linkedField;
+                                                    if (otherLinkedFieldId) {
+                                                        editor.state.doc.descendants((fieldDescendant: any, fieldPos: number) => {
+                                                            if (fieldDescendant.type.name === 'dataField' && fieldDescendant.attrs.fieldId === otherLinkedFieldId) {
+                                                                tr.setNodeMarkup(fieldPos, undefined, { ...fieldDescendant.attrs, disabled: true });
+                                                            }
+                                                            return true;
+                                                        });
+                                                    }
+                                                }
+                                                return true;
+                                            });
+                                        }
+                                        return true;
+                                    })
+                                    .run();
+                            }, 0);
                         }}
                         style={{ verticalAlign: 'text-bottom' }}
                     >
@@ -976,7 +995,6 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                         return {
                             ...parentCommands,
                             addRowAfter: () => ({ chain, state, dispatch }) => {
-                                console.log('🔵 Custom addRowAfter triggered')
                                 const { selection } = state
                                 const { $from } = selection
 
@@ -991,12 +1009,10 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
 
                                 const parentAddRowAfter = parentCommands.addRowAfter
                                 if (!parentAddRowAfter) {
-                                    console.error('❌ Parent addRowAfter not found')
                                     return false
                                 }
 
                                 if (tableDepth === -1) {
-                                    console.warn('⚠️ Not inside a table')
                                     return chain().command(parentAddRowAfter()).run()
                                 }
 
@@ -1050,11 +1066,8 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                 })
 
                                 if (!templateRow) {
-                                    console.log('ℹ️ No valid item template row found, falling back to default')
                                     return chain().command(parentAddRowAfter()).run()
                                 }
-
-                                console.log(`📋 Found template row at offset ${templateRowOffset}`)
 
                                 // Extract field structure from template row
                                 const cellFields: Array<{ cellIndex: number, fields: Array<{ fieldId: string, marks: any[] }> }> = []
@@ -1079,7 +1092,6 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                         cellFields.push({ cellIndex, fields })
                                     }
                                 })
-                                console.log(`📋 Found ${cellFields.length} cells with fields in template`)
 
                                 // Collect all existing field IDs
                                 const existingFieldIds = new Set<string>()
@@ -1111,7 +1123,6 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
 
                                 // Insert AFTER the template row
                                 const insertPos = tableStartPos + templateRowOffset + templateRow.nodeSize
-                                console.log(`📍 Inserting new row at pos ${insertPos}`)
 
                                 // Helper to recursively clone nodes and replace dataFields
                                 const cloneNode = (node: any): any => {
@@ -1167,7 +1178,6 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                 const result = chain()
                                     .command(({ tr }) => {
                                         tr.insert(insertPos, newRow)
-                                        console.log('✅ Inserted new row with cloned fields')
                                         return true
                                     })
                                     .run()
@@ -1180,8 +1190,9 @@ const ContractEditor = forwardRef<ContractEditorRef, ContractEditorProps>(
                                             newFieldIds.push(node.attrs.fieldId)
                                         }
                                     })
-                                    console.log('📢 Calling onRowAdded with fields:', newFieldIds)
-                                    onRowAdded(newFieldIds)
+                                    if (newFieldIds.length > 0) {
+                                        onRowAdded(newFieldIds)
+                                    }
                                 }
 
                                 return result

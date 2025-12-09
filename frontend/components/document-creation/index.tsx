@@ -1,5 +1,5 @@
 // DocumentCreationPage - 메인 컴포넌트
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Sparkles, Paperclip, MinusCircle, Check, Lock, Plus, ChevronUp, ChevronDown, Ban, PenTool, ArrowLeft, FileText, Package, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -636,10 +636,9 @@ export default function DocumentCreationPage({
   };
 
   const handleRowAdded = (fieldIds: string[]) => {
-    console.log('🔄 handleRowAdded called with:', fieldIds, 'from step:', currentStep);
 
     // Helper to add row to a document's HTML content
-    const addRowToDocument = (htmlContent: string, fieldIds: string[]): string => {
+    const addRowToDocument = (htmlContent: string, fieldIds: string[], stepName: string): string => {
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlContent, 'text/html');
 
@@ -697,7 +696,6 @@ export default function DocumentCreationPage({
 
       const newRow = templateRow.cloneNode(true) as HTMLElement;
 
-      // Create a map of field names to new field IDs
       const fieldMap = new Map<string, string>();
       fieldIds.forEach(fieldId => {
         const baseName = fieldId.replace(/_\d+$/, '');
@@ -718,7 +716,8 @@ export default function DocumentCreationPage({
 
       // Replace field IDs in the new row
       const dataFields = newRow.querySelectorAll('[data-field-id]');
-      dataFields.forEach((field) => {
+
+      dataFields.forEach((field, index) => {
         const currentFieldId = field.getAttribute('data-field-id');
         if (currentFieldId) {
           const baseName = currentFieldId.replace(/_\d+$/, '');
@@ -777,96 +776,102 @@ export default function DocumentCreationPage({
         if (!content) {
           // Document doesn't exist yet, use template
           content = hydrateTemplate(getTemplateForStep(step));
-          console.log(`📄 Using template for step ${step} (first sync)`);
         }
 
-        console.log(`📝 Updating document at step ${step}`);
-        const updatedContent = addRowToDocument(content, fieldIds);
+        const updatedContent = addRowToDocument(content, fieldIds, `Step ${step}`);
         newData[step] = updatedContent;
       });
 
       return newData;
     });
 
-    console.log('✅ Row synchronization complete');
   };
 
   // Handle row deletion and sync to other documents
-  const handleRowDeleted = (fieldIds: string[]) => {
-    console.log('🗑️ handleRowDeleted called with:', fieldIds);
+  const handleRowDeleted = useCallback((fieldIds: string[]) => {
 
     // Helper to delete row from a document's HTML content
-    const deleteRowFromDocument = (htmlContent: string, deletedFieldIds: string[]): string => {
+    const deleteRowFromDocument = (htmlContent: string, deletedFieldIds: string[], stepName: string): string => {
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlContent, 'text/html');
 
-      // Find the table
-      const table = doc.querySelector('table');
-      if (!table) {
-        console.warn('⚠️ No table found in document');
-        return htmlContent;
-      }
+      // Find all tables
+      const tables = doc.querySelectorAll('table');
 
-      // Find all rows in tbody only
-      const tbody = table.querySelector('tbody');
-      if (!tbody) {
-        console.warn('⚠️ No tbody found in table');
-        return htmlContent;
-      }
 
-      const rows = Array.from(tbody.querySelectorAll('tr'));
-
-      // Find and delete rows that contain any of the deleted field IDs
       let deletedCount = 0;
-      rows.forEach((row) => {
-        const rowFieldIds: string[] = [];
-        const dataFields = row.querySelectorAll('[data-field-id]');
 
-        dataFields.forEach((field) => {
-          const fieldId = field.getAttribute('data-field-id');
-          if (fieldId) {
-            rowFieldIds.push(fieldId);
+      tables.forEach((table, tableIndex) => {
+        // Search all rows in the table (thead, tbody, tfoot)
+        const rows = Array.from(table.querySelectorAll('tr'));
+
+
+        // Find and delete rows that contain any of the deleted field IDs
+        rows.forEach((row, rowIndex) => {
+          const rowFieldIds: string[] = [];
+          const dataFields = row.querySelectorAll('[data-field-id]');
+
+          dataFields.forEach((field) => {
+            const fieldId = field.getAttribute('data-field-id');
+            if (fieldId) {
+              rowFieldIds.push(fieldId.trim());
+            }
+          });
+
+
+          // Check if this row contains any of the deleted field IDs
+          // Use strict inclusion check but with trimmed strings
+          const hasDeletedField = rowFieldIds.some(id => deletedFieldIds.includes(id));
+
+          if (hasDeletedField) {
+            row.remove();
+            deletedCount++;
           }
         });
-
-        // Check if this row contains any of the deleted field IDs
-        const hasDeletedField = rowFieldIds.some(id => deletedFieldIds.includes(id));
-
-        if (hasDeletedField) {
-          console.log(`  🗑️ Deleting row with fields: [${rowFieldIds.join(', ')}]`);
-          row.remove();
-          deletedCount++;
-        }
       });
 
       if (deletedCount > 0) {
-        console.log(`  ✓ Deleted ${deletedCount} row(s)`);
       } else {
-        console.log('  ℹ️ No matching rows found to delete');
       }
 
-      return doc.documentElement.outerHTML.replace(/^<html><head><\/head><body>/, '').replace(/<\/body><\/html>$/, '');
+      // Return the inner HTML of the body, or the whole thing if structure is different
+      // Using body.innerHTML is safer than regex replacement for DOMParser result
+      return doc.body.innerHTML;
     };
 
     // Update all other documents
     setDocumentData((prev: DocumentData) => {
       const newData = { ...prev };
 
+      // Determine the key of the document currently being edited
+      let currentDocKey = currentStep;
+      if (currentStep === 4) {
+        if (activeShippingDoc === 'CI') currentDocKey = 4;
+        else if (activeShippingDoc === 'PL') currentDocKey = 5;
+      }
+
+
       // Sync to all documents except the current one
-      const documentsToSync = [1, 2, 3, 4, 5].filter(step => step !== currentStep);
+      const documentsToSync = [1, 2, 3, 4, 5].filter(key => key !== currentDocKey);
 
       documentsToSync.forEach(step => {
-        if (prev[step]) {
-          console.log(`📝 Deleting row from document at step ${step}`);
-          newData[step] = deleteRowFromDocument(prev[step], fieldIds);
+        // Get existing content or template
+        let content = prev[step];
+        if (!content) {
+          // Document doesn't exist yet, use template
+          content = hydrateTemplate(getTemplateForStep(step));
+        }
+
+        if (content) {
+          newData[step] = deleteRowFromDocument(content, fieldIds, `Step ${step}`);
+        } else {
         }
       });
 
       return newData;
     });
 
-    console.log('✅ Row deletion synchronization complete');
-  };
+  }, [currentStep, activeShippingDoc, hydrateTemplate, setDocumentData]);
 
   const handleShippingDocChange = (doc: ShippingDocType) => {
     // Save current doc content before switching

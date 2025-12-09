@@ -65,7 +65,8 @@ export default function StepNavigation({
               let isAccessible = true;
               if (stepNumber > 1) {
                 const prevStepComplete = getStepCompletionStatus(stepNumber - 1);
-                isAccessible = prevStepComplete;
+                // [FIX] Allow access if previous step is complete OR if we've already reached this step (maxProgressStep)
+                isAccessible = prevStepComplete || stepNumber <= maxProgressStep;
               }
 
               return (
