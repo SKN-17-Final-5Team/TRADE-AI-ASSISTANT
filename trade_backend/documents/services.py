@@ -30,13 +30,7 @@ def process_uploaded_document(document_id: int):
         async def call_ingest():
             return await client.ingest_document(
                 doc_id=document_id,
-                s3_key=document.s3_key,
-                doc_type=document.doc_type or "general",
-                metadata={
-                    "original_filename": document.original_filename,
-                    "file_size": document.file_size,
-                    "mime_type": document.mime_type,
-                }
+                s3_key=document.s3_key
             )
 
         result = asyncio.run(call_ingest())

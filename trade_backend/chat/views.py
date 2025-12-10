@@ -19,7 +19,6 @@ from django.utils.decorators import method_decorator
 
 from .ai_client import get_ai_client
 from .models import User, GenChat, GenMessage, Department
-from .memory_service import get_memory_service
 
 logger = logging.getLogger(__name__)
 
@@ -224,12 +223,11 @@ class GenChatDeleteView(APIView):
         try:
             gen_chat = GenChat.objects.get(gen_chat_id=gen_chat_id)
 
-            # Mem0 단기 메모리 삭제
+            # Mem0 단기 메모리 삭제 (AI Server API 호출)
             try:
-                memory_service = get_memory_service()
-                if memory_service:
-                    memory_service.delete_gen_chat_memory(gen_chat_id)
-                    logger.info(f"✅ Mem0 메모리 삭제 완료: gen_chat_id={gen_chat_id}")
+                client = get_ai_client()
+                asyncio.run(client.gen_chat_memory_delete(gen_chat_id))
+                logger.info(f"✅ Mem0 메모리 삭제 완료: gen_chat_id={gen_chat_id}")
             except Exception as mem_err:
                 logger.warning(f"⚠️ Mem0 메모리 삭제 실패 (계속 진행): {mem_err}")
 

@@ -66,6 +66,11 @@ class MemoryDeleteRequest(BaseModel):
     doc_ids: list[int] = Field(..., description="삭제할 문서 ID 목록")
 
 
+class GenChatMemoryDeleteRequest(BaseModel):
+    """일반채팅 메모리 삭제 API 요청"""
+    gen_chat_id: int = Field(..., description="일반채팅 ID")
+
+
 class MemoryBuildContextRequest(BaseModel):
     """메모리 컨텍스트 빌드 API 요청"""
     doc_id: int = Field(..., description="문서 ID")

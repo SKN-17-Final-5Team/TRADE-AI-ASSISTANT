@@ -14,6 +14,7 @@ from schemas.request import (
     MemorySaveRequest,
     MemoryDeleteRequest,
     MemoryBuildContextRequest,
+    GenChatMemoryDeleteRequest,
 )
 from schemas.response import (
     MemorySearchResponse,
@@ -186,4 +187,27 @@ async def delete_memory(request: MemoryDeleteRequest):
 
     except Exception as e:
         logger.error(f"메모리 삭제 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/delete/gen-chat", response_model=MemoryDeleteResponse)
+async def delete_gen_chat_memory(request: GenChatMemoryDeleteRequest):
+    """
+    일반채팅 메모리 삭제
+
+    일반채팅(GenChat) 삭제 시 관련 메모리를 정리합니다.
+    """
+    service = get_memory_service()
+    if not service:
+        return MemoryDeleteResponse(success=False, deleted_count=0)
+
+    try:
+        success = service.delete_gen_chat_memory(request.gen_chat_id)
+        return MemoryDeleteResponse(
+            success=success,
+            deleted_count=1 if success else 0
+        )
+
+    except Exception as e:
+        logger.error(f"일반채팅 메모리 삭제 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -230,6 +230,19 @@ class AIServerClient:
             response.raise_for_status()
             return response.json()
 
+    async def gen_chat_memory_delete(
+        self,
+        gen_chat_id: int
+    ) -> Dict[str, Any]:
+        """일반채팅 메모리 삭제"""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.base_url}/api/memory/delete/gen-chat",
+                json={"gen_chat_id": gen_chat_id}
+            )
+            response.raise_for_status()
+            return response.json()
+
     # ==================== Ingest ====================
 
     async def ingest_document(

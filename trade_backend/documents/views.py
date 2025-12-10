@@ -512,7 +512,6 @@ class DocumentChatView(APIView):
 
     def post(self, request, doc_id):
         from chat.ai_client import get_ai_client
-        from chat.memory_service import get_memory_service
 
         serializer = ChatRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -576,25 +575,21 @@ class DocumentChatView(APIView):
                 metadata={'tools_used': [tool.get('id', '') for tool in tools_used]}
             )
 
-            # Mem0 메모리 저장
+            # Mem0 메모리 저장 (AI Server API 호출)
             if numeric_user_id:
                 try:
-                    mem_service = get_memory_service()
-                    if mem_service:
-                        mem_service.add_doc_memory(
-                            doc_id=doc_id,
-                            user_id=numeric_user_id,
-                            messages=[
-                                {"role": "user", "content": message},
-                                {"role": "assistant", "content": full_response}
-                            ],
-                            metadata={
-                                "trade_id": trade_id,
-                                "doc_type": document.doc_type
-                            }
-                        )
+                    asyncio.run(client.memory_save(
+                        messages=[
+                            {"role": "user", "content": message},
+                            {"role": "assistant", "content": full_response}
+                        ],
+                        user_id=numeric_user_id,
+                        doc_id=doc_id,
+                        save_user=False,
+                        save_doc=True
+                    ))
                 except Exception as mem_error:
-                    logger.error(f"Mem0 메모리 추가 실패: {mem_error}")
+                    logger.warning(f"Mem0 메모리 추가 실패 (계속 진행): {mem_error}")
 
             return Response({
                 'message': full_response,

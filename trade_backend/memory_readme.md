@@ -4,6 +4,56 @@
 
 ---
 
+## ⚠️ 아키텍처 변경 공지 (2025-12-10)
+
+### 메모리 서비스 통합
+
+기존에 `trade_backend/chat/memory_service.py`와 `trade_ai/services/memory.py`에 중복 구현되어 있던 메모리 서비스가 **`trade_ai`로 통합**되었습니다.
+
+**변경 사항:**
+- `trade_backend/chat/memory_service.py` → **삭제됨**
+- 모든 메모리 관련 기능은 `trade_ai` API를 통해 호출
+
+**새로운 아키텍처:**
+```
+┌─────────────────┐     HTTP API      ┌─────────────────┐
+│  trade_backend  │ ─────────────────▶│    trade_ai     │
+│    (Django)     │                   │   (FastAPI)     │
+│                 │                   │                 │
+│  - API 프록시   │                   │  - 메모리 서비스 │
+│  - DB 관리      │                   │  - Mem0/Qdrant  │
+│  - 인증/권한    │                   │  - AI 에이전트  │
+└─────────────────┘                   └─────────────────┘
+```
+
+**API 엔드포인트:**
+| 용도 | 엔드포인트 |
+|------|-----------|
+| 메모리 검색 | `POST /api/memory/search` |
+| 메모리 저장 | `POST /api/memory/save` |
+| 컨텍스트 빌드 | `POST /api/memory/context` |
+| 거래 메모리 삭제 | `POST /api/memory/delete` |
+| 일반채팅 메모리 삭제 | `POST /api/memory/delete/gen-chat` |
+
+**trade_backend에서 호출 예시:**
+```python
+from chat.ai_client import get_ai_client
+
+# 메모리 저장
+client = get_ai_client()
+asyncio.run(client.memory_save(
+    messages=[...],
+    user_id=user_id,
+    doc_id=doc_id
+))
+
+# 메모리 삭제
+asyncio.run(client.memory_delete(trade_id, doc_ids))
+asyncio.run(client.gen_chat_memory_delete(gen_chat_id))
+```
+
+---
+
 ## 1. 핵심 개념: AI는 어떻게 대화를 기억하는가?
 
 ### 문제점

@@ -6,23 +6,21 @@ V2로 이전된 View:
 - DocumentChatStreamView → trade_views_v2.py (DocumentChatStreamViewV2)
 """
 
-import json
+import asyncio
 import logging
-import re
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import (
-    User, TradeFlow, Document, DocMessage, DocVersion,
-    GenChat, GenMessage, GenUploadFile, Department
+    User, TradeFlow, Document, DocMessage, DocVersion, Department
 )
 from .serializers import (
     TradeFlowSerializer, DocumentSerializer, DocMessageSerializer,
     DocVersionSerializer
 )
-from .memory_service import get_memory_service
+from .ai_client import get_ai_client
 
 logger = logging.getLogger(__name__)
 
@@ -182,14 +180,14 @@ class TradeFlowViewSet(viewsets.ModelViewSet):
         doc_ids = list(trade.documents.values_list('doc_id', flat=True))
 
         try:
-            # 1. Mem0 메모리 삭제
+            # 1. Mem0 메모리 삭제 (AI Server API 호출)
             if doc_ids:
-                mem_service = get_memory_service()
-                if mem_service:
-                    mem_service.delete_trade_memory(trade_id, doc_ids)
+                try:
+                    client = get_ai_client()
+                    asyncio.run(client.memory_delete(trade_id, doc_ids))
                     logger.info(f"Deleted mem0 memories for trade_id={trade_id}, docs={doc_ids}")
-                else:
-                    logger.warning(f"Mem0 service unavailable, skipping memory cleanup for trade_id={trade_id}")
+                except Exception as mem_err:
+                    logger.warning(f"Mem0 메모리 삭제 실패 (계속 진행): {mem_err}")
 
             # 2. RDS에서 삭제 (CASCADE로 관련 데이터 자동 삭제)
             trade.delete()
