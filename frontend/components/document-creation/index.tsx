@@ -1005,28 +1005,36 @@ export default function DocumentCreationPage({
     // 2. Center Content (Quick Switcher)
     let centerContent = null;
     if (currentStep === 4 && activeShippingDoc) {
+      const tabs = [
+        { id: 'CI', label: 'Commercial Invoice', icon: FileText, color: 'text-blue-600' },
+        { id: 'PL', label: 'Packing List', icon: Package, color: 'text-indigo-600' }
+      ];
+
       centerContent = (
-        <div className="bg-gray-100 p-1.5 rounded-full flex items-center shadow-inner gap-1">
-          <button
-            onClick={() => setActiveShippingDoc('CI')}
-            className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'CI'
-              ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-              }`}
-          >
-            <FileText className="w-4 h-4" />
-            Commercial Invoice
-          </button>
-          <button
-            onClick={() => setActiveShippingDoc('PL')}
-            className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${activeShippingDoc === 'PL'
-              ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-              }`}
-          >
-            <Package className="w-4 h-4" />
-            Packing List
-          </button>
+        <div className="bg-gray-100/80 backdrop-blur-sm p-1.5 rounded-full flex items-center shadow-inner border border-gray-200/50 relative">
+          {tabs.map((tab) => {
+            const isActive = activeShippingDoc === tab.id;
+            const Icon = tab.icon;
+
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveShippingDoc(tab.id as ShippingDocType)}
+                className={`relative px-6 py-2 rounded-full text-sm font-bold transition-colors flex items-center gap-2 z-10 ${isActive ? tab.color : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeTabBackground"
+                    className="absolute inset-0 bg-white rounded-full shadow-sm ring-1 ring-black/5 z-[-1]"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       );
     }
