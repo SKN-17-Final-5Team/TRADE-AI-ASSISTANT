@@ -113,7 +113,7 @@ export default function VersionHistorySidebar({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60]"
           />
 
           {/* Sidebar */}
@@ -122,7 +122,7 @@ export default function VersionHistorySidebar({
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed left-0 top-0 bottom-0 w-[400px] bg-white/80 backdrop-blur-xl shadow-2xl z-50 border-r border-white/20 flex flex-col"
+            className="fixed left-0 top-0 bottom-0 w-[400px] bg-white/80 backdrop-blur-xl shadow-2xl z-[70] border-r border-white/20 flex flex-col"
           >
             {/* Header */}
             <div className="p-6 pb-4 border-b border-gray-100/50 bg-white/50 backdrop-blur-md sticky top-0 z-30">
