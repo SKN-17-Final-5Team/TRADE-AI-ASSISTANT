@@ -130,22 +130,6 @@ export function checkStepCompletion(content: string): boolean {
   const doc = parser.parseFromString(content, 'text/html');
   const fields = doc.querySelectorAll('span[data-field-id]');
 
-  // placeholder가 남아있는 필드가 있으면 미완료
-  for (const field of fields) {
-    const key = field.getAttribute('data-field-id');
-    const value = field.textContent;
-
-    // [CHANGED] Skip validation for optional fields (including dynamic IDs like notice_2)
-    if (key && (key.startsWith('notice') || key.startsWith('remarks'))) continue;
-
-    // [ADDED] Skip validation for disabled fields (e.g. unchecked conditional fields)
-    if (field.getAttribute('data-disabled') === 'true') continue;
-
-    if (key && value === `[${key}]`) {
-      return false;
-    }
-  }
-
   // [ADDED] Validate Radio/Checkbox Groups
   // Ensure at least one option is selected for each group
   const groupElements = doc.querySelectorAll('[data-group]');
@@ -153,6 +137,24 @@ export function checkStepCompletion(content: string): boolean {
   groupElements.forEach(el => {
     const group = el.getAttribute('data-group');
     if (group) groups.add(group);
+  });
+
+  // [ADDED] Conditional Validation Logic for Payment Fields
+  // 1. Collect all linked fields in the 'payment' group
+  const paymentRadios = doc.querySelectorAll('[data-group="payment"]');
+  const allLinkedFields = new Set<string>();
+  let selectedLinkedField: string | null = null;
+  let isPaymentSelected = false;
+
+  paymentRadios.forEach(radio => {
+    const linkedField = radio.getAttribute('data-linked-field');
+    if (linkedField) allLinkedFields.add(linkedField);
+
+    const isChecked = radio.classList.contains('checked') || radio.getAttribute('data-checked') === 'true';
+    if (isChecked) {
+      isPaymentSelected = true;
+      if (linkedField) selectedLinkedField = linkedField;
+    }
   });
 
   for (const group of groups) {
@@ -167,7 +169,30 @@ export function checkStepCompletion(content: string): boolean {
     if (!hasSelection) return false;
   }
 
-  return fields.length > 0;
+  // placeholder가 남아있는 필드가 있으면 미완료
+  for (const field of fields) {
+    const key = field.getAttribute('data-field-id');
+    const value = field.textContent;
+
+    // [CHANGED] Skip validation for optional fields (including dynamic IDs like notice_2)
+    if (key && (key.startsWith('notice') || key.startsWith('remarks'))) continue;
+
+    // [ADDED] Skip validation for disabled fields
+    if (field.getAttribute('data-disabled') === 'true') continue;
+
+    // [ADDED] Conditional Skip for Payment Fields
+    // If this field is one of the linked fields (e.g. days_dpc), but NOT the one selected, skip it.
+    if (key && allLinkedFields.has(key)) {
+      // If no payment is selected, or the selected payment doesn't require this specific field, skip it.
+      if (key !== selectedLinkedField) continue;
+    }
+
+    if (key && value === `[${key}]`) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
