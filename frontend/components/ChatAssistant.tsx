@@ -125,12 +125,36 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
 
       if (data.messages && data.messages.length > 0) {
         // role 매핑: 백엔드에서는 'user'/'agent'로 저장됨
-        const loadedMessages: Message[] = data.messages.map((msg: { role: string; content: string; doc_message_id?: number }, index: number) => ({
-          id: `loaded_${msg.doc_message_id || index}_${Date.now()}`,
-          type: msg.role === 'user' ? 'user' : 'ai',  // 'agent' -> 'ai'
-          content: msg.content,
-          step: currentStep
-        }));
+        // metadata에서 changes, is_edit, isApplied 정보 복원
+        const loadedMessages: Message[] = data.messages.map((msg: {
+          role: string;
+          content: string;
+          doc_message_id?: number;
+          metadata?: {
+            is_edit?: boolean;
+            changes?: Change[];
+            edit_message?: string;
+            tools_used?: ToolUsed[];
+            isApplied?: boolean;
+          };
+        }, index: number) => {
+          const isAI = msg.role !== 'user';
+          const metadata = msg.metadata || {};
+          const hasChanges = isAI && metadata.is_edit && metadata.changes && metadata.changes.length > 0;
+
+          return {
+            id: `loaded_${msg.doc_message_id || index}_${Date.now()}`,
+            type: isAI ? 'ai' : 'user',
+            content: hasChanges && metadata.edit_message ? metadata.edit_message : msg.content,
+            step: currentStep,
+            // AI 편집 메시지인 경우 버튼 상태 복원
+            hasApply: hasChanges,
+            changes: hasChanges ? metadata.changes : undefined,
+            toolsUsed: isAI ? metadata.tools_used : undefined,
+            // 편집 메시지는 기본적으로 적용 완료 상태로 표시 (재적용 방지)
+            isApplied: hasChanges ? (metadata.isApplied !== false) : undefined
+          };
+        });
 
         setMessages([
           {
@@ -140,7 +164,7 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
           },
           ...loadedMessages
         ]);
-        console.log(`[ChatAssistant] 대화 히스토리 로드 완료: ${loadedMessages.length}개 메시지`);
+        console.log(`[ChatAssistant] 대화 히스토리 로드 완료: ${loadedMessages.length}개 메시지 (편집 메시지 포함)`);
       } else {
         // 히스토리가 없으면 새 채팅으로 시작
         resetChat();

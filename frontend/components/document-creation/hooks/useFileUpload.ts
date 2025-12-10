@@ -3,6 +3,34 @@ import { useState, useCallback, useRef } from 'react';
 import { uploadDocumentFlow, DocumentStatus } from '../../../utils/documentApi';
 import type { UploadStatus } from '../types';
 
+// 에러 메시지를 사용자 친화적으로 변환
+function toUserFriendlyError(error: string): string {
+  const lower = error.toLowerCase();
+
+  // API 에러 코드
+  if (lower.includes('upload_request_failed') || lower.includes('s3_upload_failed') || lower.includes('upload_complete_failed')) {
+    return '파일을 처리할 수 없습니다. 올바른 PDF 파일인지 확인해주세요.';
+  }
+
+  // 백엔드 에러 메시지 (SSE로 전달됨)
+  if (lower.includes('no valid content') || lower.includes('empty')) {
+    return 'PDF에서 내용을 추출할 수 없습니다. 다른 파일을 업로드해주세요.';
+  }
+  if (lower.includes('pdf') || lower.includes('parse') || lower.includes('invalid')) {
+    return 'PDF 파일 형식이 올바르지 않습니다. 다른 파일을 업로드해주세요.';
+  }
+  if (lower.includes('ocr') || lower.includes('scan')) {
+    return '스캔된 PDF는 지원하지 않습니다. 텍스트가 포함된 PDF를 업로드해주세요.';
+  }
+
+  // 네트워크 관련
+  if (lower.includes('network') || lower.includes('fetch')) {
+    return '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.';
+  }
+
+  return '파일 업로드에 실패했습니다. 다시 시도해주세요.';
+}
+
 interface UseFileUploadReturn {
   uploadedFiles: Record<number, File | null>;
   uploadedFileNames: Record<number, string>;
@@ -64,7 +92,7 @@ export function useFileUpload(
         },
         onError: (error: string) => {
           setUploadStatus(prev => ({ ...prev, [step]: 'error' }));
-          setUploadError(prev => ({ ...prev, [step]: error }));
+          setUploadError(prev => ({ ...prev, [step]: toUserFriendlyError(error) }));
         }
       });
 

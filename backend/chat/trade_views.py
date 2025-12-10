@@ -629,8 +629,16 @@ class DocumentChatView(APIView):
                     {"role": "assistant", "content": result.final_output}
                 ]
                 try:
-                    # 문서 내용에서 buyer 추출
-                    buyer_name = extract_buyer_from_content(document_content)
+                    # 문서 최신 버전에서 내용 가져와 buyer 추출
+                    latest_version = DocVersion.objects.filter(doc=document).order_by('-created_at').first()
+                    doc_content_for_buyer = ''
+                    if latest_version and latest_version.content:
+                        content_data = latest_version.content
+                        if isinstance(content_data, dict):
+                            doc_content_for_buyer = content_data.get('html', '') or content_data.get('html_content', '')
+                        else:
+                            doc_content_for_buyer = str(content_data)
+                    buyer_name = extract_buyer_from_content(doc_content_for_buyer)
 
                     # 스마트 메모리 저장 (자동 분배)
                     mem_result = mem_service.save_memory_smart(
@@ -974,7 +982,7 @@ class DocumentChatStreamView(View):
                 # 편집 응답 전송
                 yield f"data: {json.dumps({'type': 'edit', 'message': edit_response['message'], 'changes': edit_response['changes']})}\n\n"
 
-        # 8. AI 응답 저장 (metadata에 tools_used 포함)
+        # 8. AI 응답 저장 (metadata에 tools_used, changes 포함)
         try:
             ai_msg = DocMessage.objects.create(
                 doc=document,
@@ -983,7 +991,8 @@ class DocumentChatStreamView(View):
                 metadata={
                     'tools_used': tools_used,
                     'is_edit': edit_response is not None,
-                    'changes_count': len(edit_response.get('changes', [])) if edit_response else 0
+                    'changes': edit_response.get('changes', []) if edit_response else [],
+                    'edit_message': edit_response.get('message', '') if edit_response else ''
                 }
             )
             logger.info(f"스트리밍: DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}, tools={[t['id'] for t in tools_used]}")
