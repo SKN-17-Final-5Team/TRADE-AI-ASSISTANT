@@ -9,7 +9,7 @@ node_modules/
 # Production
 /build
 /dist
-frontend/dist/
+trade_frontend/dist/
 
 # Misc
 .DS_Store
@@ -18,7 +18,7 @@ frontend/dist/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.example
+# .env.example은 커밋 필요 (예시 파일)
 
 # Logs
 npm-debug.log*
