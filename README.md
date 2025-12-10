@@ -63,7 +63,7 @@ TRADE-AI-ASSISTANT/
 │   │   ├── SalesContractTemplate.tsx      # 계약서 템플릿 (레거시)
 │   │   │
 │   │   ├── document-creation/             # 문서 생성 모듈
-│   │   │   ├── index.tsx                  # 메인 컨테이너 (47KB)
+│   │   │   ├── index.tsx                  # 메인 컨테이너
 │   │   │   ├── types.ts                   # 타입 정의
 │   │   │   ├── hooks/
 │   │   │   │   ├── index.ts
@@ -103,7 +103,7 @@ TRADE-AI-ASSISTANT/
 │   │   ├── figma/
 │   │   │   └── ImageWithFallback.tsx      # 이미지 폴백 컴포넌트
 │   │   │
-│   │   └── ui/                            # shadcn/ui 컴포넌트 (50개)
+│   │   └── ui/                            # shadcn/ui 컴포넌트 (48개)
 │   │       ├── button.tsx, input.tsx, dialog.tsx ...
 │   │       └── utils.ts
 │   │
@@ -139,7 +139,8 @@ TRADE-AI-ASSISTANT/
 │   │   └── Guidelines.md                  # UI/UX 가이드라인
 │   │
 │   ├── img/                               # 이미지 에셋
-│   ├── background.mp4                     # 배경 비디오 (30MB)
+│   │   └── login_small.gif                # 로그인 애니메이션
+│   ├── background.mp4                     # 배경 비디오
 │   ├── index.html                         # HTML 엔트리
 │   ├── package.json                       # npm 패키지
 │   ├── tsconfig.json                      # TypeScript 설정
@@ -147,7 +148,7 @@ TRADE-AI-ASSISTANT/
 │   ├── tailwind.config.cjs                # Tailwind 설정
 │   ├── postcss.config.cjs                 # PostCSS 설정
 │   ├── Attributions.md                    # 라이선스 귀속
-│   └── .env                               # 환경변수
+│   └── .env                               # 환경변수 (gitignore)
 │
 ├── backend/                               # Django + DRF 백엔드
 │   ├── config/                            # Django 설정
@@ -168,10 +169,14 @@ TRADE-AI-ASSISTANT/
 │   │   ├── views.py                       # API 뷰
 │   │   │   ├── LoginView                  # 로그인 (emp_no/password)
 │   │   │   ├── PasswordChangeView         # 비밀번호 변경
+│   │   │   ├── DepartmentViewSet          # 부서 CRUD
+│   │   │   ├── UserViewSet                # 사용자 CRUD
 │   │   │   ├── TradeFlowViewSet           # 거래 CRUD
 │   │   │   ├── DocumentViewSet            # 문서 CRUD + S3 업로드
 │   │   │   ├── DocVersionViewSet          # 버전 관리
-│   │   │   └── DocumentChatView           # 문서 채팅
+│   │   │   ├── DocMessageViewSet          # 문서 메시지 관리
+│   │   │   ├── DocumentChatView           # 문서 채팅
+│   │   │   └── DocumentProcessingStatusView  # 문서 처리 상태 SSE
 │   │   ├── serializers.py                 # DRF 시리얼라이저
 │   │   ├── services.py                    # 비즈니스 로직 (S3, RAG)
 │   │   ├── urls.py                        # URL 라우팅
@@ -189,21 +194,32 @@ TRADE-AI-ASSISTANT/
 │   │   │   ├── ChatView                   # 일반 채팅 (비스트리밍)
 │   │   │   ├── ChatStreamView             # 일반 채팅 스트리밍
 │   │   │   └── GenChatDeleteView          # 채팅방 삭제 (Mem0 포함)
-│   │   ├── trade_views.py                 # 문서 채팅 API
+│   │   ├── trade_views.py                 # Trade/문서 채팅 API
 │   │   │   ├── TradeInitView              # Trade 초기화 (5개 Doc 생성)
+│   │   │   ├── TradeFlowViewSet           # Trade CRUD (chat 앱용)
+│   │   │   ├── DocumentViewSet            # Document CRUD (chat 앱용)
+│   │   │   ├── DocChatHistoryView         # 문서 채팅 히스토리 조회
 │   │   │   ├── DocumentChatView           # 문서 채팅 (비스트리밍)
 │   │   │   ├── DocumentChatStreamView     # 문서 채팅 스트리밍
 │   │   │   ├── GeneralChatView            # 일반 채팅 (Mem0 통합)
-│   │   │   └── extract_buyer_from_content # buyer 자동 추출
+│   │   │   └── extract_buyer_from_content # buyer 자동 추출 함수
 │   │   ├── memory_service.py              # Mem0 메모리 서비스 (핵심)
 │   │   │   ├── TradeMemoryService         # 싱글톤 메모리 서비스
-│   │   │   ├── add_doc_memory             # 문서 세션 메모리
-│   │   │   ├── add_user_memory            # 사용자 선호도
-│   │   │   ├── add_buyer_memory           # 거래처 메모
-│   │   │   ├── add_gen_chat_memory        # 일반채팅 메모리
-│   │   │   ├── build_doc_context          # 문서 컨텍스트 빌더
-│   │   │   ├── build_gen_chat_context     # 채팅 컨텍스트 빌더
-│   │   │   └── save_memory_smart          # 스마트 메모리 저장
+│   │   │   │   ├── add_doc_memory         # 문서 세션 메모리 저장
+│   │   │   │   ├── add_user_memory        # 사용자 선호도 저장
+│   │   │   │   ├── add_buyer_memory       # 거래처 메모 저장
+│   │   │   │   ├── add_gen_chat_memory    # 일반채팅 메모리 저장
+│   │   │   │   ├── get_doc_memory         # 문서 메모리 조회
+│   │   │   │   ├── get_user_memory        # 사용자 메모리 조회
+│   │   │   │   ├── get_buyer_memory       # 거래처 메모리 조회
+│   │   │   │   ├── get_gen_chat_memory    # 일반채팅 메모리 조회
+│   │   │   │   ├── delete_doc_memory      # 문서 메모리 삭제
+│   │   │   │   ├── delete_trade_memory    # Trade 메모리 일괄 삭제
+│   │   │   │   ├── delete_gen_chat_memory # 일반채팅 메모리 삭제
+│   │   │   │   ├── build_doc_context      # 문서 컨텍스트 빌더
+│   │   │   │   ├── build_gen_chat_context # 채팅 컨텍스트 빌더
+│   │   │   │   └── save_memory_smart      # 스마트 메모리 저장
+│   │   │   └── get_memory_service         # 싱글톤 인스턴스 반환
 │   │   ├── config.py                      # 채팅 앱 설정
 │   │   ├── serializers.py                 # DRF 시리얼라이저
 │   │   ├── urls.py                        # URL 라우팅
@@ -237,8 +253,9 @@ TRADE-AI-ASSISTANT/
 │   │   │   ├── query_transformer.py       # 쿼리 변환 모델
 │   │   │   └── reranker.py                # 리랭커 모델
 │   │   │
-│   │   ├── prompts/                       # 프롬프트 (Langfuse fallback)
-│   │   │   └── fallback.py                # 로컬 프롬프트
+│   │   ├── prompts/                       # 프롬프트
+│   │   │   ├── fallback.py                # 로컬 프롬프트 (Langfuse fallback)
+│   │   │   └── trade_instructions.txt     # 무역 에이전트 지침
 │   │   │
 │   │   ├── langfuse_config.py             # Langfuse 설정
 │   │   ├── s3_utils.py                    # S3 유틸리티 (presigned URL 등)
@@ -252,25 +269,18 @@ TRADE-AI-ASSISTANT/
 │   ├── requirements.txt                   # Python 패키지
 │   ├── memory_readme.md                   # 메모리 시스템 문서
 │   ├── test_prompt_version.py             # 프롬프트 버전 테스트
-│   ├── .env                               # 환경변수
-│   └── .env.example                       # 환경변수 예시
-│
-├── docs/                                  # 프로젝트 문서
-│   ├── DATABASE_DESIGN.md                 # DB 설계 문서
-│   ├── BRANCH_CHANGELOG_feature-text-editor-v2.md
-│   ├── BRANCH_CHANGELOG_issue-document-upload.md
-│   └── bugfix-loading-indicator.md
+│   ├── .env                               # 환경변수 (gitignore)
+│   └── .env.example                       # 환경변수 예시 (gitignore)
 │
 ├── .claude/                               # Claude Code 설정
 │   └── settings.local.json
 │
 ├── .serena/                               # Serena MCP 설정
+│   └── project.yml
 │
-├── AGENT_EDIT_FIX_PLAN.md                 # 에이전트 편집 수정 계획
-├── FIELD_MAPPING_FIX_PLAN.md              # 필드 매핑 수정 계획
-├── MERGE_PLAN.md                          # 브랜치 병합 계획
+├── DATABASE_DESIGN.md                     # DB 설계 문서
 ├── PROJECT_STRUCTURE.md                   # 프로젝트 구조 상세
-├── LANGFUSE_GUIDE.md                      # Langfuse 사용 가이드
+├── ai-server-separation-plan.md           # AI 서버 분리 계획
 ├── package.json                           # 루트 npm 설정
 ├── package-lock.json
 ├── .gitignore
@@ -692,10 +702,10 @@ CORS_ALLOWED_ORIGINS = [
 
 | 문서 | 설명 |
 |------|------|
-| `docs/DATABASE_DESIGN.md` | 데이터베이스 설계 상세 |
-| `backend/memory_readme.md` | 메모리 시스템 가이드 |
-| `LANGFUSE_GUIDE.md` | Langfuse 사용 가이드 |
+| `DATABASE_DESIGN.md` | 데이터베이스 설계 상세 |
 | `PROJECT_STRUCTURE.md` | 프로젝트 구조 상세 |
+| `ai-server-separation-plan.md` | AI 서버 분리 계획 |
+| `backend/memory_readme.md` | 메모리 시스템 가이드 |
 | `frontend/guidelines/Guidelines.md` | UI/UX 가이드라인 |
 
 ---
