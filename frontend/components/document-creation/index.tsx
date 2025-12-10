@@ -497,7 +497,7 @@ export default function DocumentCreationPage({
         // Create container for PDF generation
         const container = document.createElement('div');
         container.style.width = '794px'; // A4 width at 96 DPI (approx)
-        container.style.minHeight = '1123px'; // A4 height at 96 DPI
+        // container.style.minHeight = '1123px'; // Removed to prevent extra blank page (1123px > 297mm)
         container.style.padding = '40px'; // Approx 10mm padding
         container.style.backgroundColor = 'white';
         container.style.color = 'black';
