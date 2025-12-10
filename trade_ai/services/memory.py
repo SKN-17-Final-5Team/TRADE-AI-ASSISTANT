@@ -140,11 +140,12 @@ class TradeMemoryService:
             qdrant_key = os.getenv("QDRANT_API_KEY")
 
             if qdrant_url and qdrant_key:
-                client = QdrantClient(url=qdrant_url, api_key=qdrant_key)
+                client = QdrantClient(url=qdrant_url, api_key=qdrant_key, timeout=60)
             else:
                 client = QdrantClient(
                     host=os.getenv("QDRANT_HOST", "localhost"),
-                    port=int(os.getenv("QDRANT_PORT", 6333))
+                    port=int(os.getenv("QDRANT_PORT", 6333)),
+                    timeout=60
                 )
 
             # user_id 필터로 해당 메모리만 삭제

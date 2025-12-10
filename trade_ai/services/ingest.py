@@ -47,11 +47,12 @@ class IngestService:
             qdrant_key = os.getenv("QDRANT_API_KEY")
 
             if qdrant_url and qdrant_key:
-                self.qdrant = QdrantClient(url=qdrant_url, api_key=qdrant_key)
+                self.qdrant = QdrantClient(url=qdrant_url, api_key=qdrant_key, timeout=60)
             else:
                 self.qdrant = QdrantClient(
                     host=os.getenv("QDRANT_HOST", "localhost"),
-                    port=int(os.getenv("QDRANT_PORT", 6333))
+                    port=int(os.getenv("QDRANT_PORT", 6333)),
+                    timeout=60
                 )
 
             # OpenAI Embeddings
@@ -157,12 +158,19 @@ class IngestService:
             embeddings = self._get_embeddings(chunks)
 
             # 5. Qdrant에 저장
+            # Point ID: 정수 기반 (doc_id * 100000 + chunk_index)
+            # - Qdrant Cloud는 정수 또는 UUID만 허용 (문자열 불가)
+            # - 삭제 시 payload의 doc_id로 필터링하므로 역산 불필요
+            # - 최대 chunk 수: 100,000개 (문서당)
             from qdrant_client.models import PointStruct
+
+            CHUNK_ID_MULTIPLIER = 100000  # doc_id당 최대 chunk 수
 
             points = []
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                point_id = doc_id * CHUNK_ID_MULTIPLIER + i
                 points.append(PointStruct(
-                    id=f"{doc_id}_{i}",
+                    id=point_id,
                     vector=embedding,
                     payload={
                         "doc_id": doc_id,

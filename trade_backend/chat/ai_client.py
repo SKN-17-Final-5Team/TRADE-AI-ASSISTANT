@@ -79,7 +79,8 @@ class AIServerClient:
         doc_id: int,
         message: str,
         document_content: str = "",
-        history: List[Dict] = None
+        history: List[Dict] = None,
+        user_id: int = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         문서 작성 스트리밍 API
@@ -94,6 +95,7 @@ class AIServerClient:
                 json={
                     "doc_id": doc_id,
                     "message": message,
+                    "user_id": user_id,
                     "document_content": document_content,
                     "history": history or []
                 }
@@ -115,7 +117,8 @@ class AIServerClient:
         message: str,
         document_name: str = "",
         document_type: str = "",
-        history: List[Dict] = None
+        history: List[Dict] = None,
+        user_id: int = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         문서 읽기 스트리밍 API
@@ -130,6 +133,7 @@ class AIServerClient:
                 json={
                     "doc_id": doc_id,
                     "message": message,
+                    "user_id": user_id,
                     "document_name": document_name,
                     "document_type": document_type,
                     "history": history or []

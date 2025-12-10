@@ -15,7 +15,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
 from .ai_client import get_ai_client
-from .models import User, Document, DocMessage
+from .models import Document, DocMessage
+from .utils import get_user_by_id_or_emp_no, get_user_id_int
 
 logger = logging.getLogger(__name__)
 
@@ -69,23 +70,6 @@ def parse_edit_response(text: str) -> dict | None:
         pass
 
     return None
-
-
-def get_user_by_id_or_emp_no(user_id):
-    """user_id(숫자) 또는 emp_no(사원번호)로 사용자 조회"""
-    if user_id is None:
-        return None
-    try:
-        try:
-            return User.objects.get(emp_no=str(user_id))
-        except User.DoesNotExist:
-            pass
-        if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
-            return User.objects.get(user_id=int(user_id))
-        return None
-    except User.DoesNotExist:
-        logger.warning(f"User not found: user_id={user_id}")
-        return None
 
 
 def extract_buyer_from_content(content: str) -> str:
@@ -196,6 +180,10 @@ class DocumentChatStreamViewV2(View):
         full_response = ""
         tools_used = []
 
+        # user_id 조회 (sync 컨텍스트에서 Django ORM 호출)
+        # 반드시 async 함수 밖에서 호출해야 SynchronousOnlyOperation 에러 방지
+        user_id_int = get_user_id_int(user_id)
+
         async def stream_from_ai_server():
             nonlocal full_response, tools_used
 
@@ -206,7 +194,8 @@ class DocumentChatStreamViewV2(View):
                     message=message,
                     document_name=document.original_filename or f"문서_{doc_id}",
                     document_type=document.get_doc_type_display(),
-                    history=message_history
+                    history=message_history,
+                    user_id=user_id_int
                 )
             else:
                 # 작성 모드
@@ -214,7 +203,8 @@ class DocumentChatStreamViewV2(View):
                     doc_id=doc_id,
                     message=message,
                     document_content=document_content,
-                    history=message_history
+                    history=message_history,
+                    user_id=user_id_int
                 )
 
             async for event in stream:
@@ -289,9 +279,8 @@ class DocumentChatStreamViewV2(View):
                 }
             )
 
-            # 메모리 저장
-            user = get_user_by_id_or_emp_no(user_id)
-            if user:
+            # 메모리 저장 (user_id_int는 이미 sync 컨텍스트에서 조회됨)
+            if user_id_int:
                 try:
                     buyer_name = extract_buyer_from_content(document_content)
                     asyncio.run(client.memory_save(
@@ -299,7 +288,7 @@ class DocumentChatStreamViewV2(View):
                             {"role": "user", "content": message},
                             {"role": "assistant", "content": full_response}
                         ],
-                        user_id=user.user_id,
+                        user_id=user_id_int,
                         doc_id=doc_id,
                         buyer_name=buyer_name,
                         save_user=True,

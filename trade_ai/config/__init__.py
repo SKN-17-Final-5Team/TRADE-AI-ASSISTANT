@@ -7,6 +7,7 @@ from .langfuse import (
     get_langfuse_client,
     load_prompt_from_langfuse,
     load_prompt_from_file,
+    clear_prompt_cache,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "get_langfuse_client",
     "load_prompt_from_langfuse",
     "load_prompt_from_file",
+    "clear_prompt_cache",
 ]

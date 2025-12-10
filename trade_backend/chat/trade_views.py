@@ -21,6 +21,7 @@ from .serializers import (
     DocVersionSerializer
 )
 from .ai_client import get_ai_client
+from .utils import get_user_by_id_or_emp_no
 
 logger = logging.getLogger(__name__)
 
@@ -36,27 +37,6 @@ STEP_TO_DOC_TYPE = {
 
 # doc_type → Step 번호 매핑
 DOC_TYPE_TO_STEP = {v: k for k, v in STEP_TO_DOC_TYPE.items()}
-
-
-def get_user_by_id_or_emp_no(user_id):
-    """user_id(숫자) 또는 emp_no(사원번호)로 사용자 조회"""
-    if user_id is None:
-        return None
-    try:
-        # 먼저 emp_no로 조회 시도 (사원번호가 숫자로만 되어 있어도 emp_no로 먼저 찾기)
-        try:
-            return User.objects.get(emp_no=str(user_id))
-        except User.DoesNotExist:
-            pass
-
-        # emp_no로 못 찾으면 user_id(정수)로 조회
-        if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
-            return User.objects.get(user_id=int(user_id))
-
-        return None
-    except User.DoesNotExist:
-        logger.warning(f"User not found: user_id={user_id}")
-        return None
 
 
 # ==================== Trade Flow Initialization ====================

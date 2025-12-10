@@ -2,6 +2,7 @@
 무역 채팅 API
 
 Trade Agent를 사용한 무역 상담 엔드포인트 (스트리밍 전용)
+메모리 컨텍스트 통합
 """
 
 import json
@@ -15,6 +16,7 @@ from agents.items import ToolCallItem
 
 from schemas.request import TradeChatRequest
 from agent_runners import get_trade_agent
+from services.memory import get_memory_service
 
 logger = logging.getLogger(__name__)
 
@@ -36,22 +38,60 @@ TOOL_DISPLAY_INFO = {
 }
 
 
+def _build_memory_context(user_id: int, query: str) -> str:
+    """사용자 메모리 컨텍스트 빌드"""
+    if not user_id:
+        return ""
+
+    memory_service = get_memory_service()
+    if not memory_service:
+        return ""
+
+    try:
+        user_memories = memory_service.get_user_memory(user_id, query, limit=3)
+        if not user_memories:
+            return ""
+
+        memory_texts = []
+        for mem in user_memories:
+            memory_text = mem.get('memory', '')
+            if memory_text:
+                memory_texts.append(f"- {memory_text}")
+
+        if memory_texts:
+            return f"\n\n[사용자 메모리 컨텍스트]\n" + "\n".join(memory_texts)
+    except Exception as e:
+        logger.warning(f"메모리 컨텍스트 빌드 실패 (무시): {e}")
+
+    return ""
+
+
 @router.post("/chat/stream")
 async def trade_chat_stream(request: TradeChatRequest):
     """
     무역 채팅 스트리밍 API
 
     SSE 형식으로 실시간 응답을 스트리밍합니다.
+    메모리 컨텍스트를 Agent에 전달합니다.
     """
-    logger.info(f"무역 채팅 스트리밍 요청: message={request.message[:50]}...")
+    logger.info(f"무역 채팅 스트리밍 요청: user_id={request.user_id}, message={request.message[:50]}...")
 
     async def generate():
         try:
+            # 메모리 컨텍스트 조회
+            memory_context = _build_memory_context(request.user_id, request.message)
+
+            # 메모리 컨텍스트를 메시지에 추가
+            enhanced_message = request.message
+            if memory_context:
+                enhanced_message = f"{request.message}{memory_context}"
+                logger.info(f"메모리 컨텍스트 추가됨: user_id={request.user_id}")
+
             agent = get_trade_agent()
             tools_used = []
             seen_tools = set()
 
-            result = Runner.run_streamed(agent, input=request.message)
+            result = Runner.run_streamed(agent, input=enhanced_message)
 
             async for event in result.stream_events():
                 # 텍스트 스트리밍

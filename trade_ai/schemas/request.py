@@ -23,6 +23,7 @@ class DocumentChatRequest(BaseModel):
     """문서 작성 스트리밍 채팅 API 요청"""
     doc_id: int = Field(..., description="문서 ID")
     message: str = Field(..., description="사용자 메시지")
+    user_id: int | None = Field(None, description="사용자 ID (메모리 조회용)")
     document_content: str = Field("", description="현재 에디터 문서 내용 HTML")
     history: list[dict] = Field(default_factory=list, description="대화 히스토리")
 
@@ -33,6 +34,7 @@ class DocumentReadRequest(BaseModel):
     """업로드 문서 읽기 스트리밍 채팅 API 요청"""
     doc_id: int = Field(..., description="문서 ID")
     message: str = Field(..., description="사용자 메시지")
+    user_id: int | None = Field(None, description="사용자 ID (메모리 조회용)")
     document_name: str = Field("", description="문서 파일명")
     document_type: str = Field("", description="문서 타입 (offer, pi, contract 등)")
     history: list[dict] = Field(default_factory=list, description="대화 히스토리")

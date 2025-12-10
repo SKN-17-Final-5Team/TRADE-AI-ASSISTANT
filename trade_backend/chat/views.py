@@ -18,46 +18,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
 from .ai_client import get_ai_client
-from .models import User, GenChat, GenMessage, Department
+from .models import GenChat, GenMessage
+from .utils import get_or_create_user
 
 logger = logging.getLogger(__name__)
-
-
-def get_or_create_user(user_id):
-    """user_id(숫자) 또는 emp_no(사원번호)로 사용자 조회 또는 생성"""
-    if user_id is None:
-        return None
-    try:
-        # 먼저 emp_no로 조회 시도
-        try:
-            return User.objects.get(emp_no=str(user_id))
-        except User.DoesNotExist:
-            pass
-
-        # emp_no로 못 찾으면 user_id(정수)로 조회
-        if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
-            try:
-                return User.objects.get(user_id=int(user_id))
-            except User.DoesNotExist:
-                pass
-
-        # 사용자가 없으면 자동 생성 (개발/테스트용)
-        default_dept, _ = Department.objects.get_or_create(
-            dept_name="Default",
-            defaults={"dept_name": "Default"}
-        )
-        user = User.objects.create(
-            emp_no=str(user_id),
-            name=f"User_{user_id}",
-            password="temp_password",
-            dept=default_dept
-        )
-        logger.info(f"새 사용자 자동 생성: emp_no={user_id}, user_id={user.user_id}")
-        return user
-
-    except Exception as e:
-        logger.error(f"사용자 조회/생성 실패: {e}")
-        return None
 
 
 @method_decorator(csrf_exempt, name='dispatch')
