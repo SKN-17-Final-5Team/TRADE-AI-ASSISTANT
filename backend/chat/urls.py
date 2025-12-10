@@ -6,9 +6,12 @@ from .trade_views import (
     TradeFlowViewSet,
     DocumentViewSet,
     DocChatHistoryView,
-    DocumentChatView,
-    DocumentChatStreamView,
     GeneralChatView,
+)
+# V2: AI Server Client 사용
+from .trade_views_v2 import (
+    DocumentChatViewV2 as DocumentChatView,
+    DocumentChatStreamViewV2 as DocumentChatStreamView,
 )
 
 # DRF Router for ViewSets
