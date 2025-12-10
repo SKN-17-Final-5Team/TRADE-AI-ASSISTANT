@@ -65,12 +65,6 @@ class TradeMemoryService:
     def _init_memory(self):
         """Mem0 초기화"""
         try:
-            # OpenAI API 키 설정
-            if not os.getenv("OPENAI_API_KEY"):
-                mem0_key = os.getenv("MEM0_API_KEY")
-                if mem0_key:
-                    os.environ["OPENAI_API_KEY"] = mem0_key
-
             # Qdrant 설정
             qdrant_url = os.getenv("QDRANT_URL")
             qdrant_key = os.getenv("QDRANT_API_KEY")

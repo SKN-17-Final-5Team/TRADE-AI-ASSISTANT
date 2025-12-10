@@ -723,40 +723,24 @@ QDRANT_API_KEY=your-api-key
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
 
-# OpenAI (Mem0 임베딩용) - 아래 두 개 중 하나만 있으면 됨
+# OpenAI (Mem0 임베딩/LLM용)
 OPENAI_API_KEY=sk-xxx
-# 또는
-MEM0_API_KEY=sk-xxx  # OPENAI_API_KEY가 없으면 이 값이 자동으로 사용됨
 
 # Langfuse (선택)
 LANGFUSE_PUBLIC_KEY=pk-xxx
 LANGFUSE_SECRET_KEY=sk-xxx
 ```
 
-**참고**: `MEM0_API_KEY`가 설정되어 있고 `OPENAI_API_KEY`가 없으면, `memory_service.py`에서 자동으로 `MEM0_API_KEY`를 `OPENAI_API_KEY`로 설정합니다.
+**참고**: Mem0는 내부적으로 OpenAI API를 사용하므로 `OPENAI_API_KEY` 설정이 필수입니다.
 
 **Qdrant 연결 실패 시**: 메모리 기능이 비활성화되고, 채팅은 RDS 히스토리만으로 동작합니다.
 
 ---
 
-### 10.6 추가 변경사항 (2024-12-05 추가)
+### 10.6 추가 변경사항 (2024-12-10 업데이트)
 
-#### `memory_service.py` - MEM0_API_KEY 지원
+#### `memory_service.py` - OPENAI_API_KEY 사용
 
-```python
-# __init__ 메서드 시작 부분에 추가
-def __init__(self):
-    if self._initialized:
-        return
+Mem0는 내부적으로 OpenAI API를 사용합니다. 따라서 `OPENAI_API_KEY` 환경변수만 설정하면 됩니다.
 
-    try:
-        # MEM0_API_KEY를 OPENAI_API_KEY로 설정 (Mem0 내부에서 OpenAI 사용)
-        mem0_api_key = os.getenv("MEM0_API_KEY")
-        if mem0_api_key and not os.getenv("OPENAI_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = mem0_api_key
-            logger.info("Set OPENAI_API_KEY from MEM0_API_KEY")
-
-        # ... 이하 기존 코드 ...
-```
-
-**변경 이유**: `.env`에 `MEM0_API_KEY`로 API 키가 저장되어 있는 경우, Mem0가 내부적으로 사용하는 `OPENAI_API_KEY` 환경변수로 자동 설정하여 초기화 실패를 방지합니다.
+**참고**: 이전에 사용되던 `MEM0_API_KEY` 환경변수는 더 이상 사용되지 않습니다. `OPENAI_API_KEY`를 직접 설정하세요.

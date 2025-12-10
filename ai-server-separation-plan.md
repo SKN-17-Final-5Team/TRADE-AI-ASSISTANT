@@ -192,9 +192,6 @@ class Settings(BaseSettings):
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
 
-    # Mem0
-    MEM0_API_KEY: str | None = None
-
     # Langfuse
     LANGFUSE_PUBLIC_KEY: str | None = None
     LANGFUSE_SECRET_KEY: str | None = None
@@ -387,9 +384,6 @@ QDRANT_API_KEY=xxx
 # Qdrant (Local - QDRANT_URL 없을 때)
 # QDRANT_HOST=localhost
 # QDRANT_PORT=6333
-
-# Mem0
-MEM0_API_KEY=xxx
 
 # Langfuse (프롬프트 버전 관리)
 LANGFUSE_PUBLIC_KEY=pk-xxx

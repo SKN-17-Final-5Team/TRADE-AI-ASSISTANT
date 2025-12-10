@@ -532,12 +532,9 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 # OpenAI
 OPENAI_API_KEY=sk-your-openai-api-key
 
-# Qdrant Vector DB
+# Qdrant Vector DB (Mem0 장기 메모리 저장용)
 QDRANT_URL=https://your-qdrant-url.cloud.qdrant.io/
 QDRANT_API_KEY=your-qdrant-api-key
-
-# Mem0 (OpenAI API 키 공유 가능)
-MEM0_API_KEY=sk-your-openai-api-key
 
 # Tavily (웹 검색)
 TAVILY_API_KEY=tvly-your-tavily-key
@@ -687,7 +684,7 @@ CORS_ALLOWED_ORIGINS = [
 - 모델명 확인 (gpt-4o)
 
 ### Mem0 메모리 오류
-- `MEM0_API_KEY` 또는 `OPENAI_API_KEY` 설정 확인
+- `OPENAI_API_KEY` 설정 확인 (Mem0는 OpenAI API 사용)
 - Qdrant 연결 상태 확인
 - `trade_memory` 컬렉션 존재 확인
 
