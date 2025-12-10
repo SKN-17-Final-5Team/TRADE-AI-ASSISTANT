@@ -2,6 +2,8 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Sparkles, Paperclip, MinusCircle, Check, Lock, Plus, ChevronUp, ChevronDown, Ban, PenTool, ArrowLeft, FileText, Package, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 // Types
 import type { DocumentCreationPageProps, StepMode, ShippingDocType } from './types';
@@ -127,6 +129,7 @@ export default function DocumentCreationPage({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // [ADDED] Force update state to trigger re-renders on editor changes
   const [, forceUpdate] = useState({});
@@ -424,117 +427,201 @@ export default function DocumentCreationPage({
     onNavigate('main');
   };
 
+  // Helper to load font
+  const loadFont = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to fetch font: ${response.statusText}`);
+      const buffer = await response.arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return binary;
+    } catch (e) {
+      console.error('Font loading error:', e);
+      throw e;
+    }
+  };
+
   const handleBatchDownload = async (selectedSteps: Set<number>) => {
     // Close modal first
     setShowDownloadModal(false);
 
-    // Create a hidden iframe
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-
-    // Get iframe document
-    const iframeDoc = iframe.contentWindow?.document;
-    if (!iframeDoc) {
-      document.body.removeChild(iframe);
+    if (selectedSteps.size === 0) {
+      alert('다운로드할 문서를 선택해주세요.');
       return;
     }
 
-    // Collect content
-    let combinedContent = '';
-    const stepsToPrint = Array.from(selectedSteps).sort((a, b) => a - b);
+    setIsDownloading(true);
 
-    stepsToPrint.forEach((stepIndex, index) => {
-      const content = documentData[stepIndex];
-      if (!content) return;
+    try {
+      // Load Korean font (Noto Sans KR) from local public folder
+      // This avoids CORS issues with external CDNs
+      const fontUrl = '/NotoSansKR-Regular.ttf';
+      const fontBytes = await loadFont(fontUrl);
 
-      // Clean content (remove marks)
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = content;
-      const marks = tempDiv.querySelectorAll('mark');
-      marks.forEach(mark => {
-        const span = document.createElement('span');
-        span.innerHTML = mark.innerHTML;
-        mark.parentNode?.replaceChild(span, mark);
-      });
+      const stepsToDownload = Array.from(selectedSteps).sort((a, b) => a - b);
 
-      // Add page break for subsequent pages
-      if (index > 0) {
-        combinedContent += '<div style="page-break-before: always;"></div>';
+      for (const stepIndex of stepsToDownload) {
+        // [FIX] Ensure we get the correct content for CI (4) and PL (5)
+        let content = documentData[stepIndex];
+
+        // [FIX] Hydrate with template if content is missing
+        if (!content) {
+          content = getTemplateForStep(stepIndex);
+          if (!content) continue;
+        }
+
+        // Clean content (remove marks)
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        tempDiv.querySelectorAll('mark').forEach(mark => {
+          const text = document.createTextNode(mark.textContent || '');
+          mark.parentNode?.replaceChild(text, mark);
+        });
+
+        // [FIX] Replace custom Checkbox/Radio nodes with text symbols for PDF
+        // Checkboxes
+        tempDiv.querySelectorAll('.checkbox-widget').forEach(el => {
+          const isChecked = el.getAttribute('data-checked') === 'true';
+          const span = document.createElement('span');
+          span.style.fontFamily = 'NotoSansKR';
+          span.style.fontWeight = 'bold';
+          span.style.margin = '0 2px';
+          span.textContent = isChecked ? '[V]' : '[ ]';
+          el.parentNode?.replaceChild(span, el);
+        });
+
+        // Radios
+        tempDiv.querySelectorAll('.radio-circle').forEach(el => {
+          const isChecked = el.classList.contains('checked') || el.getAttribute('data-checked') === 'true';
+          const span = document.createElement('span');
+          span.style.fontFamily = 'NotoSansKR';
+          span.style.margin = '0 2px';
+          span.textContent = isChecked ? '●' : '○';
+          el.parentNode?.replaceChild(span, el);
+        });
+
+        // Create container for PDF generation
+        const container = document.createElement('div');
+        container.style.width = '794px'; // A4 width at 96 DPI (approx)
+        container.style.minHeight = '1123px'; // A4 height at 96 DPI
+        container.style.padding = '40px'; // Approx 10mm padding
+        container.style.backgroundColor = 'white';
+        container.style.color = 'black';
+        container.style.fontFamily = 'NotoSansKR, sans-serif';
+        container.style.fontSize = '14px'; // ~10.5pt
+        container.style.lineHeight = '1.4';
+        container.style.boxSizing = 'border-box';
+        // [FIX] Use z-index instead of far-off coordinates to ensure rendering
+        container.style.position = 'absolute';
+        container.style.left = '0';
+        container.style.top = '0';
+        container.style.zIndex = '-9999';
+
+        // Add styles
+        const style = document.createElement('style');
+        style.textContent = `
+          @font-face {
+            font-family: 'NotoSansKR';
+            src: url('${fontUrl}') format('truetype');
+          }
+          table { border-collapse: collapse; width: 100%; margin-bottom: 1em; table-layout: fixed; }
+          th, td { border: 1px solid black; padding: 4px 6px; text-align: left; font-size: 12px; word-wrap: break-word; }
+          .contract-table { width: 100%; }
+          img { max-width: 100%; }
+          span[data-field-id] { background-color: transparent !important; }
+          
+          /* Fallback styles for form elements if replacement fails */
+          .checkbox-widget {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 1px solid black;
+            margin: 0 2px;
+            vertical-align: middle;
+          }
+          .checkbox-widget[data-checked="true"] {
+            background-color: black;
+          }
+          .radio-circle {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 1px solid black;
+            border-radius: 50%;
+            margin: 0 2px;
+            vertical-align: middle;
+          }
+          .radio-circle.checked, .radio-circle[data-checked="true"] {
+            background-color: black;
+          }
+
+          * { color: black !important; }
+        `;
+        container.appendChild(style);
+
+        const contentWrapper = document.createElement('div');
+        contentWrapper.innerHTML = tempDiv.innerHTML;
+        container.appendChild(contentWrapper);
+
+        document.body.appendChild(container);
+
+        // Wait for layout
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Create PDF
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        });
+
+        // Add font to PDF
+        pdf.addFileToVFS('NotoSansKR-Regular.ttf', fontBytes);
+        pdf.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal');
+        pdf.setFont('NotoSansKR');
+
+        // Render HTML to PDF (Text-based)
+        await pdf.html(container, {
+          callback: (doc) => {
+            // Generate filename
+            let stepName = '';
+            if (stepIndex === 4) stepName = 'Commercial Invoice';
+            else if (stepIndex === 5) stepName = 'Packing List';
+            else stepName = STEP_SHORT_NAMES[stepIndex - 1] || `Step${stepIndex}`;
+
+            const safeTitle = (documentData.title || 'Trade_Document').replace(/[^a-z0-9가-힣\s_-]/gi, '_');
+            doc.save(`${safeTitle}_${stepName}.pdf`);
+
+            // Cleanup inside callback to ensure save is done
+            document.body.removeChild(container);
+          },
+          x: 0,
+          y: 0,
+          width: 210, // Target width in mm
+          windowWidth: 794, // Source width in px
+          margin: [0, 0, 0, 0],
+          autoPaging: 'text',
+          html2canvas: {
+            scale: 0.26458, // 1 px = 0.26458 mm
+            useCORS: true,
+            logging: false,
+            letterRendering: true // Improve text rendering
+          }
+        });
+        // Note: Cleanup is handled in callback
       }
 
-      combinedContent += `<div class="document-page">${tempDiv.innerHTML}</div>`;
-    });
-
-    // Write content to iframe
-    iframeDoc.open();
-    iframeDoc.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${documentData.title || 'Trade_Documents'}</title>
-          <style>
-            @page {
-              size: A4;
-              margin: 0;
-            }
-            body {
-              font-family: sans-serif;
-              font-size: 11pt;
-              line-height: 1.5;
-              color: black;
-              background: white;
-              margin: 0;
-              padding: 20mm;
-            }
-            table {
-              border-collapse: collapse;
-              width: 100%;
-              margin-bottom: 1em;
-            }
-            th, td {
-              border: 1px solid black;
-              padding: 6px 8px;
-              text-align: left;
-              font-size: 10pt;
-            }
-            .contract-table { width: 100%; }
-            img { max-width: 100%; }
-            
-            span[data-field-id] {
-              background-color: transparent !important;
-            }
-            
-            * {
-              color: black !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-          </style>
-        </head>
-        <body>
-          ${combinedContent}
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 500);
-            }
-          </script>
-        </body>
-      </html>
-    `);
-    iframeDoc.close();
-
-    // Remove iframe after a delay
-    setTimeout(() => {
-      document.body.removeChild(iframe);
-    }, 2000);
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      alert('PDF 생성 중 오류가 발생했습니다. (폰트 로딩 실패 등)');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleChatApply = (changes: FieldChange[], step: number) => {
@@ -1060,13 +1147,13 @@ export default function DocumentCreationPage({
     // Editor View (Manual mode or Step 2/4 with doc selected)
     return (
       <EditorView
-        key={`editor-${currentStep}-${activeShippingDoc || 'default'}-${editorKey}`}
+        key={`editor-${currentStep}-${activeShippingDoc || 'default'}-${editorKey}-${Boolean(documentData[currentDocKey])}`}
         currentStep={currentStep}
         onUpdate={handleEditorUpdate}
         stepModes={stepModes}
         activeShippingDoc={activeShippingDoc}
         editorRef={editorRef}
-        initialContent={initialContent}
+        initialContent={initialContent || getTemplateForStep(currentStep === 4 ? (activeShippingDoc === 'CI' ? 4 : 5) : currentStep)}
         onBack={() => {
           if (currentStep === 4 && activeShippingDoc) {
             // Save before going back to dashboard
