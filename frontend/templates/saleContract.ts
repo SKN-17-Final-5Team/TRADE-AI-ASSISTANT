@@ -42,7 +42,7 @@ export const saleContractTemplateHTML = `
             </tr>
 
             <tr>
-                <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; background-color: #f0f0f0; font-weight: bold;">합계</td>
+                <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; background-color: #f0f0f0; font-weight: bold;">TOTAL: </td>
                 <td style="padding: 8px; border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
                 <td style="padding: 8px; border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
                 <td style="padding: 8px; border: 1px solid #d1d5db; background-color: #f0f0f0;"></td>
