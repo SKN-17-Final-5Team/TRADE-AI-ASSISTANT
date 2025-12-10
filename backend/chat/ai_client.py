@@ -2,7 +2,7 @@
 AI Server Client
 
 ai-server (FastAPI)와 통신하는 클라이언트
-Django에서 Agent 호출을 HTTP API로 대체
+Django에서 Agent 호출을 HTTP API로 대체 (스트리밍 전용)
 """
 
 import os
@@ -18,7 +18,7 @@ AI_SERVER_URL = os.getenv("AI_SERVER_URL", "http://localhost:8001")
 
 
 class AIServerClient:
-    """AI Server HTTP 클라이언트"""
+    """AI Server HTTP 클라이언트 (스트리밍 전용)"""
 
     def __init__(self, base_url: str = None, timeout: float = 120.0):
         self.base_url = base_url or AI_SERVER_URL
@@ -35,35 +35,6 @@ class AIServerClient:
 
     # ==================== Trade Chat ====================
 
-    async def trade_chat(
-        self,
-        message: str,
-        user_id: int,
-        context: str = "",
-        history: List[Dict] = None
-    ) -> Dict[str, Any]:
-        """
-        무역 채팅 API (비스트리밍)
-
-        Returns:
-            {
-                "message": str,
-                "tools_used": List[ToolInfo]
-            }
-        """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/api/trade/chat",
-                json={
-                    "message": message,
-                    "user_id": user_id,
-                    "context": context,
-                    "history": history or []
-                }
-            )
-            response.raise_for_status()
-            return response.json()
-
     async def trade_chat_stream(
         self,
         message: str,
@@ -76,7 +47,6 @@ class AIServerClient:
 
         Yields:
             SSE 이벤트 데이터
-            - {"type": "init"}
             - {"type": "text", "content": str}
             - {"type": "tool", "tool": ToolInfo}
             - {"type": "done", "tools_used": List[ToolInfo]}
@@ -103,38 +73,6 @@ class AIServerClient:
                             continue
 
     # ==================== Document Write ====================
-
-    async def document_write_chat(
-        self,
-        doc_id: int,
-        message: str,
-        document_content: str = "",
-        history: List[Dict] = None
-    ) -> Dict[str, Any]:
-        """
-        문서 작성 채팅 API (비스트리밍)
-
-        Returns:
-            {
-                "doc_id": int,
-                "message": str,
-                "tools_used": List[ToolInfo],
-                "is_edit": bool,
-                "changes": List[EditChange] | None
-            }
-        """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/api/document/write/chat",
-                json={
-                    "doc_id": doc_id,
-                    "message": message,
-                    "document_content": document_content,
-                    "history": history or []
-                }
-            )
-            response.raise_for_status()
-            return response.json()
 
     async def document_write_chat_stream(
         self,
@@ -170,38 +108,6 @@ class AIServerClient:
                             continue
 
     # ==================== Document Read ====================
-
-    async def document_read_chat(
-        self,
-        doc_id: int,
-        message: str,
-        document_name: str = "",
-        document_type: str = "",
-        history: List[Dict] = None
-    ) -> Dict[str, Any]:
-        """
-        문서 읽기 채팅 API (비스트리밍)
-
-        Returns:
-            {
-                "doc_id": int,
-                "message": str,
-                "tools_used": List[ToolInfo]
-            }
-        """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/api/document/read/chat",
-                json={
-                    "doc_id": doc_id,
-                    "message": message,
-                    "document_name": document_name,
-                    "document_type": document_type,
-                    "history": history or []
-                }
-            )
-            response.raise_for_status()
-            return response.json()
 
     async def document_read_chat_stream(
         self,
@@ -375,26 +281,3 @@ def get_ai_client() -> AIServerClient:
     if _client is None:
         _client = AIServerClient()
     return _client
-
-
-# ==================== 동기 래퍼 (Django View용) ====================
-
-import asyncio
-
-
-def sync_trade_chat(message: str, user_id: int, context: str = "", history: List[Dict] = None) -> Dict[str, Any]:
-    """동기 무역 채팅 호출"""
-    client = get_ai_client()
-    return asyncio.run(client.trade_chat(message, user_id, context, history))
-
-
-def sync_document_write_chat(doc_id: int, message: str, document_content: str = "", history: List[Dict] = None) -> Dict[str, Any]:
-    """동기 문서 작성 채팅 호출"""
-    client = get_ai_client()
-    return asyncio.run(client.document_write_chat(doc_id, message, document_content, history))
-
-
-def sync_document_read_chat(doc_id: int, message: str, document_name: str = "", document_type: str = "", history: List[Dict] = None) -> Dict[str, Any]:
-    """동기 문서 읽기 채팅 호출"""
-    client = get_ai_client()
-    return asyncio.run(client.document_read_chat(doc_id, message, document_name, document_type, history))

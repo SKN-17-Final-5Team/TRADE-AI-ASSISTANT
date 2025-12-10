@@ -2,26 +2,20 @@
 """
 Trade and Document Management Views - V2 (AI Server Client)
 
-AI Server HTTP API를 사용하는 새로운 View
-기존 trade_views.py의 Agent 직접 호출 -> ai_client 사용으로 전환
+AI Server HTTP API를 사용하는 스트리밍 전용 View
 """
 
 import asyncio
 import json
 import logging
 import re
-from rest_framework import status
-from rest_framework.response import Response
-from rest_framework.views import APIView
 from django.http import StreamingHttpResponse
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
 from .ai_client import get_ai_client
-from .models import (
-    User, TradeFlow, Document, DocMessage, DocVersion,
-)
+from .models import User, Document, DocMessage
 from .views import parse_edit_response
 
 logger = logging.getLogger(__name__)
@@ -63,141 +57,6 @@ def extract_buyer_from_content(content: str) -> str:
                 buyer = re.sub(r'[\s,;:]+$', '', buyer)
                 return buyer
     return None
-
-
-# ==================== Document Chat with AI Server ====================
-
-class DocumentChatViewV2(APIView):
-    """
-    문서 작성 챗봇 API - V2 (AI Server Client 사용)
-
-    POST /api/documents/chat/
-    {
-        "doc_id": 1,
-        "message": "...",
-        "user_id": "emp001"
-    }
-    """
-
-    def post(self, request):
-        doc_id = request.data.get('doc_id') or request.data.get('document_id')
-        user_id = request.data.get('user_id')
-        message = request.data.get('message')
-        document_content = request.data.get('document_content', '')
-
-        if not message:
-            return Response(
-                {'error': 'message 필드가 필요합니다.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not doc_id:
-            return Response(
-                {'error': 'doc_id 필드가 필요합니다.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        logger.info(f"DocumentChatViewV2: doc_id={doc_id}, user_id={user_id}, message={message[:50]}...")
-
-        try:
-            # 1. Document 조회
-            try:
-                document = Document.objects.get(doc_id=doc_id)
-            except Document.DoesNotExist:
-                return Response(
-                    {'error': f'Document를 찾을 수 없습니다: doc_id={doc_id}'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            # 2. 사용자 메시지 저장 (DocMessage)
-            user_msg = DocMessage.objects.create(
-                doc=document,
-                role='user',
-                content=message
-            )
-            logger.info(f"DocMessage 저장: doc_message_id={user_msg.doc_message_id}")
-
-            # 3. 이전 대화 히스토리 로드
-            prev_messages = DocMessage.objects.filter(doc=document).exclude(
-                doc_message_id=user_msg.doc_message_id
-            ).order_by('created_at')
-            message_count = prev_messages.count()
-            start_index = max(0, message_count - 10)
-            recent_messages = list(prev_messages[start_index:])
-
-            message_history = [
-                {"role": "assistant" if msg.role == "agent" else msg.role, "content": msg.content}
-                for msg in recent_messages
-            ]
-
-            # 4. AI Server 호출 (doc_mode에 따라 write/read 구분)
-            client = get_ai_client()
-
-            if document.doc_mode == 'upload' and document.upload_status == 'ready':
-                # 업로드 모드: Document Read API
-                result = asyncio.run(client.document_read_chat(
-                    doc_id=doc_id,
-                    message=message,
-                    document_name=document.original_filename or f"문서_{doc_id}",
-                    document_type=document.get_doc_type_display(),
-                    history=message_history
-                ))
-            else:
-                # 작성 모드: Document Write API
-                result = asyncio.run(client.document_write_chat(
-                    doc_id=doc_id,
-                    message=message,
-                    document_content=document_content,
-                    history=message_history
-                ))
-
-            ai_response = result.get('message', '')
-            tools_used = result.get('tools_used', [])
-
-            # 5. AI 응답 저장
-            ai_msg = DocMessage.objects.create(
-                doc=document,
-                role='agent',
-                content=ai_response,
-                metadata={'tools_used': tools_used}
-            )
-            logger.info(f"DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}")
-
-            # 6. 메모리 저장 (AI Server에 위임)
-            user = get_user_by_id_or_emp_no(user_id)
-            if user:
-                try:
-                    buyer_name = extract_buyer_from_content(document_content)
-                    asyncio.run(client.memory_save(
-                        messages=[
-                            {"role": "user", "content": message},
-                            {"role": "assistant", "content": ai_response}
-                        ],
-                        user_id=user.user_id,
-                        doc_id=doc_id,
-                        buyer_name=buyer_name,
-                        save_user=True,
-                        save_doc=True,
-                        save_buyer=bool(buyer_name)
-                    ))
-                except Exception as mem_error:
-                    logger.warning(f"메모리 저장 실패 (무시): {mem_error}")
-
-            return Response({
-                'doc_message_id': ai_msg.doc_message_id,
-                'doc_id': doc_id,
-                'message': ai_response,
-                'tools_used': tools_used
-            })
-
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            logger.error(f"Document chat error: {e}")
-            return Response(
-                {'error': f'채팅 처리 중 오류가 발생했습니다: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
 
 @method_decorator(csrf_exempt, name='dispatch')

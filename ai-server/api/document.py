@@ -1,7 +1,7 @@
 """
 문서 채팅 API
 
-Document Writing Agent / Document Read Agent 엔드포인트
+Document Writing Agent / Document Read Agent 엔드포인트 (스트리밍 전용)
 """
 
 import json
@@ -14,18 +14,7 @@ from fastapi.responses import StreamingResponse
 from agents import Runner
 from agents.items import ToolCallItem
 
-from schemas.request import (
-    DocumentChatRequest,
-    DocumentChatStreamRequest,
-    DocumentReadRequest,
-    DocumentReadStreamRequest,
-)
-from schemas.response import (
-    DocumentChatResponse,
-    DocumentReadResponse,
-    ToolUsedInfo,
-    EditChange,
-)
+from schemas.request import DocumentChatRequest, DocumentReadRequest
 from agent_runners import get_document_writing_agent, get_read_document_agent
 
 logger = logging.getLogger(__name__)
@@ -51,34 +40,6 @@ TOOL_DISPLAY_INFO = {
         'description': '최신 정보를 위해 웹 검색을 수행했습니다.'
     }
 }
-
-
-def extract_tools_used(result) -> list[ToolUsedInfo]:
-    """Agent 실행 결과에서 사용된 툴 정보 추출"""
-    tools_used = []
-    seen_tools = set()
-
-    for item in result.new_items:
-        if isinstance(item, ToolCallItem):
-            tool_name = None
-            try:
-                tool_name = item.raw_item.name
-            except AttributeError:
-                try:
-                    tool_name = item.tool_call.function.name
-                except AttributeError:
-                    continue
-
-            if tool_name and tool_name not in seen_tools:
-                seen_tools.add(tool_name)
-                info = TOOL_DISPLAY_INFO.get(tool_name, {
-                    'name': tool_name,
-                    'icon': 'tool',
-                    'description': f'{tool_name} 도구를 사용했습니다.'
-                })
-                tools_used.append(ToolUsedInfo(id=tool_name, **info))
-
-    return tools_used
 
 
 def parse_edit_response(text: str) -> dict | None:
@@ -126,39 +87,8 @@ def parse_edit_response(text: str) -> dict | None:
 
 # ==================== Document Writing ====================
 
-@router.post("/write/chat", response_model=DocumentChatResponse)
-async def document_write_chat(request: DocumentChatRequest):
-    """
-    문서 작성 채팅 API (비스트리밍)
-
-    문서 편집/작성을 지원합니다.
-    """
-    logger.info(f"문서 작성 채팅: doc_id={request.doc_id}, message={request.message[:50]}...")
-
-    try:
-        agent = get_document_writing_agent(
-            document_content=request.document_content or ""
-        )
-        result = await Runner.run(agent, input=request.message)
-
-        tools_used = extract_tools_used(result)
-        edit_response = parse_edit_response(result.final_output)
-
-        return DocumentChatResponse(
-            doc_id=request.doc_id,
-            message=result.final_output,
-            tools_used=tools_used,
-            is_edit=edit_response is not None,
-            changes=[EditChange(**c) for c in edit_response['changes']] if edit_response else None
-        )
-
-    except Exception as e:
-        logger.error(f"문서 작성 채팅 오류: {e}")
-        raise
-
-
 @router.post("/write/chat/stream")
-async def document_write_chat_stream(request: DocumentChatStreamRequest):
+async def document_write_chat_stream(request: DocumentChatRequest):
     """
     문서 작성 스트리밍 채팅 API
 
@@ -238,38 +168,8 @@ async def document_write_chat_stream(request: DocumentChatStreamRequest):
 
 # ==================== Document Read ====================
 
-@router.post("/read/chat", response_model=DocumentReadResponse)
-async def document_read_chat(request: DocumentReadRequest):
-    """
-    업로드 문서 읽기 채팅 API (비스트리밍)
-
-    업로드된 문서에 대한 질의응답을 지원합니다.
-    """
-    logger.info(f"문서 읽기 채팅: doc_id={request.doc_id}, message={request.message[:50]}...")
-
-    try:
-        agent = get_read_document_agent(
-            document_id=request.doc_id,
-            document_name=request.document_name or f"문서_{request.doc_id}",
-            document_type=request.document_type or "unknown"
-        )
-        result = await Runner.run(agent, input=request.message)
-
-        tools_used = extract_tools_used(result)
-
-        return DocumentReadResponse(
-            doc_id=request.doc_id,
-            message=result.final_output,
-            tools_used=tools_used
-        )
-
-    except Exception as e:
-        logger.error(f"문서 읽기 채팅 오류: {e}")
-        raise
-
-
 @router.post("/read/chat/stream")
-async def document_read_chat_stream(request: DocumentReadStreamRequest):
+async def document_read_chat_stream(request: DocumentReadRequest):
     """
     업로드 문서 읽기 스트리밍 채팅 API
 
@@ -290,7 +190,6 @@ async def document_read_chat_stream(request: DocumentReadStreamRequest):
 
             tools_used = []
             seen_tools = set()
-            full_response = ""
 
             result = Runner.run_streamed(agent, input=request.message)
 
@@ -300,7 +199,6 @@ async def document_read_chat_stream(request: DocumentReadStreamRequest):
                     data = event.data
                     if hasattr(data, 'type') and data.type == 'response.output_text.delta':
                         if hasattr(data, 'delta') and data.delta:
-                            full_response += data.delta
                             yield f"data: {json.dumps({'type': 'text', 'content': data.delta})}\n\n"
 
                 # 툴 호출

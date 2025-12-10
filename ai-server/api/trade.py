@@ -1,7 +1,7 @@
 """
 무역 채팅 API
 
-Trade Agent를 사용한 무역 상담 엔드포인트
+Trade Agent를 사용한 무역 상담 엔드포인트 (스트리밍 전용)
 """
 
 import json
@@ -13,8 +13,7 @@ from fastapi.responses import StreamingResponse
 from agents import Runner
 from agents.items import ToolCallItem
 
-from schemas.request import TradeChatRequest, TradeChatStreamRequest
-from schemas.response import TradeChatResponse, ToolUsedInfo
+from schemas.request import TradeChatRequest
 from agent_runners import get_trade_agent
 
 logger = logging.getLogger(__name__)
@@ -37,61 +36,8 @@ TOOL_DISPLAY_INFO = {
 }
 
 
-def extract_tools_used(result) -> list[ToolUsedInfo]:
-    """Agent 실행 결과에서 사용된 툴 정보 추출"""
-    tools_used = []
-    seen_tools = set()
-
-    for item in result.new_items:
-        if isinstance(item, ToolCallItem):
-            tool_name = None
-            try:
-                tool_name = item.raw_item.name
-            except AttributeError:
-                try:
-                    tool_name = item.tool_call.function.name
-                except AttributeError:
-                    continue
-
-            if tool_name and tool_name not in seen_tools:
-                seen_tools.add(tool_name)
-                info = TOOL_DISPLAY_INFO.get(tool_name, {
-                    'name': tool_name,
-                    'icon': 'tool',
-                    'description': f'{tool_name} 도구를 사용했습니다.'
-                })
-                tools_used.append(ToolUsedInfo(id=tool_name, **info))
-
-    return tools_used
-
-
-@router.post("/chat", response_model=TradeChatResponse)
-async def trade_chat(request: TradeChatRequest):
-    """
-    무역 채팅 API (비스트리밍)
-
-    무역 관련 질문에 대해 AI가 답변합니다.
-    """
-    logger.info(f"무역 채팅 요청: message={request.message[:50]}...")
-
-    try:
-        agent = get_trade_agent()
-        result = await Runner.run(agent, input=request.message)
-
-        tools_used = extract_tools_used(result)
-
-        return TradeChatResponse(
-            message=result.final_output,
-            tools_used=tools_used
-        )
-
-    except Exception as e:
-        logger.error(f"무역 채팅 오류: {e}")
-        raise
-
-
 @router.post("/chat/stream")
-async def trade_chat_stream(request: TradeChatStreamRequest):
+async def trade_chat_stream(request: TradeChatRequest):
     """
     무역 채팅 스트리밍 API
 
@@ -104,7 +50,6 @@ async def trade_chat_stream(request: TradeChatStreamRequest):
             agent = get_trade_agent()
             tools_used = []
             seen_tools = set()
-            full_response = ""
 
             result = Runner.run_streamed(agent, input=request.message)
 
@@ -114,7 +59,6 @@ async def trade_chat_stream(request: TradeChatStreamRequest):
                     data = event.data
                     if hasattr(data, 'type') and data.type == 'response.output_text.delta':
                         if hasattr(data, 'delta') and data.delta:
-                            full_response += data.delta
                             yield f"data: {json.dumps({'type': 'text', 'content': data.delta})}\n\n"
 
                 # 툴 호출

@@ -8,11 +8,8 @@ from .trade_views import (
     DocChatHistoryView,
     GeneralChatView,
 )
-# V2: AI Server Client 사용
-from .trade_views_v2 import (
-    DocumentChatViewV2 as DocumentChatView,
-    DocumentChatStreamViewV2 as DocumentChatStreamView,
-)
+# V2: AI Server Client 사용 (스트리밍 전용)
+from .trade_views_v2 import DocumentChatStreamViewV2 as DocumentChatStreamView
 
 # DRF Router for ViewSets
 router = DefaultRouter()
@@ -31,8 +28,7 @@ urlpatterns = [
     # 무역 거래 초기화
     path('trade/init/', TradeInitView.as_view(), name='trade-init'),
 
-    # 문서 채팅 API
-    path('documents/chat/', DocumentChatView.as_view(), name='document-chat'),
+    # 문서 채팅 API (스트리밍 전용)
     path('documents/chat/stream/', DocumentChatStreamView.as_view(), name='document-chat-stream'),
     path('documents/<int:doc_id>/chat/history/', DocChatHistoryView.as_view(), name='document-chat-history'),
 

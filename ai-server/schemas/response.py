@@ -1,7 +1,7 @@
 """
 API 응답 스키마
 
-FastAPI 엔드포인트에서 사용하는 Pydantic Response 모델
+FastAPI 엔드포인트에서 사용하는 Pydantic Response 모델 (스트리밍 전용)
 """
 
 from pydantic import BaseModel, Field
@@ -32,42 +32,12 @@ class ToolUsedInfo(BaseModel):
     description: str = Field(..., description="도구 설명")
 
 
-# ==================== Trade Agent 응답 ====================
-
-class TradeChatResponse(BaseModel):
-    """무역 채팅 API 응답"""
-    message: str = Field(..., description="AI 응답 메시지")
-    tools_used: list[ToolUsedInfo] = Field(default_factory=list, description="사용된 도구 목록")
-    context_used: str | None = Field(None, description="사용된 컨텍스트 요약")
-
-
-# ==================== Document Writing Agent 응답 ====================
+# ==================== 편집 정보 ====================
 
 class EditChange(BaseModel):
     """문서 편집 변경 사항"""
     fieldId: str = Field(..., description="필드 ID (data-field-id 값)")
     value: str = Field(..., description="새로운 값")
-
-
-class DocumentChatResponse(BaseModel):
-    """문서 작성 채팅 API 응답"""
-    doc_id: int = Field(..., description="문서 ID")
-    message: str = Field(..., description="AI 응답 메시지")
-    tools_used: list[ToolUsedInfo] = Field(default_factory=list, description="사용된 도구 목록")
-    context_used: str | None = Field(None, description="사용된 컨텍스트 요약")
-    # 편집 응답인 경우
-    is_edit: bool = Field(False, description="편집 응답 여부")
-    changes: list[EditChange] | None = Field(None, description="편집 변경 목록")
-
-
-# ==================== Document Read Agent 응답 ====================
-
-class DocumentReadResponse(BaseModel):
-    """업로드 문서 읽기 채팅 API 응답"""
-    doc_id: int = Field(..., description="문서 ID")
-    message: str = Field(..., description="AI 응답 메시지")
-    tools_used: list[ToolUsedInfo] = Field(default_factory=list, description="사용된 도구 목록")
-    context_used: str | None = Field(None, description="사용된 컨텍스트 요약")
 
 
 # ==================== Streaming 이벤트 ====================

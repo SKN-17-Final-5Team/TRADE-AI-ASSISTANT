@@ -1,7 +1,7 @@
 """
 API 요청 스키마
 
-FastAPI 엔드포인트에서 사용하는 Pydantic Request 모델
+FastAPI 엔드포인트에서 사용하는 Pydantic Request 모델 (스트리밍 전용)
 """
 
 from pydantic import BaseModel, Field
@@ -10,14 +10,6 @@ from pydantic import BaseModel, Field
 # ==================== Trade Agent ====================
 
 class TradeChatRequest(BaseModel):
-    """무역 채팅 API 요청"""
-    message: str = Field(..., description="사용자 메시지")
-    user_id: int | None = Field(None, description="사용자 ID")
-    context: str = Field("", description="컨텍스트")
-    history: list[dict] = Field(default_factory=list, description="대화 히스토리")
-
-
-class TradeChatStreamRequest(BaseModel):
     """무역 채팅 스트리밍 API 요청"""
     message: str = Field(..., description="사용자 메시지")
     user_id: int | None = Field(None, description="사용자 ID")
@@ -28,14 +20,6 @@ class TradeChatStreamRequest(BaseModel):
 # ==================== Document Writing Agent ====================
 
 class DocumentChatRequest(BaseModel):
-    """문서 작성 채팅 API 요청"""
-    doc_id: int = Field(..., description="문서 ID")
-    message: str = Field(..., description="사용자 메시지")
-    document_content: str = Field("", description="현재 에디터 문서 내용 HTML")
-    history: list[dict] = Field(default_factory=list, description="대화 히스토리")
-
-
-class DocumentChatStreamRequest(BaseModel):
     """문서 작성 스트리밍 채팅 API 요청"""
     doc_id: int = Field(..., description="문서 ID")
     message: str = Field(..., description="사용자 메시지")
@@ -46,15 +30,6 @@ class DocumentChatStreamRequest(BaseModel):
 # ==================== Document Read Agent ====================
 
 class DocumentReadRequest(BaseModel):
-    """업로드 문서 읽기 채팅 API 요청"""
-    doc_id: int = Field(..., description="문서 ID")
-    message: str = Field(..., description="사용자 메시지")
-    document_name: str = Field("", description="문서 파일명")
-    document_type: str = Field("", description="문서 타입 (offer, pi, contract 등)")
-    history: list[dict] = Field(default_factory=list, description="대화 히스토리")
-
-
-class DocumentReadStreamRequest(BaseModel):
     """업로드 문서 읽기 스트리밍 채팅 API 요청"""
     doc_id: int = Field(..., description="문서 ID")
     message: str = Field(..., description="사용자 메시지")
