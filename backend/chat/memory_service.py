@@ -92,7 +92,7 @@ class TradeMemoryService:
                 },
                 "embedder": {
                     "provider": "openai",
-                    "config": {"model": "text-embedding-3-small"}
+                    "config": {"model": "text-embedding-3-large"}
                 }
             }
 
