@@ -764,7 +764,7 @@ class DocumentChatStreamView(View):
         ]
         logger.info(f"스트리밍: 대화 히스토리 로드: {len(message_history)}개 메시지")
 
-        # 4. Mem0 컨텍스트 로드
+        # 4. Mem0 컨텍스트 로드 (새 구조: 단기 + 장기 분리)
         mem_service = get_memory_service()
         context = {}
 
@@ -772,10 +772,9 @@ class DocumentChatStreamView(View):
         user = get_user_by_id_or_emp_no(user_id)
         numeric_user_id = user.user_id if user else None
 
-        if numeric_user_id and mem_service:
+        if mem_service:
             context = mem_service.build_doc_context(
                 doc_id=doc_id,
-                user_id=numeric_user_id,
                 query=message
             )
 
@@ -853,15 +852,14 @@ class DocumentChatStreamView(View):
         except Exception as e:
             logger.error(f"이전 문서 조회 오류: {e}")
 
-        # 사용자 장기 메모리 (선호도, 거래처 정보 등)
-        if context.get('user_memories'):
-            user_mem_texts = [m.get('memory', str(m)) for m in context['user_memories']]
-            context_parts.append(f"[사용자 이전 기록]\n" + "\n".join(f"- {t}" for t in user_mem_texts))
+        # Mem0 컨텍스트 추가 (단기: 상세, 장기: 요약)
+        if context.get('short_memories'):
+            short_mem_texts = [m.get('memory', str(m)) for m in context['short_memories']]
+            context_parts.append(f"[이전 대화 상세]\n" + "\n".join(f"- {t}" for t in short_mem_texts))
 
-        # 현재 문서 세션 메모리
-        if context.get('doc_memories'):
-            doc_mem_texts = [m.get('memory', str(m)) for m in context['doc_memories']]
-            context_parts.append(f"[현재 문서 대화 요약]\n" + "\n".join(f"- {t}" for t in doc_mem_texts))
+        if context.get('long_memories'):
+            long_mem_texts = [m.get('memory', str(m)) for m in context['long_memories']]
+            context_parts.append(f"[이전 대화 요약]\n" + "\n".join(f"- {t}" for t in long_mem_texts))
 
         if message_history:
             history_text = "\n".join([
@@ -997,30 +995,44 @@ class DocumentChatStreamView(View):
             )
             logger.info(f"스트리밍: DocMessage AI 응답 저장: doc_message_id={ai_msg.doc_message_id}, tools={[t['id'] for t in tools_used]}")
 
-            # Mem0에 스마트 메모리 추가 (단기 + 장기 + 거래처)
-            if numeric_user_id and mem_service:
+            # Mem0에 메모리 추가 (단기: 매번, 장기: 10턴마다)
+            if mem_service:
                 messages = [
                     {"role": "user", "content": message},
                     {"role": "assistant", "content": full_response}
                 ]
                 try:
-                    # 문서 내용에서 buyer 추출
-                    buyer_name = extract_buyer_from_content(document_content)
-
-                    # 스마트 메모리 저장 (자동 분배)
-                    mem_result = mem_service.save_memory_smart(
-                        messages=messages,
-                        user_id=numeric_user_id,
+                    # 단기 메모리 저장 (매번)
+                    mem_service.add_doc_short_memory(
                         doc_id=doc_id,
-                        buyer_name=buyer_name,
-                        save_doc=True,
-                        save_user=True,
-                        save_buyer=bool(buyer_name)
+                        messages=messages
                     )
-                    logger.info(
-                        f"스트리밍: Mem0 스마트 메모리 저장: doc_id={doc_id}, user_id={numeric_user_id}, "
-                        f"buyer={buyer_name}, result={mem_result}"
-                    )
+
+                    # 10턴마다 장기 메모리에 요약 저장
+                    total_messages = DocMessage.objects.filter(doc=document).count()
+                    turn_count = total_messages // 2  # 1턴 = user + assistant
+
+                    if turn_count > 0 and turn_count % 10 == 0:
+                        # 최근 10턴(20개 메시지)을 가져와서 요약 저장
+                        recent_for_summary = DocMessage.objects.filter(
+                            doc=document
+                        ).order_by('-created_at')[:20]
+
+                        summary_messages = [
+                            {"role": "assistant" if m.role == "agent" else m.role, "content": m.content}
+                            for m in reversed(recent_for_summary)
+                        ]
+
+                        turn_start = turn_count - 9
+                        turn_end = turn_count
+                        mem_service.add_doc_long_memory(
+                            doc_id=doc_id,
+                            messages=summary_messages,
+                            turn_range=f"{turn_start}-{turn_end}"
+                        )
+                        logger.info(f"✅ Mem0 장기 메모리 저장 (Turn {turn_start}-{turn_end})")
+
+                    logger.info(f"✅ Mem0 단기 메모리 추가 완료: doc_id={doc_id}, Turn {turn_count}")
                 except Exception as mem_error:
                     logger.warning(f"스트리밍: Mem0 메모리 추가 실패 (무시): {mem_error}")
 

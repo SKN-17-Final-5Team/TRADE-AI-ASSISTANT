@@ -335,34 +335,36 @@ class ChatStreamView(View):
                     logger.info(f"  └ 최근 {i+1}: [{msg['role']}] {msg['content'][:50]}...")
 
         # 3. Mem0 컨텍스트 로드 (선택적 - 실패해도 계속 진행)
+        # 새 구조: 단기(상세) + 장기(요약) 분리, user_memories 제거
         mem0_context = None
         memory_context_str = ""
-        if gen_chat and user:
+        if gen_chat:
             try:
                 memory_service = get_memory_service()
                 if memory_service:
                     mem0_context = memory_service.build_gen_chat_context(
                         gen_chat_id=gen_chat.gen_chat_id,
-                        user_id=user.user_id,
-                        query=message,
-                        is_first_message=is_first_message
+                        query=message
                     )
 
-                    # Mem0 컨텍스트를 문자열로 변환
+                    # Mem0 컨텍스트를 문자열로 변환 (단기 우선, 장기 보충)
                     context_parts = []
-                    if mem0_context.get("chat_memories"):
+
+                    # 단기 메모리 (상세)
+                    if mem0_context.get("short_memories"):
                         memories_text = "\n".join([
                             f"- {m.get('memory', m.get('content', ''))}"
-                            for m in mem0_context["chat_memories"]
+                            for m in mem0_context["short_memories"]
                         ])
-                        context_parts.append(f"[이전 대화 컨텍스트]\n{memories_text}")
+                        context_parts.append(f"[이전 대화 상세]\n{memories_text}")
 
-                    if mem0_context.get("user_memories"):
-                        user_prefs = "\n".join([
+                    # 장기 메모리 (요약)
+                    if mem0_context.get("long_memories"):
+                        summaries_text = "\n".join([
                             f"- {m.get('memory', m.get('content', ''))}"
-                            for m in mem0_context["user_memories"]
+                            for m in mem0_context["long_memories"]
                         ])
-                        context_parts.append(f"[사용자 선호사항]\n{user_prefs}")
+                        context_parts.append(f"[이전 대화 요약]\n{summaries_text}")
 
                     if context_parts:
                         memory_context_str = "\n\n".join(context_parts)
@@ -500,8 +502,8 @@ class ChatStreamView(View):
             except Exception as save_err:
                 logger.error(f"❌ AI 응답 저장 실패: {save_err}")
 
-        # Mem0에 메모리 추가 (단기 + 장기)
-        if gen_chat and user and full_response:
+        # Mem0에 메모리 추가 (단기: 매번, 장기: 10턴마다)
+        if gen_chat and full_response:
             try:
                 memory_service = get_memory_service()
                 if memory_service:
@@ -509,18 +511,39 @@ class ChatStreamView(View):
                         {"role": "user", "content": message},
                         {"role": "assistant", "content": full_response}
                     ]
-                    # 단기 메모리 (채팅방별)
-                    memory_service.add_gen_chat_memory(
+
+                    # 단기 메모리 저장 (매번)
+                    memory_service.add_gen_chat_short_memory(
                         gen_chat_id=gen_chat.gen_chat_id,
-                        user_id=user.user_id,
                         messages=messages
                     )
-                    # 장기 메모리 (사용자별)
-                    memory_service.add_user_memory(
-                        user_id=user.user_id,
-                        messages=messages
-                    )
-                    logger.info(f"✅ Mem0 단기/장기 메모리 추가 완료")
+
+                    # 10턴마다 장기 메모리에 요약 저장
+                    # 현재 총 메시지 수 계산
+                    total_messages = GenMessage.objects.filter(gen_chat=gen_chat).count()
+                    turn_count = total_messages // 2  # 1턴 = user + assistant
+
+                    if turn_count > 0 and turn_count % 10 == 0:
+                        # 최근 10턴(20개 메시지)을 가져와서 요약 저장
+                        recent_for_summary = GenMessage.objects.filter(
+                            gen_chat=gen_chat
+                        ).order_by('-created_at')[:20]
+
+                        summary_messages = [
+                            {"role": "user" if m.sender_type == 'U' else "assistant", "content": m.content}
+                            for m in reversed(recent_for_summary)
+                        ]
+
+                        turn_start = turn_count - 9
+                        turn_end = turn_count
+                        memory_service.add_gen_chat_long_memory(
+                            gen_chat_id=gen_chat.gen_chat_id,
+                            messages=summary_messages,
+                            turn_range=f"{turn_start}-{turn_end}"
+                        )
+                        logger.info(f"✅ Mem0 장기 메모리 저장 (Turn {turn_start}-{turn_end})")
+
+                    logger.info(f"✅ Mem0 단기 메모리 추가 완료 (Turn {turn_count})")
             except Exception as mem_err:
                 logger.warning(f"⚠️ Mem0 메모리 추가 실패 (무시): {mem_err}")
 
