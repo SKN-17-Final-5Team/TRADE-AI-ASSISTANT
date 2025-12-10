@@ -41,7 +41,7 @@ from .serializers import (
     ChatRequestSerializer,
     ChatResponseSerializer,
 )
-from agent_core.s3_utils import s3_manager
+from .s3_utils import s3_manager
 
 logger = logging.getLogger(__name__)
 
@@ -498,29 +498,10 @@ class DocMessageViewSet(viewsets.ModelViewSet):
 # Chat Views
 # =============================================================================
 
-# 툴 이름 → 표시 정보 매핑
-TOOL_DISPLAY_INFO = {
-    'search_user_document': {
-        'name': '업로드 문서 검색',
-        'icon': 'file-search',
-        'description': '업로드한 문서에서 관련 내용을 검색했습니다.'
-    },
-    'search_trade_documents': {
-        'name': '무역 지식 검색',
-        'icon': 'document',
-        'description': '무역 문서 데이터베이스에서 관련 정보를 검색했습니다.'
-    },
-    'search_web': {
-        'name': '웹 검색',
-        'icon': 'web',
-        'description': '최신 정보를 위해 웹 검색을 수행했습니다.'
-    }
-}
-
 
 class DocumentChatView(APIView):
     """
-    문서 기반 채팅 API (Mem0 메모리 통합)
+    문서 기반 채팅 API - AI Server Client 사용
 
     POST /api/documents/{doc_id}/chat/
     {
@@ -530,17 +511,14 @@ class DocumentChatView(APIView):
     """
 
     def post(self, request, doc_id):
-        from agents import Runner
-        from agents.items import ToolCallItem
-        from agent_core import get_read_document_agent
-        from chat.config import PROMPT_VERSION, PROMPT_LABEL
+        from chat.ai_client import get_ai_client
         from chat.memory_service import get_memory_service
 
         serializer = ChatRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         message = serializer.validated_data['message']
-        user_id = request.data.get('user_id')  # 메모리용 user_id
+        user_id = request.data.get('user_id')
 
         try:
             document = Document.objects.get(doc_id=doc_id)
@@ -559,90 +537,68 @@ class DocumentChatView(APIView):
                 content=message
             )
 
-            # Mem0 컨텍스트 로드
-            mem_service = get_memory_service()
-            context = {}
+            # 사용자 ID 조회
             numeric_user_id = None
-
             if user_id:
-                # get_user_by_id_or_emp_no 함수로 사용자 조회 (emp_no 우선)
                 user_obj = get_user_by_id_or_emp_no(user_id)
                 if user_obj:
                     numeric_user_id = user_obj.user_id
-                    logger.info(f"User found: emp_no/user_id={user_id} -> user_id={numeric_user_id}")
 
-            if numeric_user_id and mem_service:
-                context = mem_service.build_doc_context(
-                    doc_id=doc_id,
-                    user_id=numeric_user_id,
-                    query=message
-                )
-
-            # Agent 생성 및 실행
-            agent = get_read_document_agent(
-                document_id=document.doc_id,
-                document_name=document.original_filename or document.get_doc_type_display(),
-                document_type=document.get_doc_type_display(),
-                prompt_version=PROMPT_VERSION,
-                prompt_label=PROMPT_LABEL
-            )
-
-            # 컨텍스트 추가
-            enhanced_input = message
-            if context.get('context_summary'):
-                enhanced_input = f"[{context['context_summary']}]\n\n{message}"
-
-            result = asyncio.run(Runner.run(agent, input=enhanced_input))
-
-            # 사용된 툴 추출
+            # AI Server 스트리밍 호출 (전체 응답 수집)
+            client = get_ai_client()
+            full_response = ""
             tools_used = []
-            seen_tools = set()
-            for item in result.new_items:
-                if isinstance(item, ToolCallItem):
-                    try:
-                        tool_name = item.raw_item.name
-                    except AttributeError:
-                        continue
-                    if tool_name not in seen_tools:
-                        seen_tools.add(tool_name)
-                        tool_info = TOOL_DISPLAY_INFO.get(tool_name, {
-                            'name': tool_name,
-                            'icon': 'tool',
-                            'description': f'{tool_name} 도구를 사용했습니다.'
-                        })
-                        tools_used.append({'id': tool_name, **tool_info})
+
+            async def collect_response():
+                nonlocal full_response, tools_used
+                async for event in client.document_read_chat_stream(
+                    doc_id=doc_id,
+                    message=message,
+                    document_name=document.original_filename or document.get_doc_type_display(),
+                    document_type=document.get_doc_type_display(),
+                    history=[]
+                ):
+                    event_type = event.get('type')
+                    if event_type == 'text':
+                        full_response += event.get('content', '')
+                    elif event_type == 'tool':
+                        tools_used.append(event.get('tool', {}))
+                    elif event_type == 'done':
+                        tools_used = event.get('tools_used', tools_used)
+
+            asyncio.run(collect_response())
 
             # AI 응답 저장
             DocMessage.objects.create(
                 doc=document,
                 role='agent',
-                content=result.final_output,
-                metadata={'tools_used': [tool['id'] for tool in tools_used]}
+                content=full_response,
+                metadata={'tools_used': [tool.get('id', '') for tool in tools_used]}
             )
 
-            # Mem0에 대화 메모리 추가
+            # Mem0 메모리 저장
             if numeric_user_id:
                 try:
-                    mem_service.add_doc_memory(
-                        doc_id=doc_id,
-                        user_id=numeric_user_id,
-                        messages=[
-                            {"role": "user", "content": message},
-                            {"role": "assistant", "content": result.final_output}
-                        ],
-                        metadata={
-                            "trade_id": trade_id,
-                            "doc_type": document.doc_type
-                        }
-                    )
-                    logger.info(f"Mem0 메모리 추가: doc_id={doc_id}, user_id={numeric_user_id}")
+                    mem_service = get_memory_service()
+                    if mem_service:
+                        mem_service.add_doc_memory(
+                            doc_id=doc_id,
+                            user_id=numeric_user_id,
+                            messages=[
+                                {"role": "user", "content": message},
+                                {"role": "assistant", "content": full_response}
+                            ],
+                            metadata={
+                                "trade_id": trade_id,
+                                "doc_type": document.doc_type
+                            }
+                        )
                 except Exception as mem_error:
                     logger.error(f"Mem0 메모리 추가 실패: {mem_error}")
 
             return Response({
-                'message': result.final_output,
-                'tools_used': tools_used,
-                'context_used': context.get('context_summary', '')
+                'message': full_response,
+                'tools_used': tools_used
             })
 
         except Document.DoesNotExist:

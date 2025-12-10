@@ -16,9 +16,59 @@ from django.utils.decorators import method_decorator
 
 from .ai_client import get_ai_client
 from .models import User, Document, DocMessage
-from .views import parse_edit_response
 
 logger = logging.getLogger(__name__)
+
+
+def parse_edit_response(text: str) -> dict | None:
+    """
+    Agent 응답에서 편집 JSON을 파싱
+
+    Returns:
+        편집 정보 dict 또는 None (일반 텍스트인 경우)
+
+    Format (fieldId/value based):
+    {
+        "type": "edit",
+        "message": "수정 설명",
+        "changes": [
+            {"fieldId": "price", "value": "USD 50,000"}
+        ]
+    }
+    """
+    # JSON 블록 추출 시도 (```json ... ``` 형식)
+    json_match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
+    if json_match:
+        json_str = json_match.group(1)
+    else:
+        json_str = text.strip()
+
+    try:
+        parsed = json.loads(json_str)
+        if isinstance(parsed, dict) and parsed.get('type') == 'edit':
+            changes = parsed.get('changes', [])
+            normalized_changes = []
+            for change in changes:
+                if 'fieldId' in change and 'value' in change:
+                    normalized_changes.append({
+                        'fieldId': change['fieldId'],
+                        'value': change['value']
+                    })
+                elif 'field' in change and 'after' in change:
+                    normalized_changes.append({
+                        'fieldId': change['field'],
+                        'value': change['after']
+                    })
+
+            return {
+                'type': 'edit',
+                'message': parsed.get('message', ''),
+                'changes': normalized_changes
+            }
+    except json.JSONDecodeError:
+        pass
+
+    return None
 
 
 def get_user_by_id_or_emp_no(user_id):
