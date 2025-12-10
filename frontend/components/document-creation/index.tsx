@@ -282,12 +282,8 @@ export default function DocumentCreationPage({
           return hasChanges ? newData : prev;
         });
       }
-    } else {
-      console.log('ℹ️ No checked payment radio found.');
     }
-  }, [documentData[3], hydrateTemplate]); // [CHANGED] Added hydrateTemplate to dependencies
-
-
+  }, [documentData[3], hydrateTemplate]);
 
   // Helper to check completion status for a specific step
   const getStepCompletionStatus = (stepNumber: number): boolean => {
@@ -297,18 +293,11 @@ export default function DocumentCreationPage({
     if (stepNumber <= 3) {
       if (stepModes[stepNumber] === 'upload' && !uploadedFiles[stepNumber] && !uploadedFileNames[stepNumber]) return false;
 
-      // [CHANGED] Use live editor content if checking the current step
-      let stepContent;
-      if (stepNumber === currentStep && editorRef.current) {
-        stepContent = editorRef.current.getContent();
-      } else {
-        stepContent = documentData[stepNumber] || hydrateTemplate(getTemplateForStep(stepNumber));
-      }
-
+      // 항상 documentData 사용 (Step 이동 시 handleStepChange에서 저장됨)
+      const stepContent = documentData[stepNumber] || hydrateTemplate(getTemplateForStep(stepNumber));
       return checkStepCompletion(stepContent);
     } else {
       if (stepNumber === 4) {
-        // For step 4, we might need to check specific docs if active
         const ciContent = documentData[4] || hydrateTemplate(commercialInvoiceTemplateHTML);
         const plContent = documentData[5] || hydrateTemplate(packingListTemplateHTML);
         return checkStepCompletion(ciContent) && checkStepCompletion(plContent);
@@ -616,15 +605,13 @@ export default function DocumentCreationPage({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ doc_mode: mode })
         });
-        console.log(`📝 doc_mode 업데이트: doc_id=${docId}, mode=${mode}`);
       } catch (error) {
-        console.error('doc_mode 업데이트 실패:', error);
+        // doc_mode 업데이트 실패 시 무시
       }
     }
   };
 
   const handleRowAdded = (fieldIds: string[]) => {
-
     // Helper to add row to a document's HTML content
     const addRowToDocument = (htmlContent: string, fieldIds: string[], stepName: string): string => {
       const parser = new DOMParser();
