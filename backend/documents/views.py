@@ -726,6 +726,17 @@ class DocumentProcessingStatusView(View):
                     status_data['progress'] = 100
                     status_data['s3_url'] = new_url
                     status_data['total_chunks'] = len(document.qdrant_point_ids)
+                    
+                    # 변환된 PDF URL 추가
+                    if document.converted_pdf_key:
+                        converted_pdf_url = s3_manager.generate_presigned_download_url(
+                            s3_key=document.converted_pdf_key,
+                            expiration=3600 * 24
+                        )
+                        document.converted_pdf_url = converted_pdf_url
+                        document.save(update_fields=['converted_pdf_url'])
+                        status_data['converted_pdf_url'] = converted_pdf_url
+
                     yield f"data: {json.dumps({'type': 'complete', **status_data})}\n\n"
                     return
 
