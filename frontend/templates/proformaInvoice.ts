@@ -34,7 +34,7 @@ export const proformaInvoiceTemplateHTML = `
                     Address: <mark>[seller_address]</mark><br>
                     City/Postal Code: <mark>[seller_city]</mark> / <mark>[seller_postal_code]</mark><br>
                     Country: <mark>[seller_country]</mark><br>
-                    Tel./Fax No.: <mark>[seller_fax]</mark> / <mark>[seller_fax]</mark>
+                    Tel./Fax No.: <mark>[seller_tel]</mark> / <mark>[seller_fax]</mark>
                 </td>
             </tr>
 
