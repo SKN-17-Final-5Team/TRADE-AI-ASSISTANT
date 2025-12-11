@@ -21,7 +21,7 @@ export interface DocumentCreationPageProps {
   onNavigate: (page: PageType) => void;
   userEmployeeId: string;
   onLogout: () => void;
-  onSave: (data: DocumentData, step: number, activeShippingDoc?: ShippingDocType | null) => void;
+  onSave: (data: DocumentData, step: number, activeShippingDoc?: ShippingDocType | null, isCompleted?: boolean) => void;
   onCreateTrade?: () => Promise<string | null>;
   onExit?: (hasChanges: boolean) => Promise<void>;
   versions?: Version[];

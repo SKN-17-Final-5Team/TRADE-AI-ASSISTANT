@@ -383,7 +383,16 @@ export default function DocumentCreationPage({
       setDocumentData(newDocData);
     }
 
-    onSave(newDocData, currentStep, activeShippingDoc);
+    // [ADDED] Check if all steps are completed
+    let isAllCompleted = true;
+    for (let i = 1; i <= 5; i++) {
+      if (!getStepCompletionStatus(i)) {
+        isAllCompleted = false;
+        break;
+      }
+    }
+
+    onSave(newDocData, currentStep, activeShippingDoc, isAllCompleted);
     setIsDirty(false);
     setShowSaveSuccessModal(true);
   };
@@ -1014,24 +1023,70 @@ export default function DocumentCreationPage({
         <div className="bg-gray-100/80 backdrop-blur-sm p-1.5 rounded-full flex items-center shadow-inner border border-gray-200/50 relative">
           {tabs.map((tab) => {
             const isActive = activeShippingDoc === tab.id;
-            const Icon = tab.icon;
+            const isComplete = getStepCompletionStatus(tab.id === 'CI' ? 4 : 5);
+
+            // Premium Colors
+            const activeColor = tab.id === 'CI' ? 'text-blue-600' : 'text-indigo-600';
+            const completeColor = 'text-emerald-600';
+            const inactiveColor = 'text-gray-500 hover:text-gray-700';
+
+            const textColor = isActive
+              ? (isComplete ? completeColor : activeColor)
+              : (isComplete ? 'text-emerald-600/80' : inactiveColor);
 
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveShippingDoc(tab.id as ShippingDocType)}
-                className={`relative px-6 py-2 rounded-full text-sm font-bold transition-colors flex items-center gap-2 z-10 ${isActive ? tab.color : 'text-gray-500 hover:text-gray-700'
-                  }`}
+                className={`relative px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2.5 z-10 ${textColor}`}
               >
                 {isActive && (
                   <motion.div
                     layoutId="activeTabBackground"
-                    className="absolute inset-0 bg-white rounded-full shadow-sm ring-1 ring-black/5 z-[-1]"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    className={`absolute inset-0 bg-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08)] ring-1 ring-black/5 z-[-1] ${isComplete ? 'ring-emerald-100 shadow-emerald-100/50' : ''
+                      }`}
+                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
                   />
                 )}
-                <Icon className="w-4 h-4" />
-                {tab.label}
+
+                <div className="relative w-4 h-4 flex items-center justify-center">
+                  <AnimatePresence mode="wait" initial={false}>
+                    {isComplete ? (
+                      <motion.div
+                        key="check"
+                        initial={{ scale: 0, rotate: -90, opacity: 0 }}
+                        animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                        exit={{ scale: 0, rotate: 90, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      >
+                        <Check className="w-4 h-4" strokeWidth={3} />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="icon"
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <tab.icon className="w-4 h-4" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <span className="relative">
+                  {tab.label}
+                  {isComplete && isActive && (
+                    <motion.span
+                      layoutId="glow"
+                      className="absolute -inset-3 bg-emerald-400/20 blur-lg rounded-full -z-10"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  )}
+                </span>
               </button>
             );
           })}

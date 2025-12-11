@@ -4,6 +4,12 @@ import ChatPage from './components/ChatPage';
 import DocumentCreationPage from './components/DocumentCreationPage';
 import LoginPage from './components/LoginPage';
 import { User, api, Trade } from './utils/api';
+import { checkStepCompletion, hydrateTemplate } from './utils/documentUtils';
+import { offerSheetTemplateHTML } from './templates/offerSheet';
+import { proformaInvoiceTemplateHTML } from './templates/proformaInvoice';
+import { saleContractTemplateHTML } from './templates/saleContract';
+import { commercialInvoiceTemplateHTML } from './templates/commercialInvoice';
+import { packingListTemplateHTML } from './templates/packingList';
 
 export type PageType = 'main' | 'chat' | 'documents';
 export type TransitionType = 'none' | 'expanding' | 'shrinking';
@@ -283,18 +289,49 @@ function App() {
           // 가장 최근 버전의 step을 lastStep으로 설정
           const lastStep = allVersions.length > 0 ? allVersions[0].step : 1;
 
-          const completedCount = trade.completed_count || 0;
+          // [CHANGED] Calculate progress client-side to ensure accuracy
+          let calculatedCompletedCount = 0;
           const totalSteps = 5;
-          const progress = Math.round((completedCount / totalSteps) * 100);
+          const docTypes = ['offer', 'pi', 'contract', 'ci', 'pl'];
+
+          for (let i = 0; i < totalSteps; i++) {
+            const step = i + 1;
+            const docType = docTypes[i];
+            // tradeDetail.documents might be undefined if no documents
+            const doc = tradeDetail.documents?.find((d: any) => d.doc_type === docType);
+
+            // 1. Check Mode (Skip / Upload)
+            if (doc) {
+              if (doc.doc_mode === 'skip') {
+                calculatedCompletedCount++;
+                continue;
+              }
+              if (doc.doc_mode === 'upload' && doc.upload_status === 'ready') {
+                calculatedCompletedCount++;
+                continue;
+              }
+            }
+
+            // 2. Check Content (Manual)
+            const stepContent = content[step];
+            if (stepContent && typeof stepContent === 'string' && checkStepCompletion(stepContent)) {
+              calculatedCompletedCount++;
+            }
+          }
+
+          const progress = Math.round((calculatedCompletedCount / totalSteps) * 100);
+
+          // Force status based on calculated progress
+          const status = progress === 100 ? 'completed' : 'in-progress';
 
           return {
             id: trade.trade_id.toString(),
             name: trade.title,
             date: new Date(trade.created_at).toLocaleDateString('ko-KR').replace(/\. /g, '.').slice(0, -1),
-            completedSteps: completedCount,
+            completedSteps: calculatedCompletedCount,
             totalSteps: totalSteps,
             progress: progress,
-            status: trade.status === 'completed' ? 'completed' : 'in-progress',
+            status: status,
             content: content,
             tradeData: tradeDetail,  // documents 포함
             versions: allVersions,
@@ -351,7 +388,7 @@ function App() {
     return document?.doc_id || null;
   }, [currentDocId, savedDocuments, currentDocIds]);
 
-  const handleSaveDocument = async (data: DocumentData, step: number, activeShippingDoc?: 'CI' | 'PL' | null) => {
+  const handleSaveDocument = async (data: DocumentData, step: number, activeShippingDoc?: 'CI' | 'PL' | null, isCompleted?: boolean) => {
     // Update currentActiveShippingDoc if provided
     if (activeShippingDoc) {
       setCurrentActiveShippingDoc(activeShippingDoc);
@@ -401,6 +438,15 @@ function App() {
         if (trade.title !== newTitle) {
           await api.updateTrade(parseInt(tradeId), { title: newTitle });
           console.log(`[API] Updated trade title to: ${newTitle}`);
+        }
+
+        // [ADDED] Update trade status based on completion
+        if (isCompleted !== undefined) {
+          const newStatus = isCompleted ? 'completed' : 'in_progress';
+          if (trade.status !== newStatus) {
+            await api.updateTrade(parseInt(tradeId), { status: newStatus });
+            console.log(`[API] Updated trade status to: ${newStatus}`);
+          }
         }
 
         // Save all documents concurrently

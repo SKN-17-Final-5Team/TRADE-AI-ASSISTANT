@@ -175,7 +175,7 @@ export function checkStepCompletion(content: string): boolean {
     const value = field.textContent;
 
     // [CHANGED] Skip validation for optional fields (including dynamic IDs like notice_2)
-    if (key && (key.startsWith('notice') || key.startsWith('remarks'))) continue;
+    if (key && key.startsWith('notice')) continue;
 
     // [ADDED] Skip validation for disabled fields
     if (field.getAttribute('data-disabled') === 'true') continue;

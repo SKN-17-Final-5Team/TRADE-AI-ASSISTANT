@@ -169,7 +169,7 @@ export default function MainPage({ onNavigate, savedDocuments, userEmployeeId, o
         {/* Task Cards */}
         <div className="grid grid-cols-3 gap-4 items-start">
           {filteredTasks.map(doc => {
-            const isCompleted = doc.status === 'completed';
+            const isCompleted = doc.status === 'completed' || doc.progress === 100;
             const iconBg = isCompleted ? 'bg-green-50' : 'bg-blue-50';
             const iconColor = isCompleted ? 'text-green-600' : 'text-blue-600';
 
