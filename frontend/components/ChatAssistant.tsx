@@ -56,9 +56,10 @@ interface ChatAssistantProps {
   documentId?: number | null; // Optional document ID for document-specific chat (업로드 시 사용)
   userEmployeeId?: string; // 사용자 사원번호 (세션 관리용)
   getDocId?: (step: number, shippingDoc?: 'CI' | 'PL' | null) => number | null; // step에서 doc_id 가져오기 함수
+  activeShippingDoc?: 'CI' | 'PL' | null; // 현재 활성화된 선적서류 타입 (Step 4에서 CI/PL 구분용)
 }
 
-export default function ChatAssistant({ currentStep, onClose, editorRef, onApply, documentId, userEmployeeId, getDocId }: ChatAssistantProps) {
+export default function ChatAssistant({ currentStep, onClose, editorRef, onApply, documentId, userEmployeeId, getDocId, activeShippingDoc }: ChatAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -76,21 +77,22 @@ export default function ChatAssistant({ currentStep, onClose, editorRef, onApply
   const [isConnected, setIsConnected] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 이전 step 추적 (변경 감지용)
-  const prevStepRef = useRef<number>(currentStep);
-
   // 현재 step에 해당하는 doc_id 가져오기 (getDocId 함수 사용)
   const currentDocId = useMemo(() => {
     // documentId가 직접 전달된 경우 (업로드된 문서) 우선 사용
     if (documentId) return documentId;
     // getDocId 함수를 통해 현재 step의 doc_id 조회
     if (getDocId) {
-      // Step 4는 CI, Step 5는 PL
-      const shippingDoc = currentStep === 4 ? 'CI' : currentStep === 5 ? 'PL' : null;
-      return getDocId(currentStep <= 3 ? currentStep : (currentStep === 4 ? 4 : 5), shippingDoc);
+      // Step 4에서는 activeShippingDoc 사용 (CI 또는 PL)
+      // activeShippingDoc이 전달되면 그 값을 사용, 없으면 기본값 사용
+      const shippingDoc = currentStep === 4 ? (activeShippingDoc || 'CI') : null;
+      return getDocId(currentStep <= 3 ? currentStep : 4, shippingDoc);
     }
     return null;
-  }, [documentId, getDocId, currentStep]);
+  }, [documentId, getDocId, currentStep, activeShippingDoc]);
+
+  // 이전 doc_id 추적 (변경 감지용)
+  const prevDocIdRef = useRef<number | null>(null);
 
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
   const USE_DJANGO = import.meta.env.VITE_USE_DJANGO === 'true';
@@ -299,21 +301,19 @@ ${documentContent}
     scrollToBottom();
   }, [messages]);
 
-  // currentStep 변경 감지: 문서가 바뀌면 새 채팅 시작
+  // currentDocId 변경 감지: 문서가 바뀌면 새 채팅 시작
+  // Step 4에서 CI↔PL 전환 시에도 currentDocId가 변경되어 채팅이 리프레시됨
   useEffect(() => {
-    const stepChanged = prevStepRef.current !== currentStep;
+    if (prevDocIdRef.current === currentDocId) return;
+    prevDocIdRef.current = currentDocId;
 
-    if (stepChanged) {
-      prevStepRef.current = currentStep;
-
-      // currentDocId가 있으면 히스토리 로드, 없으면 리셋
-      if (currentDocId) {
-        loadChatHistory(currentDocId);
-      } else {
-        resetChat();
-      }
+    if (currentDocId) {
+      console.log(`[ChatAssistant] 채팅 리로드: docId=${currentDocId}`);
+      loadChatHistory(currentDocId);
+    } else {
+      resetChat();
     }
-  }, [currentStep, currentDocId]);
+  }, [currentDocId]);
 
   // 컴포넌트 마운트 시 현재 step의 대화 히스토리 로드
   useEffect(() => {

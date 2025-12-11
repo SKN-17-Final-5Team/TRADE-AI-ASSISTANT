@@ -1473,6 +1473,7 @@ export default function DocumentCreationPage({
             }
             userEmployeeId={userEmployeeId}
             getDocId={getDocId}
+            activeShippingDoc={activeShippingDoc}
           />
         </div>
       </div>
