@@ -4,6 +4,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Upload, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 import PdfViewer from '../../PdfViewer';
+import PreviewTextFetcher from './PreviewTextFetcher';
 import type { UploadStatus } from '../types';
 
 interface FileUploadViewProps {
@@ -11,6 +12,8 @@ interface FileUploadViewProps {
   fileName?: string;
   status: UploadStatus;
   documentUrl: string | null;
+  docId?: number | null;
+  convertedPdfUrl?: string | null;
   error: string | null;
   onUpload: (file: File) => void;
   onRetry: () => void;
@@ -21,6 +24,8 @@ export default function FileUploadView({
   fileName,
   status,
   documentUrl,
+  docId,
+  convertedPdfUrl,
   error,
   onUpload,
   onRetry
@@ -35,23 +40,42 @@ export default function FileUploadView({
             <span className="text-sm font-medium">{file?.name || fileName}</span>
           </div>
         </div>
-        <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50 flex items-center justify-center">
-          {(file?.name || fileName || '').toLowerCase().endsWith('.pdf') ? (
-            <PdfViewer fileUrl={documentUrl} className="h-full w-full" />
+        {/* Preview Area */}
+        <div className="flex-1 bg-gray-50 relative rounded-2xl overflow-hidden border border-gray-200 shadow-sm flex items-center justify-center">
+          {(file?.name || fileName || '').toLowerCase().endsWith('.pdf') || convertedPdfUrl ? (
+            <PdfViewer fileUrl={convertedPdfUrl || documentUrl || ''} className="h-full w-full" />
           ) : (
-            <div className="text-center p-8">
-              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm mx-auto">
-                <CheckCircle className="w-10 h-10 text-green-500" />
+            <div className="h-full w-full flex flex-col bg-white p-6 overflow-hidden">
+              <div className="flex items-center justify-between mb-4 pb-4 border-b">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-6 h-6 text-blue-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-800">문서 분석 완료</h3>
+                    <p className="text-sm text-gray-500">{file?.name || fileName}</p>
+                  </div>
+                </div>
+                <span className="text-xs font-medium px-2 py-1 bg-gray-100 text-gray-600 rounded">
+                  TEXT PREVIEW
+                </span>
               </div>
-              <h3 className="text-lg font-bold text-gray-800 mb-2">문서 분석 완료</h3>
-              <p className="text-gray-500 mb-4">
-                {file?.name || fileName}<br />
-                파일이 성공적으로 업로드 및 분석되었습니다.
-              </p>
-              <p className="text-sm text-gray-400">
-                이 파일 형식은 미리보기를 지원하지 않습니다.<br />
-                챗봇을 통해 문서 내용을 질의할 수 있습니다.
-              </p>
+
+              <div className="flex-1 overflow-auto bg-gray-50 rounded-lg p-4 border border-gray-200 font-mono text-sm leading-relaxed whitespace-pre-wrap text-gray-700">
+                {/* 텍스트 미리보기는 별도 API 호출이 필요할 수 있음. 
+                    현재 documentUrl이 S3 URL이라면 텍스트를 직접 가져올 수 없음.
+                    하지만 여기서는 간단히 안내 문구 대신 텍스트를 보여주려는 의도임.
+                    실제로는 extracted_text를 가져오는 로직이 필요함.
+                    
+                    임시로: documentUrl이 텍스트 내용을 포함하지 않으므로, 
+                    상위 컴포넌트에서 extracted_text를 전달받거나 여기서 fetch해야 함.
+                    
+                    일단은 "텍스트 추출됨" 상태를 보여주고, 
+                    실제 텍스트는 챗봇이 알고 있다는 점을 강조하거나,
+                    별도로 텍스트를 fetch하는 로직을 추가해야 함.
+                 */}
+                <PreviewTextFetcher docId={docId?.toString()} />
+              </div>
             </div>
           )}
         </div>

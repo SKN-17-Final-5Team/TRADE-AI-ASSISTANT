@@ -38,6 +38,7 @@ interface UseFileUploadReturn {
   uploadError: Record<number, string | null>;
   uploadedDocumentIds: Record<number, number | null>;
   uploadedDocumentUrls: Record<number, string | null>;
+  uploadedConvertedPdfUrls: Record<number, string | null>;
   handleFileUpload: (step: number, file: File, docId: number) => Promise<void>;
   removeUploadedFile: (step: number) => void;
   retryUpload: (step: number) => void;
@@ -57,6 +58,7 @@ export function useFileUpload(
   const [uploadedFileNames, setUploadedFileNames] = useState<Record<number, string>>(initialFileNames);
   const [uploadedDocumentIds, setUploadedDocumentIds] = useState<Record<number, number | null>>({});
   const [uploadedDocumentUrls, setUploadedDocumentUrls] = useState<Record<number, string | null>>(initialFileUrls);
+  const [uploadedConvertedPdfUrls, setUploadedConvertedPdfUrls] = useState<Record<number, string | null>>({});
   const [uploadStatus, setUploadStatus] = useState<Record<number, UploadStatus>>(initialStatus);
   const [uploadError, setUploadError] = useState<Record<number, string | null>>({});
   const [uploadUnsubscribe, setUploadUnsubscribe] = useState<Record<number, (() => void) | null>>({});
@@ -89,6 +91,9 @@ export function useFileUpload(
         onComplete: (status: DocumentStatus) => {
           setUploadStatus(prev => ({ ...prev, [step]: 'ready' }));
           setUploadedDocumentUrls(prev => ({ ...prev, [step]: status.s3_url || null }));
+          if (status.converted_pdf_url) {
+            setUploadedConvertedPdfUrls(prev => ({ ...prev, [step]: status.converted_pdf_url || null }));
+          }
         },
         onError: (error: string) => {
           setUploadStatus(prev => ({ ...prev, [step]: 'error' }));
@@ -127,6 +132,7 @@ export function useFileUpload(
     });
     setUploadedDocumentIds(prev => ({ ...prev, [step]: null }));
     setUploadedDocumentUrls(prev => ({ ...prev, [step]: null }));
+    setUploadedConvertedPdfUrls(prev => ({ ...prev, [step]: null }));
     setUploadStatus(prev => ({ ...prev, [step]: 'idle' }));
     setUploadError(prev => ({ ...prev, [step]: null }));
   }, []);
@@ -146,6 +152,7 @@ export function useFileUpload(
     uploadError,
     uploadedDocumentIds,
     uploadedDocumentUrls,
+    uploadedConvertedPdfUrls,
     handleFileUpload,
     removeUploadedFile,
     retryUpload,
