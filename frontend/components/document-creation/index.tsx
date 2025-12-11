@@ -1023,7 +1023,11 @@ export default function DocumentCreationPage({
         <div className="bg-gray-100/80 backdrop-blur-sm p-1.5 rounded-full flex items-center shadow-inner border border-gray-200/50 relative">
           {tabs.map((tab) => {
             const isActive = activeShippingDoc === tab.id;
-            const isComplete = getStepCompletionStatus(tab.id === 'CI' ? 4 : 5);
+            // Determine completion status
+            const isComplete = tab.id === 'CI'
+              ? checkStepCompletion(documentData[4] || hydrateTemplate(commercialInvoiceTemplateHTML))
+              : checkStepCompletion(documentData[5] || hydrateTemplate(packingListTemplateHTML));
+
 
             // Premium Colors
             const activeColor = tab.id === 'CI' ? 'text-blue-600' : 'text-indigo-600';
