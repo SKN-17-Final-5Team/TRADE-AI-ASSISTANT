@@ -13,7 +13,6 @@ from typing import List, Dict
 import boto3
 from django.conf import settings
 
-from agent_core.pdf_parser import production_pdf_pipeline
 
 from .models import Document
 from agent_core.config import (
@@ -26,12 +25,13 @@ from agent_core.config import (
 logger = logging.getLogger(__name__)
 
 
-def download_from_s3(s3_key: str) -> str:
+def download_from_s3(s3_key: str, file_ext: str = '.pdf') -> str:
     """
     S3에서 파일 다운로드 → 임시 파일로 저장
 
     Args:
         s3_key: S3 파일 키
+        file_ext: 파일 확장자 (예: '.pdf', '.docx')
 
     Returns:
         str: 임시 파일 경로
@@ -43,8 +43,11 @@ def download_from_s3(s3_key: str) -> str:
         region_name=settings.AWS_S3_REGION_NAME,
     )
 
-    # 임시 파일 생성
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+    # 임시 파일 생성 (확장자 유지)
+    if not file_ext.startswith('.'):
+        file_ext = '.' + file_ext
+        
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
     temp_path = temp_file.name
     temp_file.close()
 
@@ -59,51 +62,6 @@ def download_from_s3(s3_key: str) -> str:
     return temp_path
 
 
-def parse_pdf_to_chunks(
-    pdf_path: str,
-    min_chars_per_page: int = 50
-) -> List[Dict]:
-    """
-    PDF 파일을 페이지별로 파싱 (production_pdf_pipeline 사용)
-
-    Args:
-        pdf_path: PDF 파일 경로
-        min_chars_per_page: 페이지당 최소 문자 수
-
-    Returns:
-        List[Dict]: 페이지별 청크 리스트
-            [{'page': 1, 'text': '...', 'char_count': 123, 'metadata': {...}}, ...]
-    """
-    try:
-        result = production_pdf_pipeline(pdf_path, min_chunk_chars=min_chars_per_page)
-
-        if result['status'] == 'error':
-            raise ValueError(result.get('error', 'PDF parsing failed'))
-
-        if result['status'] == 'needs_ocr':
-            logger.warning(f"PDF {pdf_path} may need OCR: {result.get('message')}")
-
-        # production_pdf_pipeline 결과를 기존 포맷으로 변환
-        chunks = []
-        for chunk in result.get('chunks', []):
-            chunks.append({
-                'page': chunk['page_num'],
-                'text': chunk['text'],
-                'char_count': len(chunk['text']),
-                'metadata': chunk.get('metadata', {})
-            })
-
-        # 경고 메시지 로깅
-        for warning in result.get('warnings', []):
-            logger.warning(f"PDF parsing warning: {warning}")
-
-        logger.info(f"Parsed PDF: {len(chunks)} valid pages")
-
-        return chunks
-
-    except Exception as e:
-        logger.error(f"Failed to parse PDF {pdf_path}: {e}")
-        raise
 
 
 def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
@@ -203,13 +161,19 @@ def process_uploaded_document(document_id: int):
         logger.info(f"Processing document {document_id}: {document.original_filename}")
 
         # 2. S3에서 다운로드
-        temp_pdf_path = download_from_s3(document.s3_key)
+        import os
+        file_ext = os.path.splitext(document.original_filename)[1].lower()
+        if not file_ext:
+            file_ext = '.pdf' # Default
+            
+        temp_pdf_path = download_from_s3(document.s3_key, file_ext)
 
-        # 3. PDF 파싱
-        chunks = parse_pdf_to_chunks(temp_pdf_path, min_chars_per_page=50)
+        # 3. 문서 파싱 (확장자에 따른 분기)
+        from agent_core.parsers import parse_document
+        chunks = parse_document(temp_pdf_path, document.original_filename)
 
         if not chunks:
-            raise ValueError("No valid content extracted from PDF")
+            raise ValueError("No valid content extracted from document")
 
         # 4. 임베딩 생성 (배치 처리)
         texts = [chunk['text'] for chunk in chunks]

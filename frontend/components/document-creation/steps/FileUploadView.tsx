@@ -1,5 +1,6 @@
 
 // FileUploadView.tsx - 파일 업로드 뷰
+import React from 'react';
 import { motion } from 'framer-motion';
 import { Upload, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 import PdfViewer from '../../PdfViewer';
@@ -34,8 +35,25 @@ export default function FileUploadView({
             <span className="text-sm font-medium">{file?.name || fileName}</span>
           </div>
         </div>
-        <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
-          <PdfViewer fileUrl={documentUrl} className="h-full" />
+        <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50 flex items-center justify-center">
+          {(file?.name || fileName || '').toLowerCase().endsWith('.pdf') ? (
+            <PdfViewer fileUrl={documentUrl} className="h-full w-full" />
+          ) : (
+            <div className="text-center p-8">
+              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm mx-auto">
+                <CheckCircle className="w-10 h-10 text-green-500" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">문서 분석 완료</h3>
+              <p className="text-gray-500 mb-4">
+                {file?.name || fileName}<br />
+                파일이 성공적으로 업로드 및 분석되었습니다.
+              </p>
+              <p className="text-sm text-gray-400">
+                이 파일 형식은 미리보기를 지원하지 않습니다.<br />
+                챗봇을 통해 문서 내용을 질의할 수 있습니다.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -55,7 +73,7 @@ export default function FileUploadView({
               <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
             </div>
             <h3 className="text-xl font-bold text-gray-800 mb-2">
-              {status === 'uploading' ? '파일 업로드 중...' : 'PDF 분석 중...'}
+              {status === 'uploading' ? '파일 업로드 중...' : '문서 분석 중...'}
             </h3>
             <p className="text-gray-500 mb-2">{file?.name || fileName}</p>
             <p className="text-sm text-gray-400">
@@ -96,25 +114,60 @@ export default function FileUploadView({
   }
 
   // idle 상태: 파일 선택 UI
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const droppedFile = e.dataTransfer.files[0];
+      // 확장자 체크
+      const ext = droppedFile.name.split('.').pop()?.toLowerCase();
+      if (['pdf', 'docx', 'hwp'].includes(ext || '')) {
+        onUpload(droppedFile);
+      } else {
+        alert('지원되지 않는 파일 형식입니다. (PDF, DOCX, HWP 가능)');
+      }
+    }
+  };
+
   return (
     <div className="h-full flex flex-col p-4">
       <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden p-8">
         <div className="w-full max-w-2xl">
-          <label className="flex flex-col items-center justify-center w-full h-96 border-3 border-dashed border-gray-300 rounded-3xl cursor-pointer bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition-all group relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <label
+            className={`flex flex-col items-center justify-center w-full h-96 border-3 border-dashed rounded-3xl cursor-pointer transition-all group relative overflow-hidden
+              ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:bg-blue-50 hover:border-blue-400'}
+            `}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <div className={`absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 transition-opacity ${isDragging ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
 
             <div className="flex flex-col items-center justify-center pt-5 pb-6 relative z-10">
-              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform duration-300">
-                <Upload className="w-10 h-10 text-gray-400 group-hover:text-blue-500" />
+              <div className={`w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm transition-transform duration-300 ${isDragging ? 'scale-110' : 'group-hover:scale-110'}`}>
+                <Upload className={`w-10 h-10 ${isDragging ? 'text-blue-500' : 'text-gray-400 group-hover:text-blue-500'}`} />
               </div>
               <p className="mb-2 text-xl text-gray-600 font-medium">
                 <span className="font-bold text-blue-600">클릭하여 업로드</span> 또는 파일을 여기로 드래그하세요
               </p>
-              <p className="text-sm text-gray-500">PDF 파일 (최대 10MB)</p>
+              <p className="text-sm text-gray-500">PDF, DOCX, HWP 파일 (최대 10MB)</p>
             </div>
             <input
               type="file"
-              accept=".pdf,application/pdf"
+              accept=".pdf,application/pdf,.docx,.hwp"
               className="hidden"
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {

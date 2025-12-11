@@ -367,7 +367,14 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
         # PDF 처리 시작
         from documents.services import process_uploaded_document
-        process_uploaded_document(document.doc_id)
+        try:
+            process_uploaded_document(document.doc_id)
+        except Exception as e:
+            logger.error(f"Error processing document {document.doc_id}: {e}")
+            return Response({
+                'error': f'Document processing failed: {str(e)}',
+                'doc_id': document.doc_id
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({
             'status': 'processing',
